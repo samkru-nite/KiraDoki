@@ -48,6 +48,16 @@ public sealed class IsleBarSettings
     /// <summary>File search order: "name" (as Everything shows it, folders first) · "modified" · "size" — chosen in the results list (user 10-04).</summary>
     public string FileSort { get; set; } = Search.FileSearchQuery.SortName;
 
+    /// <summary>
+    /// Folders file search hides, one rule per line (<see cref="Search.FileExcludes"/>; editable in settings — user 10-04).
+    /// Null = the built-in list, so a person who never edited it gets later improvements to it.
+    /// </summary>
+    public List<string>? FileExclude { get; set; }
+
+    /// <summary>The rules in effect: the person's list, or the built-in one.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public IReadOnlyList<string> FileExcludeLines => FileExclude ?? [.. Search.FileExcludes.Defaults];
+
     /// <summary>Tab order ("claude" · "files" · "web"). The first one is the default mode.</summary>
     public List<string> ModeOrder { get; set; } = [.. Localization.BarModes.DefaultOrder.Select(Localization.BarModes.Key)];
 
@@ -170,6 +180,7 @@ public sealed class IsleBarSettings
         WebEngine = WebEngine,
         FileResults = FileResults,
         FileSort = FileSort,
+        FileExclude = FileExclude is null ? null : [.. FileExclude],
         ModeOrder = [.. ModeOrder],
         ModesOff = [.. ModesOff],
         PomodoroFocus = PomodoroFocus,

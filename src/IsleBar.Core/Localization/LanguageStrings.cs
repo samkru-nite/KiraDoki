@@ -62,6 +62,17 @@ public sealed class LanguageStrings
     public required string OpenInEverything { get; init; }
     public required string FileResultsCount { get; init; }
 
+    /// <summary>File search result right-click menu (user 10-04).</summary>
+    public required string MenuOpen { get; init; }
+    public required string MenuOpenFolder { get; init; }
+    public required string MenuCopyPath { get; init; }
+    public required string MenuCopyName { get; init; }
+
+    /// <summary>Settings: the folders file search hides (one per line), its explanation, and the button that restores the built-in list (10-04).</summary>
+    public required string FileExcludeLabel { get; init; }
+    public required string FileExcludeHint { get; init; }
+    public required string ResetDefaults { get; init; }
+
     /// <summary>Title of "Tab order" in the settings window.</summary>
     public required string TabOrder { get; init; }
 

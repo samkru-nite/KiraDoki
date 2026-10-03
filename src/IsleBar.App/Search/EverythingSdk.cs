@@ -7,7 +7,9 @@ namespace IsleBar.App.Search;
 /// <param name="Name">File or folder name.</param>
 /// <param name="Directory">Containing folder.</param>
 /// <param name="IsFolder">Whether it is a folder.</param>
-internal sealed record FileHit(string Name, string Directory, bool IsFolder)
+/// <param name="Size">Bytes; null for folders or when Everything doesn't know it.</param>
+/// <param name="Modified">Last change (local time); null when unknown.</param>
+internal sealed record FileHit(string Name, string Directory, bool IsFolder, long? Size = null, DateTime? Modified = null)
 {
     public string FullPath => Path.Combine(Directory, Name);
 }
@@ -37,9 +39,11 @@ internal enum SearchProblem
 /// </summary>
 internal sealed class EverythingSdk : IDisposable
 {
-    /// <summary>Only the Windows folder is left out (prefetch files, system DLLs) — the rest is as Everything shows it (user 10-04).</summary>
-    private static readonly IReadOnlyList<string> Excluded = IsleBar.Core.Search.FileSearchQuery.SystemFolders(
-        Environment.GetFolderPath(Environment.SpecialFolder.Windows));
+    /// <summary>Rows asked of Everything per round before hidden folders are dropped here (2000 rows take ~25 ms).</summary>
+    private const int Page = 1000;
+
+    /// <summary>Rounds at most — a search whose first thousands are all hidden folders stops here rather than lag.</summary>
+    private const int MaxPages = 5;
 
     private const int EverythingErrorIpc = 2;   // Everything is not running
 
@@ -57,7 +61,8 @@ internal sealed class EverythingSdk : IDisposable
     /// <summary>Searches. On failure <paramref name="problem"/> holds the reason and an empty list is returned.</summary>
     /// <param name="max">Rows to return (the settings' count).</param>
     /// <param name="sort">Sort setting value (<see cref="IsleBar.Core.Search.FileSearchQuery.Sorts"/>).</param>
-    public IReadOnlyList<FileHit> Search(string query, int max, string sort, out SearchProblem problem)
+    /// <param name="hidden">Folders to leave out (<see cref="IsleBar.Core.Search.FileExcludes"/>); ignored when the query names a path.</param>
+    public IReadOnlyList<FileHit> Search(string query, int max, string sort, IReadOnlyList<IsleBar.Core.Search.FileExcludes.Rule> hidden, out SearchProblem problem)
     {
         problem = SearchProblem.None;
         if (string.IsNullOrWhiteSpace(query))
@@ -65,36 +70,48 @@ internal sealed class EverythingSdk : IDisposable
             return [];
         }
 
-        // newest-first (the old order) filled the list with logs Windows rewrites every minute; name order is what Everything's
-        // own window shows, and the person can switch under the list (user 10-04)
-        Everything_SetSearchW(IsleBar.Core.Search.FileSearchQuery.Build(query, Excluded));
-        Everything_SetMax((uint)IsleBar.Core.Search.FileSearchQuery.ClampCount(max));
-        Everything_SetSort(IsleBar.Core.Search.FileSearchQuery.EverythingSort(sort));
-        Everything_SetRequestFlags(RequestFileName | RequestPath);
-
-        if (!Everything_QueryW(wait: true))
+        // Hidden folders are dropped here, page by page, not in the query: 32 "!path:" terms made Everything take ~820 ms a
+        // search instead of ~60 (measured 10-04). Name order is what Everything's own window shows; the header switches it.
+        max = IsleBar.Core.Search.FileSearchQuery.ClampCount(max);
+        IReadOnlyList<IsleBar.Core.Search.FileExcludes.Rule> filter = IsleBar.Core.Search.FileSearchQuery.TargetsPath(query) ? [] : hidden;
+        var hits = new List<FileHit>(max);
+        for (var page = 0; page < MaxPages && hits.Count < max; page++)
         {
-            problem = Everything_GetLastError() == EverythingErrorIpc
-                ? SearchProblem.ServiceOff
-                : SearchProblem.Failed;
-            return [];
-        }
-
-        var count = (int)Everything_GetNumResults();
-        var hits = new List<FileHit>(count);
-        for (var i = 0u; i < count; i++)
-        {
-            var name = Marshal.PtrToStringUni(Everything_GetResultFileNameW(i));
-            var dir = Marshal.PtrToStringUni(Everything_GetResultPathW(i));
-            if (name is not null && dir is not null)
+            Everything_SetSearchW(query.Trim());
+            Everything_SetOffset((uint)(page * Page));
+            Everything_SetMax(filter.Count == 0 ? (uint)max : Page);
+            Everything_SetSort(IsleBar.Core.Search.FileSearchQuery.EverythingSort(sort));
+            Everything_SetRequestFlags(RequestFileName | RequestPath | RequestSize | RequestDateModified);   // size + date: the list's columns (user 10-04)
+            if (!Everything_QueryW(wait: true))
             {
-                hits.Add(new FileHit(name, dir, Everything_IsFolderResult(i)));
+                problem = Everything_GetLastError() == EverythingErrorIpc
+                    ? SearchProblem.ServiceOff
+                    : SearchProblem.Failed;
+                return [];
             }
-        }
 
-        if (!IsleBar.Core.Search.FileSearchQuery.TargetsPath(query))
-        {
-            hits.RemoveAll(hit => IsleBar.Core.Search.FileSearchQuery.IsSystem(hit.FullPath, Excluded));   // in case Everything's own filter missed
+            var count = Everything_GetNumResults();
+            for (var i = 0u; i < count && hits.Count < max; i++)
+            {
+                var name = Marshal.PtrToStringUni(Everything_GetResultFileNameW(i));
+                var dir = Marshal.PtrToStringUni(Everything_GetResultPathW(i));
+                if (name is null || dir is null || (filter.Count > 0 && IsleBar.Core.Search.FileExcludes.IsHidden(Path.Combine(dir, name), filter)))
+                {
+                    continue;
+                }
+
+                var folder = Everything_IsFolderResult(i);
+                long? size = !folder && Everything_GetResultSize(i, out var bytes) && bytes >= 0 ? bytes : null;
+                DateTime? modified = Everything_GetResultDateModified(i, out var fileTime) && fileTime > 0 && fileTime != long.MaxValue
+                    ? DateTime.FromFileTimeUtc(fileTime).ToLocalTime()
+                    : null;
+                hits.Add(new FileHit(name, dir, folder, size, modified));
+            }
+
+            if (filter.Count == 0 || count < Page)
+            {
+                break;   // nothing filtered, or Everything has no more
+            }
         }
 
         return hits;
@@ -111,12 +128,26 @@ internal sealed class EverythingSdk : IDisposable
 
     private const uint RequestFileName = 0x0000_0001;
     private const uint RequestPath = 0x0000_0002;
+    private const uint RequestSize = 0x0000_0010;
+    private const uint RequestDateModified = 0x0000_0040;
+
+    [DllImport("Everything64.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool Everything_GetResultSize(uint index, out long size);
+
+    /// <summary>FILETIME as one 64-bit number (same layout).</summary>
+    [DllImport("Everything64.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool Everything_GetResultDateModified(uint index, out long fileTime);
 
     [DllImport("Everything64.dll", CharSet = CharSet.Unicode)]
     private static extern void Everything_SetSearchW(string search);
 
     [DllImport("Everything64.dll")]
     private static extern void Everything_SetMax(uint max);
+
+    [DllImport("Everything64.dll")]
+    private static extern void Everything_SetOffset(uint offset);
 
     [DllImport("Everything64.dll")]
     private static extern void Everything_SetSort(uint sort);

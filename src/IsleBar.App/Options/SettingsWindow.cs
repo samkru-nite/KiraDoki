@@ -276,6 +276,8 @@ internal sealed class SettingsWindow : Window
                 }
             });
 
+        HiddenFoldersRow();
+
         Section(_text.WebEngine);
         var engines = new ComboBox { MinWidth = 220 };
         var fallback = WebSearch.EnginesFor(_language)[0];
@@ -422,6 +424,56 @@ internal sealed class SettingsWindow : Window
     }
 
     /// <summary>A name + text input box (saved on leaving the box or pressing Enter).</summary>
+    /// <summary>
+    /// Folders file search hides — one rule per line, editable here so it can change without touching the source (user 10-04).
+    /// Matching the built-in list is stored as "unset", so later improvements to that list still reach this person.
+    /// </summary>
+    private void HiddenFoldersRow()
+    {
+        _body.Children.Add(new TextBlock { Text = _text.FileExcludeLabel, Margin = new Thickness(0, 8, 0, 4) });
+        var box = new TextBox
+        {
+            Text = string.Join("\r", _settings.FileExcludeLines),
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.NoWrap,
+            Height = 170,
+            IsSpellCheckEnabled = false,
+        };
+        ScrollViewer.SetVerticalScrollBarVisibility(box, ScrollBarVisibility.Auto);
+        ScrollViewer.SetHorizontalScrollBarVisibility(box, ScrollBarVisibility.Auto);
+        _body.Children.Add(box);
+        _body.Children.Add(new TextBlock
+        {
+            Text = _text.FileExcludeHint,
+            FontSize = 12,
+            Opacity = 0.7,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 4, 0, 0),
+        });
+        var reset = new HyperlinkButton { Content = _text.ResetDefaults, Padding = new Thickness(0, 2, 0, 2), FontSize = 12 };
+        _body.Children.Add(reset);
+
+        void Commit()
+        {
+            var lines = box.Text.Split('\r', '\n').Select(line => line.Trim()).Where(line => line.Length > 0).ToList();
+            List<string>? next = lines.SequenceEqual(IsleBar.Core.Search.FileExcludes.Defaults) ? null : lines;
+            var before = _settings.FileExclude;
+            if (next is null ? before is not null : before is null || !next.SequenceEqual(before))
+            {
+                _settings.FileExclude = next;
+                _changed();
+            }
+        }
+
+        box.LostFocus += (_, _) => Commit();
+        _commitOnClose.Add(Commit);   // typed and then closed with X (as the other text rows)
+        reset.Click += (_, _) =>
+        {
+            box.Text = string.Join("\r", IsleBar.Core.Search.FileExcludes.Defaults);
+            Commit();
+        };
+    }
+
     private void TextRow(string label, string hint, Func<string> get, Action<string> set)
     {
         _body.Children.Add(new TextBlock { Text = label, Margin = new Thickness(0, 8, 0, 4) });

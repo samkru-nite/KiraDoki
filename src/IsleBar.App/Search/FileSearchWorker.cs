@@ -11,7 +11,8 @@ namespace IsleBar.App.Search;
 /// </summary>
 internal sealed class FileSearchWorker : IDisposable
 {
-    private readonly BlockingCollection<(long Seq, string Query, int Max, string Sort)> _requests = new(new ConcurrentQueue<(long, string, int, string)>());
+    private readonly BlockingCollection<(long Seq, string Query, int Max, string Sort, IReadOnlyList<IsleBar.Core.Search.FileExcludes.Rule> Hidden)> _requests =
+        new(new ConcurrentQueue<(long, string, int, string, IReadOnlyList<IsleBar.Core.Search.FileExcludes.Rule>)>());
     private readonly Action<long, IReadOnlyList<FileHit>, SearchProblem> _onResult;
     private readonly Thread _thread;
     private long _seq;
@@ -25,10 +26,10 @@ internal sealed class FileSearchWorker : IDisposable
     }
 
     /// <summary>Requests a search. Returns a request number (used to match results).</summary>
-    public long Request(string query, int max, string sort)
+    public long Request(string query, int max, string sort, IReadOnlyList<IsleBar.Core.Search.FileExcludes.Rule> hidden)
     {
         var seq = Interlocked.Increment(ref _seq);
-        _requests.Add((seq, query, max, sort));
+        _requests.Add((seq, query, max, sort, hidden));
         return seq;
     }
 
@@ -56,7 +57,13 @@ internal sealed class FileSearchWorker : IDisposable
 
             try
             {
-                var hits = sdk.Search(current.Query, current.Max, current.Sort, out var problem);
+                var clock = System.Diagnostics.Stopwatch.StartNew();
+                var hits = sdk.Search(current.Query, current.Max, current.Sort, current.Hidden, out var problem);
+                if (clock.ElapsedMilliseconds >= 30)
+                {
+                    Interop.TaskbarHost.Log($"file search: Everything took {clock.ElapsedMilliseconds} ms for {hits.Count} rows");
+                }
+
                 _onResult(current.Seq, hits, problem);
             }
             catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException)

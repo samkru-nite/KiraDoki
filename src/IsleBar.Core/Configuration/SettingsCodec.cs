@@ -23,6 +23,7 @@ public static class SettingsCodec
     private const string KeyWebEngine = "web_engine";
     private const string KeyFileResults = "file_results";
     private const string KeyFileSort = "file_sort";
+    private const string KeyFileExclude = "file_exclude";
     private const string KeyModeOrder = "mode_order";
     private const string KeyModesOff = "modes_off";
     private const string KeyPomoFocus = "pomo_focus";
@@ -93,6 +94,10 @@ public static class SettingsCodec
         }
 
         s.FileSort = Search.FileSearchQuery.NormalizeSort(AsString(raw[KeyFileSort]) ?? s.FileSort);
+        if (raw[KeyFileExclude] is JsonArray excludeArr)
+        {
+            s.FileExclude = [.. excludeArr.Select(AsString).OfType<string>()];
+        }
 
         if (AsBool(raw[KeyFiles]) is { } files)
         {
@@ -253,6 +258,14 @@ public static class SettingsCodec
         raw[KeyWebEngine] = s.WebEngine;
         raw[KeyFileResults] = s.FileResults;
         raw[KeyFileSort] = s.FileSort;
+        if (s.FileExclude is null)
+        {
+            raw.Remove(KeyFileExclude);   // the built-in list — not written, so later changes to it still apply
+        }
+        else
+        {
+            raw[KeyFileExclude] = new JsonArray([.. s.FileExclude.Select(line => (JsonNode)line)]);
+        }
         raw[KeyModeOrder] = ToArray(s.ModeOrder);
         raw[KeyModesOff] = ToArray(s.ModesOff);
         raw[KeyNativeSearchBox] = s.NativeSearchBox;

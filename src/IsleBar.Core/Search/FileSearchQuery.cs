@@ -1,10 +1,9 @@
 namespace IsleBar.Core.Search;
 
 /// <summary>
-/// File search (Everything) rules that don't need Everything itself: which folders are left out, the query sent, the sort and
-/// how many rows. Kept close to Everything's own window (user 10-04: "Everything already finds what I want — why not just use
-/// that"): same name order with folders first, only the Windows folder hidden (prefetch files, system DLLs).
-/// AppData stays — apps install there (…\AppData\Local\Programs) and so do Start menu shortcuts.
+/// File search (Everything) rules that don't need Everything itself: the sort and how many rows. Kept close to Everything's own
+/// window (user 10-04: "Everything already finds what I want — why not just use that"): same name order with folders first.
+/// Hidden folders are <see cref="FileExcludes"/>.
 /// </summary>
 public static class FileSearchQuery
 {
@@ -36,28 +35,6 @@ public static class FileSearchQuery
         _ => 1,               // EVERYTHING_SORT_NAME_ASCENDING
     };
 
-    /// <summary>Folders never shown: only Windows itself.</summary>
-    public static IReadOnlyList<string> SystemFolders(string windowsDir) => [windowsDir.TrimEnd('\\') + "\\"];
-
-    /// <summary>
-    /// The query sent to Everything: the person's words, grouped, then each system folder excluded. A query that names a path
-    /// itself (contains \ or /) is sent untouched — the person is deliberately looking inside a folder, maybe a system one.
-    /// </summary>
-    public static string Build(string query, IReadOnlyList<string> excluded)
-    {
-        var trimmed = query.Trim();
-        if (trimmed.Length == 0 || TargetsPath(trimmed) || excluded.Count == 0)
-        {
-            return trimmed;
-        }
-
-        return $"<{trimmed}> " + string.Join(" ", excluded.Select(folder => $"!path:\"{folder}\""));
-    }
-
-    /// <summary>Whether the query names a path itself (then nothing is filtered).</summary>
+    /// <summary>Whether the query names a path itself — then nothing is hidden: the person is deliberately looking in a folder.</summary>
     public static bool TargetsPath(string query) => query.Contains('\\') || query.Contains('/');
-
-    /// <summary>Whether a result's full path is inside a system folder (a second check after Everything's own filter).</summary>
-    public static bool IsSystem(string fullPath, IReadOnlyList<string> excluded)
-        => excluded.Any(folder => fullPath.StartsWith(folder, StringComparison.OrdinalIgnoreCase));
 }

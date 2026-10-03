@@ -46,7 +46,10 @@
   （用户截图 10-04：所有结果同一个文档图标；结果里大量 AppData/ProgramData 系统缓存文件，排序没价值）
   [~] 第 1 步已做（10-04，讨论后改定）：尽量贴近 Everything 自己的窗口——默认按名称排序（文件夹在前）；只隐藏 `C:\Windows`（AppData 不能藏：软件装在 AppData\Local\Programs，开始菜单快捷方式也在 AppData；回收站按用户要求不藏）；搜索词含 \ 或 / 时不过滤。设置里可改显示条数（3–50，默认 8，列表可滚动）；结果列表底部有排序按钮（名称/修改时间/大小）+「在 Everything 中打开」按钮。逻辑 `IsleBar.Core/Search/FileSearchQuery.cs`（有测试），设置项 `FileResults`/`FileSort`。
   （智能排序——按文件类型/位置/最近使用打分——用户决定先不做）
-  [ ] 第 2 步：真实文件图标 + 排版（`ResultsWindow.Row()`），顺带 3.4 提示居中
+  [~] 第 2 步第一轮修正（10-04，待用户看效果）：宽度固定 480、去掉悬停文件夹按钮、文件名中间省略保留扩展名、日期/大小右对齐+等间距、表头 32 高、图标改 SHGetFileInfo 后台线程（`Search/ShellIcons.cs`）、右键菜单共用一个、测量缓存、亚克力改开始菜单参数、列表窗口在前台时不结束输入（修"切换排序 3 秒后列表消失"）、慢于 30ms 的搜索/绘制写日志。
+  第一轮补充（10-04，待用户看）：表头与各列全部左对齐（方案 A）、表头按钮撑满高度以垂直居中；隐藏目录改为设置里可编辑（`IsleBarSettings.FileExclude`，null=内置默认，规则见 `Core/Search/FileExcludes.cs`，支持 * 通配和环境变量）。**隐藏改在 IsleBar 本地过滤**：实测 Everything 里写 32 条 `!path:` 每次查询 ~820ms，不排除只要 ~25ms，所以按页（每页 1000 条，最多 5 页）取回后本地过滤。搜索规则（如 Apple.jpg）不改，用户用 Everything 语法（`apple .jpg`、`folder:`）。
+  第二轮待做：空输入时显示最近文件、无结果一行链接"无结果，在 Everything 中搜索"、表头始终保留、打开搜索时关掉开始菜单。
+  [~] 第 2 步初版（10-04）：`ResultsWindow.cs` 重写——顶部资源管理器式表头（名称/修改日期/大小，点击排序+箭头）、原生 ListView、系统真实图标（StorageFile 缩略图，按扩展名缓存）、路径中间省略（`Core/Search/FileListText.cs`）、右键菜单（打开/打开所在位置/复制路径/复制文件名/在 Everything 中打开）、悬停行显示"打开所在位置"按钮、列表限高 534dip 后滚动、无结果提示居中+Everything 链接（即 3.4）、常亮亚克力 `Interop/ActiveAcrylic.cs`（原来的亚克力因窗口不激活实际显示为纯色）
 - [~] 4.6 开启消息通知后显示有 bug（10-04 已做：卡片默认关闭+设置开关、卡片限制在屏幕内，提交 a131152，待用户实测；卡片美化留到 5.1/5.2 统一设计）
   → `IsleBar.App/SystemWatch/ToastWatcher.cs`、`IsleBar.App/IslandUi/ExpandedNotice.cs`（760 行）、`ToastBanners.cs`。需用户描述/截图具体现象 ｜ 未知 ｜ Sonnet，复杂再 Opus
   （用户截图 10-04：卡片宽于胶囊，`ExpandedNotice.Present()` 以胶囊为中心摆放但没限制在屏幕内，左边伸出屏幕；用户觉得卡片丑。用户可接受的方案：不要卡片 / 把系统原生通知移到胶囊上方 / 重新设计卡片。原生通知位置 Windows 不提供接口，基本不可行。卡片入口：MW `ExpandIfMessage()`）

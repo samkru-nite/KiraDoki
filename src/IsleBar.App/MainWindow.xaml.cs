@@ -383,9 +383,18 @@ public sealed partial class MainWindow : Window
 
     private void OnTypingRecheck(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
     {
-        if (_typing && NativeMethods.MouseButtonDown())
+        if (_typing && (NativeMethods.MouseButtonDown() || _results?.MenuOpen == true))
         {
-            sender.Start();   // still holding the button on a popup (scrolling the preview, say) — look again later
+            sender.Start();   // still holding the button on a popup (scrolling the preview, say) or a result's right-click menu is open — look again later
+            return;
+        }
+
+        // a click on the results list (a column header, say) leaves that list in front: still typing — hand the keyboard back.
+        // Ending here closed the list ~3 s after changing the sort (user 10-04).
+        if (_typing && _results is { } list && NativeMethods.GetForegroundWindow() == list.Handle)
+        {
+            ReclaimTyping();
+            sender.Start();
             return;
         }
 
@@ -3379,7 +3388,23 @@ public sealed partial class MainWindow : Window
     private void RequestSearch(string query)
     {
         _requestedQuery = query;
-        _fileSearch.Request(query, _settings.FileResults, _settings.FileSort);
+        _fileSearch.Request(query, _settings.FileResults, _settings.FileSort, HiddenFolders());
+    }
+
+    private string? _hiddenSource;
+    private IReadOnlyList<FileExcludes.Rule> _hiddenRules = [];
+
+    /// <summary>The settings' hidden-folder lines as rules — parsed again only when the lines change.</summary>
+    private IReadOnlyList<FileExcludes.Rule> HiddenFolders()
+    {
+        var source = string.Join('\n', _settings.FileExcludeLines);
+        if (source != _hiddenSource)
+        {
+            _hiddenRules = FileExcludes.Parse(_settings.FileExcludeLines);
+            _hiddenSource = source;
+        }
+
+        return _hiddenRules;
     }
 
     /// <summary>A sort button under the results: remember it and search again in that order, keeping typing in the input box.</summary>
@@ -3395,10 +3420,30 @@ public sealed partial class MainWindow : Window
             });
         }
 
-        // the click activated the results window — hand the keyboard back to the input box, or typing would end
+        ReclaimTyping();
+        _ui.TryEnqueue(DispatcherQueuePriority.Low, ReclaimTyping);   // again once the click is fully handled — the list can take focus back on release
+        RequestSearch(Entry.Text.Trim());
+    }
+
+    /// <summary>A click on the results list activated it — hand the keyboard back to the input box, or typing would end.</summary>
+    private void ReclaimTyping()
+    {
+        if (!_typing)
+        {
+            return;
+        }
+
         ForegroundHelper.Bring(_taskbar.OuterWindow);
         Entry.Focus(FocusState.Programmatic);
-        RequestSearch(Entry.Text.Trim());
+    }
+
+    /// <summary>Row <paramref name="index"/> of the results: open it, or show it in Explorer.</summary>
+    private void OpenResult(int index, bool revealInFolder)
+    {
+        if (_results?.Move(index - _results.Selected) == true && _results.SelectedHit is { } hit)
+        {
+            OpenHit(hit, revealInFolder);
+        }
     }
 
     /// <summary>"Open in Everything" under the results: Everything's own window with the same words (all results, every column).</summary>
@@ -3494,13 +3539,9 @@ public sealed partial class MainWindow : Window
                 AppFonts.Apply(_results, _language);
                 _results.SortChosen += ChooseFileSort;
                 _results.OpenInEverything += OpenInEverything;
-                _results.RowClicked += index =>
-                {
-                    if (_results?.Move(index - _results.Selected) == true && _results.SelectedHit is { } hit)
-                    {
-                        OpenHit(hit, IsControlDown());
-                    }
-                };
+                _results.KeepTyping += ReclaimTyping;
+                _results.RowClicked += index => OpenResult(index, IsControlDown());
+                _results.RevealClicked += index => OpenResult(index, revealInFolder: true);
             }
 
             _results.Show(hits, note, PopupAnchorX, TaskbarTop(), _settings.FileSort, _text);
