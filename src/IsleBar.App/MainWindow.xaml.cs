@@ -3221,6 +3221,17 @@ public sealed partial class MainWindow : Window
         // creates/moves windows and runs composition, which pumps the message loop and stalled the island timer (the pill and
         // card then froze after a couple of messages — root cause found 09-30). Decoupling it keeps the tick fast and alive.
         _lastExpandedAt = fresh[^1].UpdatedAt;
+        if (!_settings.ToastCard)
+        {
+            // card off (default, user 10-04): Windows messages stay as text on the pill. IsleBar's own cards (connect agents,
+            // update available) still open — clicking the card is how you act on them.
+            fresh.RemoveAll(s => s.Name != "IsleBar");
+            if (fresh.Count == 0)
+            {
+                return;
+            }
+        }
+
         _ui.TryEnqueue(() =>
         {
             try

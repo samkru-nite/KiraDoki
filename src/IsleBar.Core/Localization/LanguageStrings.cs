@@ -134,6 +134,9 @@ public sealed class LanguageStrings
     /// <summary>Settings toggle: hide Windows' own notification pop-ups, show them only on the bar.</summary>
     public required string HideToastBanners { get; init; }
 
+    /// <summary>Settings toggle: pop a message card out of the pill for Windows notifications.</summary>
+    public required string ToastCard { get; init; }
+
     /// <summary>Settings: opt-in crash reports — says plainly what is (and isn't) sent (10-01).</summary>
     public required string CrashReports { get; init; }
 

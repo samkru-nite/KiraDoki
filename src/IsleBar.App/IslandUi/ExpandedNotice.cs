@@ -156,8 +156,13 @@ internal sealed class ExpandedNotice : Window
     {
         var w = DpiSetup.Px(CardWidthDip);
         var h = DpiSetup.Px(frontHeightDip);
+        // centered over the pill, but kept on the pill's screen — a pill near the left edge pushed half the card off-screen (user 10-04)
+        var x = _pill.X + ((_pill.Width - w) / 2);
+        var screen = Microsoft.UI.Windowing.DisplayArea.GetFromRect(_pill, Microsoft.UI.Windowing.DisplayAreaFallback.Nearest).OuterBounds;
+        var gap = DpiSetup.Px(8);
+        x = Math.Max(screen.X + gap, Math.Min(x, screen.X + screen.Width - w - gap));
         _cardRect = new Windows.Graphics.RectInt32(
-            _pill.X + ((_pill.Width - w) / 2),
+            x,
             _pill.Y - h - DpiSetup.Px(10),
             w,
             h);

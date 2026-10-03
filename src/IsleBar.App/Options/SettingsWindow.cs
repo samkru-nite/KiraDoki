@@ -303,6 +303,7 @@ internal sealed class SettingsWindow : Window
         ToggleRow(_text.NotifyLoad, () => _settings.NotifyLoad, v => _settings.NotifyLoad = v);
         ToggleRow(_text.NotifyPrivacy, () => _settings.NotifyPrivacy, v => _settings.NotifyPrivacy = v);
         ToggleRow(_text.NotifyToasts, () => _settings.NotifyToasts, v => _settings.NotifyToasts = v);
+        ToggleRow(_text.ToastCard, () => _settings.ToastCard, v => _settings.ToastCard = v);
         if (!Interop.AppPaths.IsPackaged)   // the Store build has no uninstaller that could give the banners back
         {
             ToggleRow(_text.HideToastBanners, () => _settings.HideToastBanners, v => _settings.HideToastBanners = v);   // user 10-01 — a toggle, so it can ship

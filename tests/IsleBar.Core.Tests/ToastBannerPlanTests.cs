@@ -69,4 +69,15 @@ public sealed class ToastBannerPlanTests
         Assert.True(raw["hide_toast_banners"]!.GetValue<bool>());
         Assert.True(SettingsCodec.FromJson(raw).HideToastBanners);
     }
+
+    [Fact]
+    public void Message_card_is_off_by_default_and_saved()
+    {
+        Assert.False(new IsleBarSettings().ToastCard);
+        var raw = new System.Text.Json.Nodes.JsonObject();
+        SettingsCodec.Apply(new IsleBarSettings { ToastCard = true }, raw);
+        Assert.True(raw["toast_card"]!.GetValue<bool>());
+        Assert.True(SettingsCodec.FromJson(raw).ToastCard);
+        Assert.True(new IsleBarSettings { ToastCard = true }.Clone().ToastCard);
+    }
 }

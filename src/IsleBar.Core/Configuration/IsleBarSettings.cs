@@ -118,6 +118,9 @@ public sealed class IsleBarSettings
     /// </summary>
     public bool HideToastBanners { get; set; }
 
+    /// <summary>Grow a message card out of the pill for Windows notifications. Off by default (user 10-04: the card looked bad; the pill text is enough).</summary>
+    public bool ToastCard { get; set; }
+
     /// <summary>Look for a newer IsleBar on GitHub once a day and say so on the bar (10-01). On by default; sends nothing about the person.</summary>
     public bool CheckUpdates { get; set; } = true;
 
@@ -180,6 +183,7 @@ public sealed class IsleBarSettings
         NotifyPrivacy = NotifyPrivacy,
         NotifyToasts = NotifyToasts,
         HideToastBanners = HideToastBanners,
+        ToastCard = ToastCard,
         CheckUpdates = CheckUpdates,
         MuteChimeFullscreen = MuteChimeFullscreen,
         CalendarIcs = CalendarIcs,

@@ -43,9 +43,11 @@
   → **作者故意排除了浏览器**（`IsleBar.Core/Island/MediaSources.cs` + `MediaWatcher.PickMusicSession()`）。去掉过滤或加开关即可 ｜ 易 ｜ Sonnet
 - [ ] 4.5 Everything 搜索界面丑
   → `IsleBar.App/Search/ResultsWindow.cs` `Row()`：只有文件夹/文档两种字体图标。可改用系统真实文件图标、调排版 ｜ 中 ｜ Sonnet
+  （用户截图 10-04：所有结果同一个文档图标；结果里大量 AppData/ProgramData 系统缓存文件，排序没价值——可考虑排除系统目录、常用文件优先）
 - [ ] 4.6 开启消息通知后显示有 bug
   → `IsleBar.App/SystemWatch/ToastWatcher.cs`、`IsleBar.App/IslandUi/ExpandedNotice.cs`（760 行）、`ToastBanners.cs`。需用户描述/截图具体现象 ｜ 未知 ｜ Sonnet，复杂再 Opus
-- [ ] 4.7 番茄钟数字跳动太大
+  （用户截图 10-04：卡片宽于胶囊，`ExpandedNotice.Present()` 以胶囊为中心摆放但没限制在屏幕内，左边伸出屏幕；用户觉得卡片丑。用户可接受的方案：不要卡片 / 把系统原生通知移到胶囊上方 / 重新设计卡片。原生通知位置 Windows 不提供接口，基本不可行。卡片入口：MW `ExpandIfMessage()`）
+- [ ] 4.7 番茄钟数字跳动太大（**暂缓**：用户打算以后把番茄钟放进 5.1 的小圆圈，届时一起做）
   → MW `RollIn()`（每个变化的数字从上方 7px 滑下 + 淡入）和 `ShowClockDigits()`。把动画减弱或改成纯淡入 ｜ 易 ｜ Sonnet
 
 ## 5. 大想法（需先设计再做）
