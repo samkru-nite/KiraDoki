@@ -33,8 +33,43 @@ dotnet build src/IsleBar.App -v q -nologo
 dotnet test tests/IsleBar.Core.Tests -v q -nologo
 ```
 
-## 项目地图（待补全）
-读完源码后在此补：模块职责、状态流转（hook → CLI → state 文件 → UI）、胶囊各"状态/槽位"的实现位置、下载/媒体/通知/搜索各自的文件、脆弱点、TODO 每条对应的文件和函数。
+## 项目地图（2026-10-04 读源码后补；行号是近似值，以 grep 为准）
+
+### 核心数据流：一切都是「ActivityState 列表 → 选一个最急的显示」
+1. **来源**（每个都产出 `ActivityState` 对象，`Core/Island/ActivityState.cs`）：
+   - 状态 JSON 文件：`%LOCALAPPDATA%\IsleBar\state\*.json` 和 `%TEMP%\tgprog\tgprog_*.json`，由 `Core/Island/ActivityStore.cs` 读写（含各类过期时长常量）。写入方：`islebar push/timer/hook`（`Cli/CommandRunner.cs`）、App 自己（如启动失败通知 `ShowLaunchFailure`）。
+   - Claude/Codex 钩子：Claude Code hook / Codex notify → `islebar hook` → `Core/Island/AgentHook.cs` 翻译成状态文件。钩子安装脚本 `setup/hooks.ps1`，连接逻辑 `App/Interop/HookConnector.cs`。`App/SystemWatch/AgentRecordWatcher.cs` 读会话记录补抓无钩子的情况。
+   - 内存来源（不落盘）：音乐 `App/Media/MediaWatcher.cs`、下载 `App/Media/DownloadWatcher.cs`、发手机 `App/IslandUi/PhoneDrop.cs`、系统短通知 `App/SystemWatch/SystemWatchers.cs`（电源/蓝牙/网络/专注/剪贴板/负载/日历/麦克风摄像头/系统通知 ToastWatcher/更新）。
+2. **汇总**：`MainWindow.xaml.cs` 的 `StartIslandPolling()`（每 250ms 一次 tick）把所有来源合成列表。
+3. **挑选**：`Core/Island/IslandSelector.cs` 按 `ActivityKind` 数值排序（`Core/Island/ActivityKind.cs`：权限请求 0 > 错误 1 > 传输 2 > 短通知 3 > 计时 4 > 音乐 5 > 任务完成 6 > 工作中 7），只显示一个，其余用末尾小圆点 `MoreDot` 表示。**这是 TODO 5.1「圆圈+胶囊」要动的根本结构。**
+4. **绘制**：`RenderIsland()` → `RenderIslandState()` → 文字 `ShowIslandText()` / 计时 `ShowTimerText()`+`ShowClockDigits()` / 进度条 `UpdateProgressLine()` / 边框 `UpdateGlow()` / 前缀文案 `PrefixFor()` / 左图标 `GlyphFor()`。动画在 `App/IslandUi/IslandAnimator.cs`（进出场、呼吸、高亮边框 `UpdateGlow`）。
+
+### 界面结构
+- `App/MainWindow.xaml`：胶囊只有 220×32，四列 Grid：⌄按钮 | 左图标槽 LeadSlot（Claude 火花/Codex 图/专辑封面/字体图标）| 中间（输入框 Entry 或 岛内容 IslandContent，文字放在 Canvas 里手动垂直居中）| 右侧（均衡器、悬停按钮、计时圆环、Tab 提示、隐私点、更多点）。底部 2px 进度条 `ProgressLine`。边框：`PillSurface`（常规细边）、`GlassEdge`（"玻璃边"设置）、`GlowRing`（绿/橙提醒粗边）。
+- `MainWindow.xaml.cs`（3700 行，几乎所有界面逻辑都在这）：输入 `BeginTyping/EndTyping/OnEntryKeyDown`、启动代理 `Launch()`/`ShowLaunchFailure()`、模式切换 `ToggleMode/SetMode`（Tab 切换 Claude/文件/网页）、文件搜索 `ScheduleSearch/OnSearchResult`、右键菜单 `ShowContextMenu`、番茄钟 `AdvancePomodoros`、提示音 `PlayChime`。
+- 其他窗口：搜索结果 `App/Search/ResultsWindow.cs`、长问题编辑 `ComposeWindow.cs`、消息展开卡片 `App/IslandUi/ExpandedNotice.cs`（760 行）、设置 `App/Options/SettingsWindow.cs`、快捷选项 `OptionsFlyout.cs`、系统通知横幅 `App/SystemWatch/ToastBanners.cs`。
+- 嵌入任务栏：`App/Interop/TaskbarHost.cs`（Attach/Detach，打字时会脱离任务栏）、`App/Tracking/SearchBoxTracker.cs`（跟随真搜索框位置）、`PillRegion.cs`（裁剪成胶囊形）、`NativeSearchBox.cs`（可选 C++ 注入）。
+- 主题色 `App/Interop/ThemeColors.cs`、`Core/Ui/ThemePalette.cs`；字体 `Core/Localization/UiFonts.cs`、`App/IslandUi/AppFonts.cs`；多语言文案 `Core/Localization/LanguageCatalog.cs`。
+- 日志：`%LOCALAPPDATA%\IsleBar\logs`（`TaskbarHost.Log`），排查启动失败先看这里。
+
+### 各功能对应文件
+| 功能 | 文件 |
+|---|---|
+| 下载 | `App/Media/DownloadWatcher.cs`（只扫"下载"文件夹里的 .crdownload/.part，每秒一次，**拿不到总大小**） |
+| 音乐 | `App/Media/MediaWatcher.cs`（Windows 媒体控制 SMTC；**故意排除浏览器** `Core/Island/MediaSources.cs`；进度来自 app 上报的 Timeline，app 不报就没进度条） |
+| Claude/Codex 启动 | `MainWindow.Launch()`；路径查找 `Core/Launch/ClaudeExecutable.cs`、`ClaudeProfile.cs`、`CodexProfile.cs`、`NpmShim.cs`、参数 `ClaudeArguments.cs` |
+| Claude/Codex 图标 | `App/Interop/ClaudeGlyph.cs`（从本机 claude.exe 图标里抠火花）、`Core/Ui/CodexMark.cs`（从 VS Code 的 Codex 扩展里找 SVG）；都找不到就退回字体图标（就是"聊天图标"） |
+| 文件搜索 | `App/Search/EverythingSdk.cs`、`FileSearchWorker.cs`、`ResultsWindow.cs`（结果行、"Everything 未运行"提示都在 `Show()`/`Row()`） |
+| 网页搜索 | `Core/Search/WebSearch.cs` |
+| 计时/番茄钟 | `Core/Island/TimerParser.cs`；界面 `ShowTimerText/ShowClockDigits/RollIn/DrawTimerArc` |
+| 系统通知 | `App/SystemWatch/ToastWatcher.cs`（读 Windows 通知数据库）→ `ExpandedNotice.cs` 展开卡片 |
+| 复制提示 | `App/SystemWatch/ClipboardWatcher.cs` + `Core/SystemWatch/ClipboardRules.cs` |
+
+### 脆弱点
+- `MainWindow.xaml.cs` 巨大且状态多（_typing/_hovering/_swapping…），改一处容易影响别处；tick 里的异常会被吞掉（不报错但效果不出现）。
+- 事件只能在 `WireEvents()` 一处绑定（作者踩过重复绑定的坑）。
+- 打字时窗口会脱离任务栏再回去（`TaskbarHost.Detach/Attach`），输入法问题可能跟这个有关。
+- 单位：WinUI 用 DIP，窗口/区域用物理像素（`DpiSetup.Px`），混用会出 bug。
 
 ## 开发约定
 - 读改文件用专用工具，PowerShell 只跑 git/dotnet/winget。
