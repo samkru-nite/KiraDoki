@@ -55,6 +55,13 @@ public sealed class LanguageStrings
     /// <summary>Title of "Web search engine" in the settings window.</summary>
     public required string WebEngine { get; init; }
 
+    /// <summary>File search (user 10-04): the sort buttons under the results, the button that opens Everything, the row-count setting.</summary>
+    public required string SortName { get; init; }
+    public required string SortModified { get; init; }
+    public required string SortSize { get; init; }
+    public required string OpenInEverything { get; init; }
+    public required string FileResultsCount { get; init; }
+
     /// <summary>Title of "Tab order" in the settings window.</summary>
     public required string TabOrder { get; init; }
 

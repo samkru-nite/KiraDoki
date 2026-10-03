@@ -265,6 +265,17 @@ internal sealed class SettingsWindow : Window
         }
 
         // Web search engine: auto (per-language default) + this language's engines. A manually chosen engine not in the list (chosen under another language) is shown too
+        // File search: how many results to list (user 10-04); the order is chosen under the list itself
+        TextRow(_text.FileResultsCount, $"{IsleBar.Core.Search.FileSearchQuery.MinCount}–{IsleBar.Core.Search.FileSearchQuery.MaxCount}",
+            () => _settings.FileResults.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            v =>
+            {
+                if (int.TryParse(v, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var n))
+                {
+                    _settings.FileResults = IsleBar.Core.Search.FileSearchQuery.ClampCount(n);
+                }
+            });
+
         Section(_text.WebEngine);
         var engines = new ComboBox { MinWidth = 220 };
         var fallback = WebSearch.EnginesFor(_language)[0];

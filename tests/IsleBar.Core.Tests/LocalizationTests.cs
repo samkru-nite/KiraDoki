@@ -47,7 +47,7 @@ public sealed class LocalizationTests
             .Where(p => p.PropertyType == typeof(OptionText))
             .ToArray();
 
-        Assert.Equal(96, textProps.Length);     // notice if the number of string keys drops (includes rc·agent·dismiss·web_engine·tab_order·web_search·timer + 30 system notification keys + advanced_section, 10-01; advanced_section translated in all ten 10-02; + hide_toast_banners 10-01; + replace_timer_ask, needs_answer, agent_done, crash_reports, check_updates, update_available, update_menu, update_failed, connect_agents, connect_agents_card 10-01; + all_notifications, usage_limit, resets_at, usage_high, agent_stopped, stop_login, stop_billing, stop_busy, stop_error, mute_chime_fullscreen 10-03; + toast_card 10-04)
+        Assert.Equal(101, textProps.Length);     // notice if the number of string keys drops (includes rc·agent·dismiss·web_engine·tab_order·web_search·timer + 30 system notification keys + advanced_section, 10-01; advanced_section translated in all ten 10-02; + hide_toast_banners 10-01; + replace_timer_ask, needs_answer, agent_done, crash_reports, check_updates, update_available, update_menu, update_failed, connect_agents, connect_agents_card 10-01; + all_notifications, usage_limit, resets_at, usage_high, agent_stopped, stop_login, stop_billing, stop_busy, stop_error, mute_chime_fullscreen 10-03; + toast_card, sort_name, sort_modified, sort_size, open_in_everything, file_results_count 10-04)
         Assert.Equal(4, optionProps.Length);    // session · model · effort · perm
 
         foreach (var code in Expected)

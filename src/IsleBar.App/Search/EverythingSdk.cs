@@ -37,9 +37,9 @@ internal enum SearchProblem
 /// </summary>
 internal sealed class EverythingSdk : IDisposable
 {
-    /// <summary>Number of results shown at once (the list under the search box is small).</summary>
-    public const int MaxResults = 8;
-    private const uint SortDateModifiedDescending = 14;
+    /// <summary>Only the Windows folder is left out (prefetch files, system DLLs) — the rest is as Everything shows it (user 10-04).</summary>
+    private static readonly IReadOnlyList<string> Excluded = IsleBar.Core.Search.FileSearchQuery.SystemFolders(
+        Environment.GetFolderPath(Environment.SpecialFolder.Windows));
 
     private const int EverythingErrorIpc = 2;   // Everything is not running
 
@@ -55,7 +55,9 @@ internal sealed class EverythingSdk : IDisposable
     }
 
     /// <summary>Searches. On failure <paramref name="problem"/> holds the reason and an empty list is returned.</summary>
-    public IReadOnlyList<FileHit> Search(string query, out SearchProblem problem)
+    /// <param name="max">Rows to return (the settings' count).</param>
+    /// <param name="sort">Sort setting value (<see cref="IsleBar.Core.Search.FileSearchQuery.Sorts"/>).</param>
+    public IReadOnlyList<FileHit> Search(string query, int max, string sort, out SearchProblem problem)
     {
         problem = SearchProblem.None;
         if (string.IsNullOrWhiteSpace(query))
@@ -63,9 +65,11 @@ internal sealed class EverythingSdk : IDisposable
             return [];
         }
 
-        Everything_SetSearchW(query);
-        Everything_SetMax(MaxResults);
-        Everything_SetSort(SortDateModifiedDescending);   // most recently modified files on top (same as the Python version)
+        // newest-first (the old order) filled the list with logs Windows rewrites every minute; name order is what Everything's
+        // own window shows, and the person can switch under the list (user 10-04)
+        Everything_SetSearchW(IsleBar.Core.Search.FileSearchQuery.Build(query, Excluded));
+        Everything_SetMax((uint)IsleBar.Core.Search.FileSearchQuery.ClampCount(max));
+        Everything_SetSort(IsleBar.Core.Search.FileSearchQuery.EverythingSort(sort));
         Everything_SetRequestFlags(RequestFileName | RequestPath);
 
         if (!Everything_QueryW(wait: true))
@@ -86,6 +90,11 @@ internal sealed class EverythingSdk : IDisposable
             {
                 hits.Add(new FileHit(name, dir, Everything_IsFolderResult(i)));
             }
+        }
+
+        if (!IsleBar.Core.Search.FileSearchQuery.TargetsPath(query))
+        {
+            hits.RemoveAll(hit => IsleBar.Core.Search.FileSearchQuery.IsSystem(hit.FullPath, Excluded));   // in case Everything's own filter missed
         }
 
         return hits;

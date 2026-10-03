@@ -3379,7 +3379,79 @@ public sealed partial class MainWindow : Window
     private void RequestSearch(string query)
     {
         _requestedQuery = query;
-        _fileSearch.Request(query);
+        _fileSearch.Request(query, _settings.FileResults, _settings.FileSort);
+    }
+
+    /// <summary>A sort button under the results: remember it and search again in that order, keeping typing in the input box.</summary>
+    private void ChooseFileSort(string sort)
+    {
+        if (sort != _settings.FileSort)
+        {
+            _settings.FileSort = sort;
+            _store.Update((IsleBarSettings s) =>
+            {
+                s.FileSort = sort;
+                return true;
+            });
+        }
+
+        // the click activated the results window — hand the keyboard back to the input box, or typing would end
+        ForegroundHelper.Bring(_taskbar.OuterWindow);
+        Entry.Focus(FocusState.Programmatic);
+        RequestSearch(Entry.Text.Trim());
+    }
+
+    /// <summary>"Open in Everything" under the results: Everything's own window with the same words (all results, every column).</summary>
+    private void OpenInEverything()
+    {
+        if (EverythingExe() is not { } exe)
+        {
+            TaskbarHost.Log("file search: Everything.exe not found");
+            return;
+        }
+
+        try
+        {
+            var start = new System.Diagnostics.ProcessStartInfo(exe) { UseShellExecute = false };
+            start.ArgumentList.Add("-search");
+            start.ArgumentList.Add(Entry.Text.Trim());
+            System.Diagnostics.Process.Start(start);
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            TaskbarHost.Log("file search: opening Everything failed — " + ex.Message);
+            return;
+        }
+
+        Entry.Text = string.Empty;
+        EndTyping();
+    }
+
+    /// <summary>The running Everything's program file, else where its installer puts it (64- or 32-bit).</summary>
+    private static string? EverythingExe()
+    {
+        foreach (var process in System.Diagnostics.Process.GetProcessesByName("Everything"))
+        {
+            try
+            {
+                if (process.MainModule?.FileName is { } running && File.Exists(running))
+                {
+                    return running;
+                }
+            }
+            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+            {
+                // running elevated: its path can't be read — fall back to the install folders
+            }
+            finally
+            {
+                process.Dispose();
+            }
+        }
+
+        return new[] { Environment.SpecialFolder.ProgramFiles, Environment.SpecialFolder.ProgramFilesX86 }
+            .Select(folder => Path.Combine(Environment.GetFolderPath(folder), "Everything", "Everything.exe"))
+            .FirstOrDefault(File.Exists);
     }
 
     /// <summary>Called from the search thread → <b>marshals to the UI thread</b> to draw. Results for stale input are dropped.</summary>
@@ -3420,6 +3492,8 @@ public sealed partial class MainWindow : Window
             {
                 _results = new ResultsWindow();
                 AppFonts.Apply(_results, _language);
+                _results.SortChosen += ChooseFileSort;
+                _results.OpenInEverything += OpenInEverything;
                 _results.RowClicked += index =>
                 {
                     if (_results?.Move(index - _results.Selected) == true && _results.SelectedHit is { } hit)
@@ -3429,7 +3503,7 @@ public sealed partial class MainWindow : Window
                 };
             }
 
-            _results.Show(hits, note, PopupAnchorX, TaskbarTop());
+            _results.Show(hits, note, PopupAnchorX, TaskbarTop(), _settings.FileSort, _text);
             _shownQuery = _requestedQuery;   // the latest request's results (older ones were dropped above)
         });
 

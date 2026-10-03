@@ -43,8 +43,11 @@
   → **作者故意排除了浏览器**（`IsleBar.Core/Island/MediaSources.cs` + `MediaWatcher.PickMusicSession()`）。去掉过滤或加开关即可 ｜ 易 ｜ Sonnet
 - [ ] 4.5 Everything 搜索界面丑
   → `IsleBar.App/Search/ResultsWindow.cs` `Row()`：只有文件夹/文档两种字体图标。可改用系统真实文件图标、调排版 ｜ 中 ｜ Sonnet
-  （用户截图 10-04：所有结果同一个文档图标；结果里大量 AppData/ProgramData 系统缓存文件，排序没价值——可考虑排除系统目录、常用文件优先）
-- [ ] 4.6 开启消息通知后显示有 bug
+  （用户截图 10-04：所有结果同一个文档图标；结果里大量 AppData/ProgramData 系统缓存文件，排序没价值）
+  [~] 第 1 步已做（10-04，讨论后改定）：尽量贴近 Everything 自己的窗口——默认按名称排序（文件夹在前）；只隐藏 `C:\Windows`（AppData 不能藏：软件装在 AppData\Local\Programs，开始菜单快捷方式也在 AppData；回收站按用户要求不藏）；搜索词含 \ 或 / 时不过滤。设置里可改显示条数（3–50，默认 8，列表可滚动）；结果列表底部有排序按钮（名称/修改时间/大小）+「在 Everything 中打开」按钮。逻辑 `IsleBar.Core/Search/FileSearchQuery.cs`（有测试），设置项 `FileResults`/`FileSort`。
+  （智能排序——按文件类型/位置/最近使用打分——用户决定先不做）
+  [ ] 第 2 步：真实文件图标 + 排版（`ResultsWindow.Row()`），顺带 3.4 提示居中
+- [~] 4.6 开启消息通知后显示有 bug（10-04 已做：卡片默认关闭+设置开关、卡片限制在屏幕内，提交 a131152，待用户实测；卡片美化留到 5.1/5.2 统一设计）
   → `IsleBar.App/SystemWatch/ToastWatcher.cs`、`IsleBar.App/IslandUi/ExpandedNotice.cs`（760 行）、`ToastBanners.cs`。需用户描述/截图具体现象 ｜ 未知 ｜ Sonnet，复杂再 Opus
   （用户截图 10-04：卡片宽于胶囊，`ExpandedNotice.Present()` 以胶囊为中心摆放但没限制在屏幕内，左边伸出屏幕；用户觉得卡片丑。用户可接受的方案：不要卡片 / 把系统原生通知移到胶囊上方 / 重新设计卡片。原生通知位置 Windows 不提供接口，基本不可行。卡片入口：MW `ExpandIfMessage()`）
 - [ ] 4.7 番茄钟数字跳动太大（**暂缓**：用户打算以后把番茄钟放进 5.1 的小圆圈，届时一起做）

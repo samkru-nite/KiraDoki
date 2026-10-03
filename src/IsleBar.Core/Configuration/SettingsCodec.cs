@@ -21,6 +21,8 @@ public static class SettingsCodec
     private const string KeyFolder = "folder";
     private const string KeyFiles = "files";
     private const string KeyWebEngine = "web_engine";
+    private const string KeyFileResults = "file_results";
+    private const string KeyFileSort = "file_sort";
     private const string KeyModeOrder = "mode_order";
     private const string KeyModesOff = "modes_off";
     private const string KeyPomoFocus = "pomo_focus";
@@ -84,6 +86,13 @@ public static class SettingsCodec
         {
             s.WebEngine = engine;
         }
+
+        if (AsInt(raw[KeyFileResults]) is { } fileResults)
+        {
+            s.FileResults = Search.FileSearchQuery.ClampCount(fileResults);
+        }
+
+        s.FileSort = Search.FileSearchQuery.NormalizeSort(AsString(raw[KeyFileSort]) ?? s.FileSort);
 
         if (AsBool(raw[KeyFiles]) is { } files)
         {
@@ -242,6 +251,8 @@ public static class SettingsCodec
         raw[KeyFolder] = s.Folder;
         raw[KeyFiles] = s.Files;
         raw[KeyWebEngine] = s.WebEngine;
+        raw[KeyFileResults] = s.FileResults;
+        raw[KeyFileSort] = s.FileSort;
         raw[KeyModeOrder] = ToArray(s.ModeOrder);
         raw[KeyModesOff] = ToArray(s.ModesOff);
         raw[KeyNativeSearchBox] = s.NativeSearchBox;
@@ -328,6 +339,19 @@ public static class SettingsCodec
 
     private static double? AsDouble(JsonNode? node)
         => node is JsonValue v && v.GetValueKind() == JsonValueKind.Number && v.TryGetValue<double>(out var d) ? d : null;
+
+    /// <summary>A whole number, or null if missing or not one.</summary>
+    private static int? AsInt(JsonNode? node)
+    {
+        try
+        {
+            return node?.GetValue<int>();
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or FormatException)
+        {
+            return null;
+        }
+    }
 
     /// <summary>Minute value (1–600). Null if not a number or out of range.</summary>
     private static int? Minutes(JsonNode? node)
