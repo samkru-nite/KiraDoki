@@ -11,7 +11,7 @@
 ## 项目概况
 - IsleBar 0.1.0（MIT，原作者 ds3owl，github.com/ds3owl/islebar）：Windows 11 任务栏小工具，把搜索框换成"状态胶囊"，显示 Claude Code/Codex 状态、音乐、下载、计时、系统通知，Tab 切换 AI/文件搜索(Everything)/网页搜索。
 - 目录：`src/IsleBar.Core`（平台无关逻辑，有测试）、`src/IsleBar.Cli`（push/timer/hook）、`src/IsleBar.App`（WinUI 3，C# 界面）、`native/IsleBarTap`（可选 C++，注入 explorer.exe 把系统搜索框变透明，默认关闭）、`tests/IsleBar.Core.Tests`、`installer/`、`msix/`、`docs/`（多语言网页和视频，勿读）。
-- 原作者的构建检查清单：`docs/PHASE0_CHECKLIST.md`。
+- 原仓库没有 CLAUDE.md/AGENTS.md（`.gitignore` 排除了 `.claude/`，作者可能本地有但未公开）；csproj 注释提到的 `docs/PHASE0_CHECKLIST.md` 也不在仓库里。可参考 `CHANGELOG.md` 了解作者踩过的坑。
 - **几乎所有需求只改 C#，不碰 C++**；`dist/IsleBarTap.dll` 是预编译的，不要改它。
 
 ## 环境状态（2026-10-04 已验证）
