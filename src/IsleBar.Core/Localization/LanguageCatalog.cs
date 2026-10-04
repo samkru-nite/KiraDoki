@@ -43,7 +43,7 @@ public static class LanguageCatalog
     {
         ["en"] = new LanguageStrings
         {
-            Finishing = "Finishing", Options = "Launch options", Settings = "Settings",
+            Finishing = "Finishing", Paused = "Paused", Options = "Launch options", Settings = "Settings",
             Quit = "Close search bar", LaunchFail = "Launch failed: {}",
             NoSdk = "Everything SDK (Everything64.dll) not found", EsOff = "Everything is not running",
             EsFail = "File search failed", NoResult = "No results", Done = "Done", Fail = "Failed",
@@ -149,7 +149,7 @@ public static class LanguageCatalog
         },
         ["ko"] = new LanguageStrings
         {
-            Finishing = "마무리 중", Options = "실행 옵션", Settings = "설정",
+            Finishing = "마무리 중", Paused = "일시정지됨", Options = "실행 옵션", Settings = "설정",
             Quit = "검색창 끄기", LaunchFail = "실행 실패: {}",
             NoSdk = "Everything SDK(Everything64.dll)가 없어요", EsOff = "Everything이 꺼져 있어요",
             EsFail = "파일 검색 실패", NoResult = "결과 없음", Done = "완료", Fail = "실패",
@@ -256,7 +256,7 @@ public static class LanguageCatalog
         },
         ["ja"] = new LanguageStrings
         {
-            Finishing = "仕上げ中", Options = "起動オプション", Settings = "設定",
+            Finishing = "仕上げ中", Paused = "一時停止中", Options = "起動オプション", Settings = "設定",
             Quit = "検索バーを閉じる", LaunchFail = "起動に失敗しました: {}",
             NoSdk = "Everything SDK (Everything64.dll) が見つかりません", EsOff = "Everything が起動していません",
             EsFail = "ファイル検索に失敗しました", NoResult = "結果なし", Done = "完了", Fail = "失敗",
@@ -363,7 +363,7 @@ public static class LanguageCatalog
         },
         ["zh"] = new LanguageStrings
         {
-            Finishing = "收尾中", Options = "启动选项", Settings = "设置",
+            Finishing = "收尾中", Paused = "已暂停", Options = "启动选项", Settings = "设置",
             Quit = "关闭搜索栏", LaunchFail = "启动失败: {}",
             NoSdk = "未找到 Everything SDK (Everything64.dll)", EsOff = "Everything 未运行",
             EsFail = "文件搜索失败", NoResult = "无结果", Done = "完成", Fail = "失败",
@@ -470,7 +470,7 @@ public static class LanguageCatalog
         },
         ["zht"] = new LanguageStrings
         {
-            Finishing = "收尾中", Options = "啟動選項", Settings = "設定",
+            Finishing = "收尾中", Paused = "已暫停", Options = "啟動選項", Settings = "設定",
             Quit = "關閉搜尋列", LaunchFail = "啟動失敗：{}",
             NoSdk = "找不到 Everything SDK (Everything64.dll)", EsOff = "Everything 未執行",
             EsFail = "檔案搜尋失敗", NoResult = "沒有結果", Done = "完成", Fail = "失敗",
@@ -577,7 +577,7 @@ public static class LanguageCatalog
         },
         ["fr"] = new LanguageStrings
         {
-            Finishing = "Finalisation", Options = "Options de lancement", Settings = "Paramètres",
+            Finishing = "Finalisation", Paused = "En pause", Options = "Options de lancement", Settings = "Paramètres",
             Quit = "Fermer la barre", LaunchFail = "Échec du lancement : {}",
             NoSdk = "Everything SDK (Everything64.dll) introuvable", EsOff = "Everything n'est pas lancé",
             EsFail = "Échec de la recherche", NoResult = "Aucun résultat", Done = "Terminé", Fail = "Échec",
@@ -684,7 +684,7 @@ public static class LanguageCatalog
         },
         ["de"] = new LanguageStrings
         {
-            Finishing = "Abschluss", Options = "Startoptionen", Settings = "Einstellungen",
+            Finishing = "Abschluss", Paused = "Pausiert", Options = "Startoptionen", Settings = "Einstellungen",
             Quit = "Suchleiste schließen", LaunchFail = "Start fehlgeschlagen: {}",
             NoSdk = "Everything SDK (Everything64.dll) nicht gefunden", EsOff = "Everything läuft nicht",
             EsFail = "Dateisuche fehlgeschlagen", NoResult = "Keine Ergebnisse", Done = "Fertig", Fail = "Fehler",
@@ -791,7 +791,7 @@ public static class LanguageCatalog
         },
         ["it"] = new LanguageStrings
         {
-            Finishing = "Completamento", Options = "Opzioni di avvio", Settings = "Impostazioni",
+            Finishing = "Completamento", Paused = "In pausa", Options = "Opzioni di avvio", Settings = "Impostazioni",
             Quit = "Chiudi la barra", LaunchFail = "Avvio non riuscito: {}",
             NoSdk = "Everything SDK (Everything64.dll) non trovato", EsOff = "Everything non è in esecuzione",
             EsFail = "Ricerca file non riuscita", NoResult = "Nessun risultato", Done = "Fatto", Fail = "Errore",
@@ -898,7 +898,7 @@ public static class LanguageCatalog
         },
         ["pt"] = new LanguageStrings
         {
-            Finishing = "Finalizando", Options = "Opções de início", Settings = "Configurações",
+            Finishing = "Finalizando", Paused = "Pausado", Options = "Opções de início", Settings = "Configurações",
             Quit = "Fechar a barra", LaunchFail = "Falha ao iniciar: {}",
             NoSdk = "Everything SDK (Everything64.dll) não encontrado", EsOff = "O Everything não está em execução",
             EsFail = "Falha na busca", NoResult = "Nenhum resultado", Done = "Concluído", Fail = "Falhou",
@@ -1005,7 +1005,7 @@ public static class LanguageCatalog
         },
         ["es"] = new LanguageStrings
         {
-            Finishing = "Finalizando", Options = "Opciones de inicio", Settings = "Configuración",
+            Finishing = "Finalizando", Paused = "En pausa", Options = "Opciones de inicio", Settings = "Configuración",
             Quit = "Cerrar la barra", LaunchFail = "Error al iniciar: {}",
             NoSdk = "No se encontró Everything SDK (Everything64.dll)", EsOff = "Everything no se está ejecutando",
             EsFail = "Error en la búsqueda", NoResult = "Sin resultados", Done = "Listo", Fail = "Error",

@@ -1215,7 +1215,8 @@ public sealed partial class MainWindow : Window
     /// The animation runs on the compositor (Composition) — a Storyboard appeared to stop after one lap (user feedback 09-30).
     /// Everything else is truncated with "…". If the text is unchanged it doesn't restart (this is called every 250ms).
     /// </summary>
-    private void ShowIslandText(ActivityState state, string prefix, string name)
+    /// <param name="suffix">Kept whole after the name, which is shortened to make room (e.g. "  +2" more downloads).</param>
+    private void ShowIslandText(ActivityState state, string prefix, string name, string suffix = "")
     {
         ShowClockDigits(null);   // the timer digit slot is only for timers
         var width = AvailableTextWidth();
@@ -1247,8 +1248,8 @@ public sealed partial class MainWindow : Window
         else
         {
             StopMarquee();
-            var (head, rest) = TextFit.FitParts(prefix, name, width, measure);
-            SetStyledText(IslandText, head, rest);
+            var (head, rest) = TextFit.FitParts(prefix, name, width - (suffix.Length > 0 ? measure.Measure(suffix) : 0), measure);
+            SetStyledText(IslandText, head, rest + suffix);
         }
 
         IslandTextCopy.Foreground = IslandText.Foreground;
@@ -2078,7 +2079,7 @@ public sealed partial class MainWindow : Window
         }
         else
         {
-            ShowIslandText(state, PrefixFor(state, now), name ?? string.Empty);
+            ShowIslandText(state, PrefixFor(state, now), name ?? string.Empty, state.MoreCount > 0 ? $"  +{state.MoreCount}" : string.Empty);
         }
         IslandText.Foreground = BrushOf(ForegroundFor(state, now));
 
@@ -2157,7 +2158,7 @@ public sealed partial class MainWindow : Window
         });
         var track = ProgressTrackWidth();
         if (state.Kind == ActivityKind.Transfer && state.RunState == ActivityRunState.Running
-            && (state.IsIndeterminate || state.Stage == "download"))
+            && (state.IsIndeterminate || (state.Stage == "download" && state.Fraction is null)))
         {
             // if the fraction is unknown (preparing/finishing), a quarter-length segment flows left to right (same as the Python version)
             ProgressLine.Width = 0;
@@ -2240,7 +2241,10 @@ public sealed partial class MainWindow : Window
         {
             ActivityRunState.Done => $"{_text.Done}  ",
             ActivityRunState.Error => $"{_text.Fail}  ",
-            _ when state.Stage == "download" && state.Done is { } got => $"{FormatBytes(got)}  ",   // browser download: amount received
+            _ when state.IsPausedTransfer => $"{_text.Paused}  ",
+            // browser download: speed (summed over all of them); the bar shows how far, when the total is known. The amount
+            // received said little without a total, so the first second just shows the name
+            _ when state.Stage == "download" => state.Speed is { } speed ? $"{FormatBytes((long)speed)}/s  " : "",
             _ when state.IsIndeterminate => $"{(state.IsFinishing ? _text.Finishing : _text.Prep)}  ",
             _ => $"{state.Fraction * 100:0}%{TransferEta(state, now)}  ",
         },
@@ -2316,6 +2320,7 @@ public sealed partial class MainWindow : Window
         {
             ActivityRunState.Done => "\uE73E",                          // ✓
             ActivityRunState.Error => "\uEA39",
+            _ when state.IsPausedTransfer => "\uE769",                  // pause (download stopped growing)
             _ => state.Direction == TransferDirection.Incoming ? "\uE896" : "\uE898",   // receive ↓ / send ↑
         },
         ActivityKind.AgentDone => "\uE73E",
@@ -2326,7 +2331,7 @@ public sealed partial class MainWindow : Window
     };
 
     private Windows.UI.Color ForegroundFor(ActivityState state, DateTimeOffset now)
-        => state.IsPaused || (state.Kind == ActivityKind.Music && state.Stage == "paused") ? _theme.Hint
+        => state.IsPaused || state.IsPausedTransfer || (state.Kind == ActivityKind.Music && state.Stage == "paused") ? _theme.Hint
             : state.Kind == ActivityKind.Timer && TimerRemaining(state, now) <= TimeSpan.Zero ? _theme.Ok
             : state.Kind == ActivityKind.AgentDone ? _theme.Ok
             : state.Kind == ActivityKind.Notice ? _theme.Foreground

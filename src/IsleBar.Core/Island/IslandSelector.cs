@@ -46,7 +46,7 @@ public static class IslandSelector
 
     private static bool IsMoreUrgent(ActivityState candidate, ActivityState current)
     {
-        var byKind = candidate.Kind.CompareTo(current.Kind);
+        var byKind = Rank(candidate).CompareTo(Rank(current));
         if (byKind != 0)
         {
             return byKind < 0;                                  // smaller value = more urgent
@@ -54,4 +54,11 @@ public static class IslandSelector
 
         return candidate.UpdatedAt > current.UpdatedAt;          // on a tie, the most recent
     }
+
+    /// <summary>
+    /// <see cref="ActivityKind"/> order, except a paused download, which waits behind music and timers: it stays on until its file
+    /// goes away, and shouldn't cover what is actually going on.
+    /// </summary>
+    private static int Rank(ActivityState state)
+        => state.IsPausedTransfer ? ((int)ActivityKind.Music * 2) + 1 : (int)state.Kind * 2;
 }

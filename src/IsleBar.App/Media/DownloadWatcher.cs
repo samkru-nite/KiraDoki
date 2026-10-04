@@ -5,19 +5,19 @@ namespace IsleBar.App.Media;
 /// <summary>
 /// Puts browser downloads on the island (decision card #3: "download progress — extend to browser downloads").
 /// While downloading, browsers append <c>.crdownload</c> (Chrome, Edge, Whale, etc.) or <c>.part</c> (Firefox) to the file,
-/// so we check the downloads folder every second: downloading → bytes received + flowing bar (total size can't be known from the file);
+/// so we check the downloads folder every second: downloading → speed + flowing bar (total size can't be known from the file),
+/// several at once → one item (<see cref="DownloadTracker"/>), stopped growing → paused;
 /// when the partial file disappears and the original-name file appears → done (clicking shows that file in Explorer).
-/// Nothing is written to disk; memory only. If the size stays the same for over 2 minutes (paused), it's dropped.
+/// Nothing is written to disk; memory only.
 /// </summary>
 internal sealed class DownloadWatcher : IDisposable
 {
     private static readonly string[] PartialExtensions = [".crdownload", ".part", ".opdownload", ".download"];
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(1);
-    private static readonly TimeSpan Stalled = TimeSpan.FromMinutes(2);
 
     private readonly string _folder;
     private readonly CancellationTokenSource _stop = new();
-    private readonly Dictionary<string, DateTimeOffset> _firstSeen = [];
+    private readonly DownloadTracker _tracker = new();
     private readonly List<ActivityState> _finished = [];
     private HashSet<string> _lastPartials = [];
 
@@ -78,7 +78,7 @@ internal sealed class DownloadWatcher : IDisposable
     private List<ActivityState> Scan(DateTimeOffset now)
     {
         var result = new List<ActivityState>();
-        var partials = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var files = new List<PartialDownload>();
         if (Directory.Exists(_folder))
         {
             foreach (var file in Directory.EnumerateFiles(_folder))
@@ -89,36 +89,22 @@ internal sealed class DownloadWatcher : IDisposable
                 }
 
                 var info = new FileInfo(file);
-                if (now - new DateTimeOffset(info.LastWriteTimeUtc, TimeSpan.Zero) > Stalled)
-                {
-                    continue;   // paused or abandoned partial file
-                }
-
-                partials.Add(file);
-                if (!_firstSeen.ContainsKey(file))
-                {
-                    _firstSeen[file] = now;
-                }
-
-                result.Add(new ActivityState
-                {
-                    RawKind = ActivityState.KindTransfer,
-                    Title = "Download → PC",            // ending with "PC" means receiving (↓)
-                    Name = FinalName(file),
-                    Stage = "download",
-                    Done = info.Length,                 // bytes received (total size unknown)
-                    State = "run",
-                    SourcePath = "download:" + file,
-                    UpdatedAt = _firstSeen[file],
-                });
+                files.Add(new PartialDownload(file, FinalName(file), info.Length, new DateTimeOffset(info.LastWriteTimeUtc, TimeSpan.Zero)));
             }
         }
+
+        // all downloads under way become one item: summed speed · earliest name · "+N"
+        if (_tracker.Update(now, files) is { } summary)
+        {
+            result.Add(summary);
+        }
+
+        var partials = new HashSet<string>(_tracker.Tracked, StringComparer.OrdinalIgnoreCase);
 
         // The partial file from last time is gone and the original-name file exists → done (shown briefly)
         foreach (var gone in _lastPartials.Where(p => !partials.Contains(p)))
         {
             var final = Path.Combine(_folder, FinalName(gone));
-            _firstSeen.Remove(gone);
             // really finished: the partial file is gone (not just stalled) and the file has content — Firefox keeps an empty
             // placeholder under the final name while it downloads, and a paused download read as "done" (review 10-03)
             if (!File.Exists(gone) && File.Exists(final) && new FileInfo(final).Length > 0)

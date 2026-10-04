@@ -91,6 +91,18 @@ public sealed class ActivityState
     [JsonPropertyName("left")]
     public double? Left { get; set; }
 
+    /// <summary>Transfer speed in bytes a second, when measured (browser downloads). Not serialized to JSON.</summary>
+    [JsonIgnore]
+    public double? Speed { get; set; }
+
+    /// <summary>How many more items this one stands for ("+2" — other browser downloads). Not serialized to JSON.</summary>
+    [JsonIgnore]
+    public int MoreCount { get; set; }
+
+    /// <summary>Whether this is a paused transfer (a browser download whose file stopped growing).</summary>
+    [JsonIgnore]
+    public bool IsPausedTransfer => Kind == ActivityKind.Transfer && Stage == "paused";
+
     /// <summary>Whether this is a paused timer.</summary>
     [JsonIgnore]
     public bool IsPaused => Left is not null;

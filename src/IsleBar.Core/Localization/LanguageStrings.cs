@@ -10,6 +10,7 @@ namespace IsleBar.Core.Localization;
 public sealed class LanguageStrings
 {
     public required string Finishing { get; init; }
+    public required string Paused { get; init; }
     public required string Options { get; init; }
     public required string Settings { get; init; }
     public required string Quit { get; init; }

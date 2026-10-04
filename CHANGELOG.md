@@ -30,6 +30,13 @@
   player's window counts as starting it; a player in the background moving on by itself (next track, next episode) doesn't take
   the isle — its new item peeks in for four seconds instead.
 
+### Downloads
+- Browser downloads show their speed instead of the amount received ("2.4 MB/s  report.pdf"). Several at once are one item:
+  the summed speed, the earliest one still moving, and how many more ("+2").
+- A download whose file stops growing for 5 seconds shows as paused (⏸, dimmed, no bar) and stays until it finishes or is
+  removed — it used to vanish after two minutes. It waits behind music and timers. (A paused download and a stalled
+  connection look the same from the file.)
+
 ### Fixes
 - The flowing bar under a download of unknown size moved in jumps — it was redrawn four times a second. It now runs on the
   compositor at the screen's frame rate (same speed and length).
