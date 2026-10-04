@@ -38,7 +38,7 @@
 ## 4. 其他
 - [-] 4.1 边框高亮太丑（**10-04 用户：删除**）
   → XAML `GlowRing/GlassEdge/PillSurface`；MW `UpdateGlow()`、`ApplyStyle()`、`PaintEdge()`；动画 `IslandUi/IslandAnimator.cs` `UpdateGlow()`。先让用户说清/画出想要的样子 ｜ 中 ｜ Sonnet
-- [ ] 4.2a 下载只适配浏览器；有无统一下载管线？（10-04 用户想法：直接监视下载文件夹的新增文件；担心与 Edge、复制粘贴文件冲突——讨论中）
+- [~] 4.2a 下载只适配浏览器；有无统一下载管线？（10-04 已做，待用户实测：见下方「实现」）（10-04 用户想法：直接监视下载文件夹的新增文件；担心与 Edge、复制粘贴文件冲突——讨论中）
   **10-04 诊断结果**（脚本每秒记：各进程写盘量 GetProcessIoCounters、带 % 的窗口标题、Everything 全盘最近变化的文件 + 实际大小）：
   - 百度网盘：也下到「下载」文件夹，临时文件 `名字.baiduyun.p.downloading`，**一出现就是完整大小（预先占好空间）**，看文件大小看不出进度，下完改名；写盘的进程是 `baidunetdiskhost.exe`（约 31 MB/s）。→ 文件名 + 总大小（=临时文件大小）能拿到；速度只能看该进程写盘量。
   - Edge：先 `xxx.tmp`，再 `未确认 307769.crdownload`，文件逐秒变大（约 0.3 MB/s）。整个过程都叫"未确认 …"，没变成真名（胶囊会显示"未确认 307769"）。
@@ -47,6 +47,7 @@
   - Windows 自带解压：同样有 `OperationStatusWindow`「已完成 N%」；解出的文件逐个出现、逐个变大。
   - **Everything 报的大小对"正在写的文件"是滞后的**（一直停在旧值），要自己读文件实际大小。
   - 复制粘贴到下载文件夹不会被误认成下载（没有临时后缀，且一出现就是完整大小）。
+  **实现（10-04）**：设置项「下载文件夹」`IsleBarSettings.DownloadFolders`（空=系统下载文件夹）；`DownloadWatcher` 认 `.baiduyun.p.downloading`，百度进度=`baidunetdiskhost.exe` 写盘量（`Interop/ProcessWriteMeter.cs`）均分给各百度下载，总大小=预占文件大小；"未确认 N.crdownload" 显示「下载中」，完成时找同文件夹新出现的文件当真名。复制/解压/压缩在 `Media/FileOperationWatcher.cs`（同一线程）：FindWindow `OperationStatusWindow` 读标题百分比 + explorer 写盘量算速度；无窗口且 explorer 每秒写 ≥1MB 时问 Everything 最近 5 秒变过的压缩包（`EverythingSdk.RecentlyChanged`，SDK 调用加了全局锁 `Gate`）。窗口关闭即显示"完成"（取消也会显示完成，窗口不区分）。空闲 CPU 实测与改动前无差别（两次都在 11–17%，主要是胶囊"Claude 工作中"呼吸动画，未细查）。
   → 结论：**Windows 没有统一下载管线**。现做法是扫"下载"文件夹临时文件。百度网盘用自己的格式和目录。可选方案：监视更多文件夹/后缀、读浏览器下载数据库拿总大小、按进程网速估算。需调研 ｜ 难 ｜ Opus
 - [ ] 4.2b 复制文件只有简短提示（**10-04 用户：可选，优先级低**——提示多停留一会儿；点击提示打开 Windows 剪贴板历史（Win+V），或自己画一个剪贴板面板）
   → `IsleBar.App/SystemWatch/ClipboardWatcher.cs` + `IsleBar.Core/SystemWatch/ClipboardRules.cs`。需用户说明想看到什么 ｜ 易-中 ｜ Sonnet
@@ -96,7 +97,7 @@
 - [ ] 6.4 删掉有任务时最右侧的删除按钮，改用双指滑动或滚轮切换（依赖 6.2）
 - [ ] 6.5 删掉 Tab 切换的逻辑（模式切换改由 6.2 承担）
 - [ ] 6.6 重写设置页面（`Options/SettingsWindow.cs`）
-- [ ] 6.7 压缩、解压缩、文件传输进度（可能与 4.2a 共用"监视正在变大的文件"）
+- [~] 6.7 压缩、解压缩、文件传输进度（10-04 随 4.2a 做了，待实测）（可能与 4.2a 共用"监视正在变大的文件"）
 - [ ] 6.8 通知统一做成「通知卡片」，分几种逻辑（10-04 用户原话整理，用户说只是参考、不一定全面）
   - 现状问题：Claude/Codex 完工后，胶囊没在显示别的通知时 = 周围绿框 + 中间"AI 完工"文字；但胶囊正在显示别的通知时，变成周围绿框 + 中间显示那条别的通知——绿框和文字对不上，用户觉得不好。
   - 用户设想的分类：
