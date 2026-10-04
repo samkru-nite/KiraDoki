@@ -1,12 +1,15 @@
 # IsleBar 二次开发 — 项目上下文（交接文件）
 
-> 新会话先读本文件和 TODO.md。**源码尚未通读**：第一个任务是读 `src/` 后补全下方「项目地图」。
+> 新会话先读本文件和 TODO.md（进度看 TODO 每条的 [x]/[~] 和注记）。源码已通读，地图见下方。
 
 ## 用户与协作方式
 - 用户是 vibe coding 新手，只会一点 Python，不会 C#/C++。用户只描述想要的效果和看运行结果，代码由 Claude 写。请用中文、通俗讲解，必要时用 Python 类比。
 - 用户想控制节奏：**没让读/做的不要先做**；一次只做一小块，改完先构建、让用户看效果再继续。
 - 额度有限（Pro）：不要全仓库乱读（跳过 `docs/`、媒体文件）；构建/测试输出只看报错部分；一个任务一个会话；不要开子代理做大范围探索。
-- 模型策略：默认 Sonnet 5.5；同一问题 Sonnet 两次修不好，或做大架构改动（如 TODO 5.1）、对接系统接口时，建议用户切 Opus 5.5（用户在应用界面切换）。
+- 模型策略：默认 Sonnet 5.5；同一问题 Sonnet 两次修不好，或做大架构改动（如 TODO 5.1）、对接系统接口时，建议用户切 Opus 5.5（用户在应用界面切换）。用户额度充裕时会主动要求用 Opus。
+- **用户常说"先讨论，先别改代码"**：这时只分析、给方案和推荐、等用户拍板。用户学设计，对排版很敏感：间距要按像素量（用户截图是 200% 缩放，px÷2=dip），不要凭感觉。
+- **对接系统行为（窗口、焦点、开始菜单等）先加诊断日志验证假设，再改**——10-04 开始菜单凭推测改了 5 轮才成，教训见 `Interop/StartMenu.cs` 注释。
+- 用户要给原作者提 PR：代码注释/默认值要通用（不写用户个人习惯），个人偏好放设置项；用户个人隐藏目录列表在 `.claude/my-file-excludes.txt`（git 忽略）。
 
 ## 项目概况
 - IsleBar 0.1.0（MIT，原作者 ds3owl，github.com/ds3owl/islebar）：Windows 11 任务栏小工具，把搜索框换成"状态胶囊"，显示 Claude Code/Codex 状态、音乐、下载、计时、系统通知，Tab 切换 AI/文件搜索(Everything)/网页搜索。
@@ -18,20 +21,29 @@
 - Windows 11 x64，Windows PowerShell 5.1（无 `&&`；写文件显式 UTF-8；路径含空格/括号/中文，务必加引号）。
 - 已装：.NET SDK 8.0.425、git 2.55、Windows SDK 10.0.26100。**未装 Visual Studio**（仅改 C++ 时才需要，目前不需要）。
 - 新终端若找不到 dotnet/git，先刷新 PATH：`$env:Path=[Environment]::GetEnvironmentVariable("Path","Machine")+";"+[Environment]::GetEnvironmentVariable("Path","User")`
-- Smart App Control 已关闭（注册表 VerifiedAndReputablePolicyState=0）。若要启动开发版，作者用 `run_dev.ps1`（经签名的 dotnet.exe 启动）。
+- Smart App Control 已关闭。**`run_dev.ps1` 在本机不可用**（要求 `%USERPROFILE%\.dotnet\dotnet.exe`，不存在）；直接运行构建出的 exe 即可（见下方命令）。
+- 构建前必须先关掉正在运行的开发版（它锁住 dll，否则 MSB3027）；只关本项目路径下的进程，不动用户装的正式版。
+- git 没有配置用户名：提交时用 `git -c user.name="Kasumi" -c user.email="188979868+samkru-nite@users.noreply.github.com" commit ...`。没有 remote（源码是 zip 下载的，不是 clone）。
+- 日志：`%LOCALAPPDATA%\IsleBar\logs\islebar.log`（文件搜索 >30ms 会记 "file search: ..."）。
+- 用 Python 脚本批量改文件时注意：中文路径/反斜杠在 Python 字符串里会出转义错误，失败时改用 Edit 工具；C# 字符串里的 `\` 要写成 `\`。
 - 项目根目录：`C:\Users\Kasumi\Desktop\islebar-0.1.0 (2)\islebar-0.1.0`（比压缩包外层多一层）。
 - 用户需求原文档：`C:\Users\Kasumi\Desktop\新建 Microsoft Word 文档.docx`（内容已整理进 TODO.md，另有 2 张截图未看，需要时从 `word/media/` 提取）。
 
-## 基线（未改任何代码时）
-- `dotnet build src/IsleBar.App` 成功，0 警告 0 错误。
-- `dotnet test tests/IsleBar.Core.Tests` 783 个全过。
-- git 已初始化，首个提交 `07041cf` = 原始源码；之后每块修改单独提交，方便回退。
+## 基线
+- 原始源码：构建 0 警告 0 错误，测试 783 个。**截至 10-04（`eb53570`）：构建 0 警告 0 错误，测试 836 个全过。**
+- git：`07041cf` = 原始源码；`10d87c9`/`86c50fc`/`985850d` 只改了 CLAUDE.md/TODO.md（**这些不要进 PR**）；之后每块功能一个提交。
+- 已完成（10-04）：4.6 消息卡片默认关闭+开关；4.5/3.4 文件搜索整套重做（见 TODO 4.5 注记）；开始菜单遮挡列表。
 
 ## 常用命令（在项目根目录）
 ```
+Get-Process IsleBar.App -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*islebar-0.1.0 (2)*' } | Stop-Process -Force
 dotnet build src/IsleBar.App -v q -nologo
 dotnet test tests/IsleBar.Core.Tests -v q -nologo
+Start-Process "src\IsleBar.Appin\Debug
+et8.0-windows10.0.26100.0\IsleBar.App.exe"
 ```
+- 加界面文案：`LanguageStrings.cs` 加属性 + `LanguageCatalog.cs` 10 种语言都要加 + `tests/.../LocalizationTests.cs` 里的文案总数 +N（当前 110）。
+- 加设置项：`IsleBarSettings`（属性 + `Clone()`）+ `SettingsCodec`（key、读、写）+ `Options/SettingsWindow.cs`。
 
 ## 项目地图（2026-10-04 读源码后补；行号是近似值，以 grep 为准）
 
@@ -59,7 +71,7 @@ dotnet test tests/IsleBar.Core.Tests -v q -nologo
 | 音乐 | `App/Media/MediaWatcher.cs`（Windows 媒体控制 SMTC；**故意排除浏览器** `Core/Island/MediaSources.cs`；进度来自 app 上报的 Timeline，app 不报就没进度条） |
 | Claude/Codex 启动 | `MainWindow.Launch()`；路径查找 `Core/Launch/ClaudeExecutable.cs`、`ClaudeProfile.cs`、`CodexProfile.cs`、`NpmShim.cs`、参数 `ClaudeArguments.cs` |
 | Claude/Codex 图标 | `App/Interop/ClaudeGlyph.cs`（从本机 claude.exe 图标里抠火花）、`Core/Ui/CodexMark.cs`（从 VS Code 的 Codex 扩展里找 SVG）；都找不到就退回字体图标（就是"聊天图标"） |
-| 文件搜索 | `App/Search/EverythingSdk.cs`、`FileSearchWorker.cs`、`ResultsWindow.cs`（结果行、"Everything 未运行"提示都在 `Show()`/`Row()`） |
+| 文件搜索 | `App/Search/EverythingSdk.cs`（分页取回+本地过滤隐藏目录）、`FileSearchWorker.cs`（空输入=最近文件）、`ResultsWindow.cs`（ListView、表头排序、右键菜单、间距常量）、`ShellIcons.cs`（后台取系统图标）、`RecentFiles.cs`（Windows 最近打开）；Core：`Search/FileSearchQuery.cs`、`FileExcludes.cs`（隐藏规则）、`FileListText.cs`（大小格式、中间省略）。焦点/关闭：`Interop/ForegroundEvents.cs` + MainWindow `CheckForeground()`；开始菜单 `Interop/StartMenu.cs`；常亮亚克力 `Interop/ActiveAcrylic.cs` |
 | 网页搜索 | `Core/Search/WebSearch.cs` |
 | 计时/番茄钟 | `Core/Island/TimerParser.cs`；界面 `ShowTimerText/ShowClockDigits/RollIn/DrawTimerArc` |
 | 系统通知 | `App/SystemWatch/ToastWatcher.cs`（读 Windows 通知数据库）→ `ExpandedNotice.cs` 展开卡片 |
