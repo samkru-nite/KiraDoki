@@ -58,6 +58,12 @@ public sealed class IsleBarSettings
     [System.Text.Json.Serialization.JsonIgnore]
     public IReadOnlyList<string> FileExcludeLines => FileExclude ?? [.. Search.FileExcludes.Defaults];
 
+    /// <summary>
+    /// Folders watched for downloads in progress (browsers' .crdownload/.part, Baidu Netdisk's .baiduyun.p.downloading), one per
+    /// line — for browsers set to save elsewhere or to ask each time. Empty = the system Downloads folder.
+    /// </summary>
+    public List<string> DownloadFolders { get; set; } = [];
+
     /// <summary>Tab order ("claude" · "files" · "web"). The first one is the default mode.</summary>
     public List<string> ModeOrder { get; set; } = [.. Localization.BarModes.DefaultOrder.Select(Localization.BarModes.Key)];
 
@@ -187,6 +193,7 @@ public sealed class IsleBarSettings
         FileResults = FileResults,
         FileSort = FileSort,
         FileExclude = FileExclude is null ? null : [.. FileExclude],
+        DownloadFolders = [.. DownloadFolders],
         ModeOrder = [.. ModeOrder],
         ModesOff = [.. ModesOff],
         PomodoroFocus = PomodoroFocus,

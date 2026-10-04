@@ -24,6 +24,7 @@ public static class SettingsCodec
     private const string KeyFileResults = "file_results";
     private const string KeyFileSort = "file_sort";
     private const string KeyFileExclude = "file_exclude";
+    private const string KeyDownloadFolders = "download_folders";
     private const string KeyModeOrder = "mode_order";
     private const string KeyModesOff = "modes_off";
     private const string KeyPomoFocus = "pomo_focus";
@@ -98,6 +99,11 @@ public static class SettingsCodec
         if (raw[KeyFileExclude] is JsonArray excludeArr)
         {
             s.FileExclude = [.. excludeArr.Select(AsString).OfType<string>()];
+        }
+
+        if (raw[KeyDownloadFolders] is JsonArray downloadArr)
+        {
+            s.DownloadFolders = [.. downloadArr.Select(AsString).OfType<string>().Where(line => line.Trim().Length > 0)];
         }
 
         if (AsBool(raw[KeyFiles]) is { } files)
@@ -267,6 +273,15 @@ public static class SettingsCodec
         else
         {
             raw[KeyFileExclude] = new JsonArray([.. s.FileExclude.Select(line => (JsonNode)line)]);
+        }
+
+        if (s.DownloadFolders.Count == 0)
+        {
+            raw.Remove(KeyDownloadFolders);
+        }
+        else
+        {
+            raw[KeyDownloadFolders] = new JsonArray([.. s.DownloadFolders.Select(line => (JsonNode)line)]);
         }
         raw[KeyModeOrder] = ToArray(s.ModeOrder);
         raw[KeyModesOff] = ToArray(s.ModesOff);

@@ -32,8 +32,9 @@ internal enum SearchProblem
 /// <summary>
 /// Everything SDK wrapper.
 ///
-/// <b>The SDK must be called from a single thread only.</b> So <see cref="FileSearchWorker"/>
-/// owns this class exclusively on a dedicated thread. Do not call it directly from the UI thread.
+/// <b>The SDK keeps one global query state, so calls must never overlap.</b> <see cref="FileSearchWorker"/> uses it on its own
+/// thread for searches; the download watcher asks it for archives being written. Both go through <see cref="Gate"/>.
+/// Do not call it from the UI thread (a query waits for Everything's reply).
 ///
 /// <b>This file has never been built. Needs phase-0 verification on PC.</b>
 /// </summary>
@@ -49,6 +50,9 @@ internal sealed class EverythingSdk : IDisposable
 
     private readonly IntPtr _library;
 
+    /// <summary>Serializes every query across instances and threads (the SDK's state is global to the process).</summary>
+    private static readonly object Gate = new();
+
     private EverythingSdk(IntPtr library) => _library = library;
 
     /// <summary>Loads the DLL. Null if missing (file mode only shows a hint).</summary>
@@ -63,6 +67,55 @@ internal sealed class EverythingSdk : IDisposable
     /// <param name="sort">Sort setting value (<see cref="IsleBar.Core.Search.FileSearchQuery.Sorts"/>).</param>
     /// <param name="hidden">Folders to leave out (<see cref="IsleBar.Core.Search.FileExcludes"/>); ignored when the query names a path.</param>
     public IReadOnlyList<FileHit> Search(string query, int max, string sort, IReadOnlyList<IsleBar.Core.Search.FileExcludes.Rule> hidden, out SearchProblem problem)
+    {
+        lock (Gate)
+        {
+            return SearchLocked(query, max, sort, hidden, out problem);
+        }
+    }
+
+    /// <summary>
+    /// Full paths of files matching <paramref name="query"/> modified within <paramref name="within"/>, newest first. Empty when
+    /// Everything isn't running. Everything's size for a file still being written lags behind — read the file itself for that.
+    /// </summary>
+    public IReadOnlyList<string> RecentlyChanged(string query, TimeSpan within, int max)
+    {
+        lock (Gate)
+        {
+            Everything_SetSearchW(query);
+            Everything_SetOffset(0);
+            Everything_SetMax((uint)max);
+            Everything_SetSort(SortDateModifiedDescending);
+            Everything_SetRequestFlags(RequestFileName | RequestPath | RequestDateModified);
+            if (!Everything_QueryW(wait: true))
+            {
+                return [];
+            }
+
+            var since = DateTime.UtcNow - within;
+            var paths = new List<string>();
+            var count = Everything_GetNumResults();
+            for (var i = 0u; i < count; i++)
+            {
+                if (!Everything_GetResultDateModified(i, out var fileTime) || fileTime <= 0 || fileTime == long.MaxValue
+                    || DateTime.FromFileTimeUtc(fileTime) < since)
+                {
+                    break;   // newest first: the rest are older
+                }
+
+                var name = Marshal.PtrToStringUni(Everything_GetResultFileNameW(i));
+                var dir = Marshal.PtrToStringUni(Everything_GetResultPathW(i));
+                if (name is not null && dir is not null)
+                {
+                    paths.Add(Path.Combine(dir, name));
+                }
+            }
+
+            return paths;
+        }
+    }
+
+    private IReadOnlyList<FileHit> SearchLocked(string query, int max, string sort, IReadOnlyList<IsleBar.Core.Search.FileExcludes.Rule> hidden, out SearchProblem problem)
     {
         problem = SearchProblem.None;
         if (string.IsNullOrWhiteSpace(query))
@@ -119,10 +172,13 @@ internal sealed class EverythingSdk : IDisposable
 
     public void Dispose()
     {
-        Everything_Reset();
-        if (_library != IntPtr.Zero)
+        lock (Gate)
         {
-            NativeLibrary.Free(_library);
+            Everything_Reset();
+            if (_library != IntPtr.Zero)
+            {
+                NativeLibrary.Free(_library);
+            }
         }
     }
 
@@ -130,6 +186,7 @@ internal sealed class EverythingSdk : IDisposable
     private const uint RequestPath = 0x0000_0002;
     private const uint RequestSize = 0x0000_0010;
     private const uint RequestDateModified = 0x0000_0040;
+    private const uint SortDateModifiedDescending = 14;
 
     [DllImport("Everything64.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

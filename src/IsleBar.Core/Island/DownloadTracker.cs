@@ -1,16 +1,17 @@
 namespace IsleBar.Core.Island;
 
-/// <summary>A browser's partial download file as seen in one scan of the downloads folder.</summary>
-/// <param name="Path">Full path of the partial file (".crdownload", ".part", …).</param>
-/// <param name="Name">The name it will have when finished.</param>
-/// <param name="Size">Bytes on disk now.</param>
+/// <summary>A partial download file as seen in one scan of the download folders.</summary>
+/// <param name="Path">Full path of the partial file (".crdownload", ".part", ".baiduyun.p.downloading", …).</param>
+/// <param name="Name">The name it will have when finished; null when the browser hasn't said yet (Chrome/Edge's "Unconfirmed 123").</param>
+/// <param name="Size">Bytes received so far — the file's size, or for a file reserved at full size up front, a count kept elsewhere.</param>
 /// <param name="LastWrite">When the file was last written.</param>
-public sealed record PartialDownload(string Path, string Name, long Size, DateTimeOffset LastWrite);
+/// <param name="Total">Full size when known (a file reserved at full size up front); null = unknown.</param>
+public sealed record PartialDownload(string Path, string? Name, long Size, DateTimeOffset LastWrite, long? Total = null);
 
 /// <summary>
 /// Turns the partial files of browser downloads into <b>one</b> island item: the summed speed, the name of the earliest download
 /// still moving, and how many others there are ("2.4 MB/s  report.pdf  +2"). Speed comes from how much each file grew in the last
-/// few seconds — browsers don't say how big the file will be, so nothing here depends on the total.
+/// few seconds. Browsers don't say how big the file will be; when every total is known the item also carries one fraction for all.
 /// A file that stops growing for <see cref="PauseAfter"/> reads as paused (a paused download and a stalled network look the same
 /// from the file). Paused downloads stay until their file goes away; only a file already untouched for
 /// <see cref="StaleOnArrival"/> when first seen is skipped, as left over from an earlier session.
@@ -48,6 +49,7 @@ public sealed class DownloadTracker
 
             present.Add(file.Path);
             entry.Name = file.Name;
+            entry.Total = file.Total is > 0 ? file.Total : null;
             entry.Observe(now, file.Size);
         }
 
@@ -65,13 +67,15 @@ public sealed class DownloadTracker
         var moving = all.Where(e => !e.Value.IsPaused(now)).ToList();
         var shown = moving.Count > 0 ? moving[0] : all[0];
         var speeds = moving.Select(e => e.Value.Speed(now)).Where(s => s is not null).ToList();
+        var known = all.All(e => e.Value.Total is not null);   // the bar shows all of them together, or flows
         return new ActivityState
         {
             RawKind = ActivityState.KindTransfer,
             Title = "Download → PC",   // ending with "PC" means receiving (↓)
             Name = shown.Value.Name,
             Stage = moving.Count > 0 ? "download" : "paused",
-            Done = shown.Value.Size,
+            Done = known ? all.Sum(e => Math.Min(e.Value.Size, e.Value.Total!.Value)) : shown.Value.Size,
+            Total = known ? all.Sum(e => e.Value.Total!.Value) : null,
             Speed = speeds.Count > 0 ? speeds.Sum() : null,
             MoreCount = all.Count - 1,
             State = "run",
@@ -80,12 +84,14 @@ public sealed class DownloadTracker
         };
     }
 
-    private sealed class Entry(string name, DateTimeOffset firstSeen, long size, DateTimeOffset lastGrowth)
+    private sealed class Entry(string? name, DateTimeOffset firstSeen, long size, DateTimeOffset lastGrowth)
     {
         private readonly List<(DateTimeOffset At, long Size)> _samples = [];
         private DateTimeOffset _lastGrowth = lastGrowth;
 
-        public string Name { get; set; } = name;
+        public string? Name { get; set; } = name;
+
+        public long? Total { get; set; }
 
         public DateTimeOffset FirstSeen { get; } = firstSeen;
 

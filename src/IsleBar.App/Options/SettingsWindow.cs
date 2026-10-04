@@ -277,6 +277,7 @@ internal sealed class SettingsWindow : Window
             });
 
         HiddenFoldersRow();
+        DownloadFoldersRow();
 
         Section(_text.WebEngine);
         var engines = new ComboBox { MinWidth = 220 };
@@ -473,6 +474,44 @@ internal sealed class SettingsWindow : Window
             box.Text = string.Join("\r", IsleBar.Core.Search.FileExcludes.Defaults);
             Commit();
         };
+    }
+
+    /// <summary>Folders watched for downloads, one per line; empty = the system Downloads folder (user 10-04).</summary>
+    private void DownloadFoldersRow()
+    {
+        _body.Children.Add(new TextBlock { Text = _text.DownloadFoldersLabel, Margin = new Thickness(0, 8, 0, 4) });
+        var box = new TextBox
+        {
+            Text = string.Join("\r", _settings.DownloadFolders),
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.NoWrap,
+            Height = 80,
+            IsSpellCheckEnabled = false,
+        };
+        ScrollViewer.SetVerticalScrollBarVisibility(box, ScrollBarVisibility.Auto);
+        ScrollViewer.SetHorizontalScrollBarVisibility(box, ScrollBarVisibility.Auto);
+        _body.Children.Add(box);
+        _body.Children.Add(new TextBlock
+        {
+            Text = _text.DownloadFoldersHint,
+            FontSize = 12,
+            Opacity = 0.7,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 4, 0, 0),
+        });
+
+        void Commit()
+        {
+            var lines = box.Text.Split('\r', '\n').Select(line => line.Trim().Trim('"')).Where(line => line.Length > 0).ToList();
+            if (!lines.SequenceEqual(_settings.DownloadFolders))
+            {
+                _settings.DownloadFolders = lines;
+                _changed();
+            }
+        }
+
+        box.LostFocus += (_, _) => Commit();
+        _commitOnClose.Add(Commit);
     }
 
     private void TextRow(string label, string hint, Func<string> get, Action<string> set)

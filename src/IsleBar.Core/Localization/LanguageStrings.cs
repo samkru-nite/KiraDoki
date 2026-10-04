@@ -72,6 +72,10 @@ public sealed class LanguageStrings
     /// <summary>Settings: the folders file search hides (one per line), its explanation, and the button that restores the built-in list (10-04).</summary>
     public required string FileExcludeLabel { get; init; }
     public required string FileExcludeHint { get; init; }
+    public required string DownloadFoldersLabel { get; init; }
+    public required string DownloadFoldersHint { get; init; }
+    public required string Downloading { get; init; }
+    public required string FileTransfer { get; init; }
     public required string ResetDefaults { get; init; }
 
     /// <summary>File search, one clickable line in place of the list (10-04): nothing found → search in Everything; Everything off → start it.</summary>

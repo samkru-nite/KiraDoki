@@ -36,6 +36,14 @@
 - A download whose file stops growing for 5 seconds shows as paused (⏸, dimmed, no bar) and stays until it finishes or is
   removed — it used to vanish after two minutes. It waits behind music and timers. (A paused download and a stalled
   connection look the same from the file.)
+- Download folders are a setting (one per line; empty = the system Downloads folder), for browsers set to save elsewhere.
+- Baidu Netdisk downloads show too (".baiduyun.p.downloading"). Baidu reserves the whole file up front, so its size says
+  nothing: the speed is what Baidu's helper process writes, and the bar is an estimate from that against the reserved size.
+- Chrome/Edge keep a download as "Unconfirmed 123.crdownload" until it ends: the bar says "Downloading" instead of the number,
+  and the "done" notice finds the renamed file.
+- Explorer's file operations show anywhere on disk: copy, move and unzip follow the percentage in Explorer's progress window,
+  with the speed Explorer writes at; compressing to an archive (no progress window) shows the archive's name, speed and a
+  flowing bar, found through Everything. Copied files are created at full size up front, so their size says nothing.
 
 ### Fixes
 - The flowing bar under a download of unknown size moved in jumps — it was redrawn four times a second. It now runs on the

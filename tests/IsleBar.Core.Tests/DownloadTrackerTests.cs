@@ -86,6 +86,42 @@ public sealed class DownloadTrackerTests
     }
 
     [Fact]
+    public void Known_totals_give_one_fraction_for_all_and_one_unknown_keeps_the_bar_flowing()
+    {
+        var tracker = new DownloadTracker();
+        var baidu = File("a.mp4", 250, T0) with { Total = 1000 };   // reserved at full size; received counted elsewhere
+        var other = File("b.mp4", 250, T0) with { Total = 1000 };
+        var item = tracker.Update(T0, [baidu, other])!;
+        Assert.Equal(0.25, item.Fraction!.Value, 3);
+        Assert.Equal("download", item.Stage);   // the text still shows the speed
+
+        var edge = File("c.zip", 10, T0);
+        Assert.Null(tracker.Update(T0.AddSeconds(1), [baidu, other, edge])!.Fraction);
+    }
+
+    [Fact]
+    public void A_download_without_a_name_yet_keeps_none()
+    {
+        var item = new DownloadTracker().Update(T0, [new PartialDownload(@"C:\Downloads\Unconfirmed 1.crdownload", null, 5, T0)])!;
+        Assert.Null(item.Name);   // the pill says "Downloading" instead of "Unconfirmed 1"
+    }
+
+    [Fact]
+    public void Download_folders_are_saved_and_empty_means_the_system_folder()
+    {
+        Assert.Empty(new IsleBar.Core.Configuration.IsleBarSettings().DownloadFolders);
+        var raw = new System.Text.Json.Nodes.JsonObject();
+        IsleBar.Core.Configuration.SettingsCodec.Apply(new IsleBar.Core.Configuration.IsleBarSettings(), raw);
+        Assert.False(raw.ContainsKey("download_folders"));
+
+        var settings = new IsleBar.Core.Configuration.IsleBarSettings { DownloadFolders = [@"D:\Downloads", @"E:\BaiduNetdiskDownload"] };
+        IsleBar.Core.Configuration.SettingsCodec.Apply(settings, raw);
+        var back = IsleBar.Core.Configuration.SettingsCodec.FromJson(raw);
+        Assert.Equal([@"D:\Downloads", @"E:\BaiduNetdiskDownload"], back.DownloadFolders);
+        Assert.Equal([@"D:\Downloads", @"E:\BaiduNetdiskDownload"], back.Clone().DownloadFolders);
+    }
+
+    [Fact]
     public void A_paused_download_waits_behind_music_but_a_moving_one_does_not()
     {
         var music = new ActivityState { RawKind = ActivityState.KindMusic, UpdatedAt = T0 };

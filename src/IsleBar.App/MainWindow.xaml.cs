@@ -63,7 +63,7 @@ public sealed partial class MainWindow : Window
     private BarPlacement _placement = new(PlacementMode.Hide, int.MinValue, int.MinValue);
 
     private readonly MediaWatcher _media;
-    private readonly DownloadWatcher _downloads = new();
+    private readonly DownloadWatcher _downloads;
     private readonly PhoneDrop _phoneDrop = new();
 
     /// <summary>Brief notices (charging, Bluetooth, internet, focus, copy, overload, calendar, mic/camera; features added 09-30).</summary>
@@ -111,6 +111,7 @@ public sealed partial class MainWindow : Window
 
         _tracker = new SearchBoxTracker(_width, _height);
         _media = new MediaWatcher(() => _settings.BrowserMedia);
+        _downloads = new DownloadWatcher(() => _settings.DownloadFolders);
         _animator = new IslandAnimator([LeadSlot, IslandContent], IslandContent, GlowRing, PillBody);
         _fileSearch = new FileSearchWorker(OnSearchResult);
         _watchdog = new Watchdog(_taskbar, () => ThemeColors.FromSystem().Light, RequestExit,
@@ -2079,6 +2080,8 @@ public sealed partial class MainWindow : Window
         }
         else
         {
+            // a download whose name the browser hasn't given yet ("Unconfirmed 123"), or Explorer's progress window (it names no file)
+            name ??= state.Kind != ActivityKind.Transfer ? null : state.Stage == "copy" ? _text.FileTransfer : _text.Downloading;
             ShowIslandText(state, PrefixFor(state, now), name ?? string.Empty, state.MoreCount > 0 ? $"  +{state.MoreCount}" : string.Empty);
         }
         IslandText.Foreground = BrushOf(ForegroundFor(state, now));
@@ -2158,7 +2161,7 @@ public sealed partial class MainWindow : Window
         });
         var track = ProgressTrackWidth();
         if (state.Kind == ActivityKind.Transfer && state.RunState == ActivityRunState.Running
-            && (state.IsIndeterminate || (state.Stage == "download" && state.Fraction is null)))
+            && (state.IsIndeterminate || (state.Stage is "download" or "copy" && state.Fraction is null)))
         {
             // if the fraction is unknown (preparing/finishing), a quarter-length segment flows left to right (same as the Python version)
             ProgressLine.Width = 0;
@@ -2244,7 +2247,7 @@ public sealed partial class MainWindow : Window
             _ when state.IsPausedTransfer => $"{_text.Paused}  ",
             // browser download: speed (summed over all of them); the bar shows how far, when the total is known. The amount
             // received said little without a total, so the first second just shows the name
-            _ when state.Stage == "download" => state.Speed is { } speed ? $"{FormatBytes((long)speed)}/s  " : "",
+            _ when state.Stage is "download" or "copy" => state.Speed is { } speed ? $"{FormatBytes((long)speed)}/s  " : "",
             _ when state.IsIndeterminate => $"{(state.IsFinishing ? _text.Finishing : _text.Prep)}  ",
             _ => $"{state.Fraction * 100:0}%{TransferEta(state, now)}  ",
         },
@@ -2321,6 +2324,7 @@ public sealed partial class MainWindow : Window
             ActivityRunState.Done => "\uE73E",                          // ✓
             ActivityRunState.Error => "\uEA39",
             _ when state.IsPausedTransfer => "\uE769",                  // pause (download stopped growing)
+            _ when state.Stage == "copy" => "\uE8C8",                    // copy (Explorer copying, unzipping, compressing)
             _ => state.Direction == TransferDirection.Incoming ? "\uE896" : "\uE898",   // receive ↓ / send ↑
         },
         ActivityKind.AgentDone => "\uE73E",
