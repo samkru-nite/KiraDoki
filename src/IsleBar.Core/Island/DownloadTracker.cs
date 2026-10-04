@@ -5,8 +5,7 @@ namespace IsleBar.Core.Island;
 /// <param name="Name">The name it will have when finished.</param>
 /// <param name="Size">Bytes on disk now.</param>
 /// <param name="LastWrite">When the file was last written.</param>
-/// <param name="Total">Full size when the browser's download list says it; null or 0 = unknown.</param>
-public sealed record PartialDownload(string Path, string Name, long Size, DateTimeOffset LastWrite, long? Total = null);
+public sealed record PartialDownload(string Path, string Name, long Size, DateTimeOffset LastWrite);
 
 /// <summary>
 /// Turns the partial files of browser downloads into <b>one</b> island item: the summed speed, the name of the earliest download
@@ -49,7 +48,6 @@ public sealed class DownloadTracker
 
             present.Add(file.Path);
             entry.Name = file.Name;
-            entry.Total = file.Total is > 0 ? file.Total : null;
             entry.Observe(now, file.Size);
         }
 
@@ -67,16 +65,13 @@ public sealed class DownloadTracker
         var moving = all.Where(e => !e.Value.IsPaused(now)).ToList();
         var shown = moving.Count > 0 ? moving[0] : all[0];
         var speeds = moving.Select(e => e.Value.Speed(now)).Where(s => s is not null).ToList();
-        // the bar shows how far all of them are together — only when every total is known, otherwise it flows
-        var known = all.All(e => e.Value.Total is not null);
         return new ActivityState
         {
             RawKind = ActivityState.KindTransfer,
             Title = "Download → PC",   // ending with "PC" means receiving (↓)
             Name = shown.Value.Name,
             Stage = moving.Count > 0 ? "download" : "paused",
-            Done = known ? all.Sum(e => e.Value.Size) : shown.Value.Size,
-            Total = known ? all.Sum(e => e.Value.Total!.Value) : null,
+            Done = shown.Value.Size,
             Speed = speeds.Count > 0 ? speeds.Sum() : null,
             MoreCount = all.Count - 1,
             State = "run",
@@ -95,8 +90,6 @@ public sealed class DownloadTracker
         public DateTimeOffset FirstSeen { get; } = firstSeen;
 
         public long Size { get; private set; } = size;
-
-        public long? Total { get; set; }
 
         public void Observe(DateTimeOffset now, long size)
         {

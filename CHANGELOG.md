@@ -36,10 +36,6 @@
 - A download whose file stops growing for 5 seconds shows as paused (⏸, dimmed, no bar) and stays until it finishes or is
   removed — it used to vanish after two minutes. It waits behind music and timers. (A paused download and a stalled
   connection look the same from the file.)
-- Edge and Chrome downloads get a real progress bar: the full size is read from the browser's own download list (its
-  History database, opened without locks since the browser keeps it locked). The text keeps showing the speed; with
-  several downloads the bar shows them together. A paused download's bar stays where it stopped, dimmed. Firefox, other
-  programs and servers that don't send a size keep the flowing bar.
 
 ### Fixes
 - The flowing bar under a download of unknown size moved in jumps — it was redrawn four times a second. It now runs on the
