@@ -32,7 +32,7 @@ internal sealed partial class FileOperationWatcher : IDisposable
     // icons on the pill's left (Segoe Fluent Icons)
     internal const string CopyGlyph = "\uE8C8";
     internal const string UnzipGlyph = "\uE838";      // open folder
-    internal const string CompressGlyph = "\uE7B8";   // package (the zip-folder icon F012 looked crude at this size \u2014 user 10-04)
+    internal const string CompressGlyph = "\uE8A5";   // document; MainWindow lays zipper teeth over it (ZipTeeth) \u2014 the font has no zip file, and its zip folder F012 looked crude (user 10-04)
 
     private IUIAutomation? _automation;
     private IUIAutomationCondition? _all;

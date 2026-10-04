@@ -2055,7 +2055,10 @@ public sealed partial class MainWindow : Window
         MoreDot.Visibility = _snapshot.HasMore ? Visibility.Visible : Visibility.Collapsed;
 
         UpdateLeadIcon();
-        LeadIcon.Glyph = state.IsPaused ? "\uE769" : GlyphFor(state);   // paused timer = ⏸
+        LeadIcon.Glyph = state.IsPaused ? "\uE769" : GlyphFor(state);   // paused timer = pause icon
+        // compressing: the document outline gets zipper teeth (the drop hint uses the same outline without them)
+        ZipTeeth.Opacity = state.Stage == "copy" && state.RunState == ActivityRunState.Running
+                           && state.Glyph == Media.FileOperationWatcher.CompressGlyph ? 1 : 0;
         ShowAgentMark(state);
         ShowAlbumArt(state.Kind == ActivityKind.Music);
         SetEqualizer(state.Kind == ActivityKind.Music && state.Stage != "paused");
@@ -2954,6 +2957,7 @@ public sealed partial class MainWindow : Window
         if (!island)
         {
             LeadIcon.Glyph = ModeGlyph(_mode);
+            ZipTeeth.Opacity = 0;
         }
     }
 

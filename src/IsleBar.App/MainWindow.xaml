@@ -89,6 +89,23 @@
                 Glyph="&#xE721;"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center" />
+            <!-- Compressing: zipper teeth over the font's document outline (E8A5) — the font has no zip-file icon, and this keeps its
+                 stroke and corners, matching the copy/unzip icons (user 10-04). Same box as LeadIcon (em 18 centred in 23 → origin 2.5);
+                 teeth are the outline's stroke wide, left of the folded corner. Follows LeadIcon's colour and visibility; code sets Opacity 1 only for compress -->
+            <Canvas
+                x:Name="ZipTeeth"
+                Width="23"
+                Height="23"
+                Margin="-3,-3,-3,-3"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Opacity="0"
+                IsHitTestVisible="False"
+                Visibility="{Binding ElementName=LeadIcon, Path=Visibility}">
+                <Path
+                    Fill="{Binding ElementName=LeadIcon, Path=Foreground}"
+                    Data="M7.9,3.6 h1.2 v1.2 h-1.2 Z M9.1,4.8 h1.2 v1.2 h-1.2 Z M7.9,6 h1.2 v1.2 h-1.2 Z M9.1,7.2 h1.2 v1.2 h-1.2 Z M7.9,8.4 h1.2 v1.2 h-1.2 Z M9.1,9.6 h1.2 v1.2 h-1.2 Z M7.9,11.1 h2.4 v2.2 h-2.4 Z" />
+            </Canvas>
         </Grid>
 
         <!-- Input box. Placeholder text is always English regardless of language (Placeholders) -->
