@@ -155,7 +155,11 @@ public sealed partial class MainWindow : Window
             Entry.Focus(FocusState.Programmatic);
         }));
         _watchdog.Start();
-        _foreground = new ForegroundEvents(_ => _ui.TryEnqueue(CheckForeground));
+        _foreground = new ForegroundEvents(window =>
+        {
+            StartMenu.Notice(window);   // remember Start's window when it opens — it stays up after a click on the pill
+            _ui.TryEnqueue(CheckForeground);
+        });
         StartIslandPolling();
         _ = UpdateModelAliasesAsync();
     }
@@ -263,6 +267,11 @@ public sealed partial class MainWindow : Window
             if (!_typing && TryIslandAction())
             {
                 return;   // clicked the island and went to that task (not the start of typing)
+            }
+
+            if (!_typing)
+            {
+                StartMenu.CloseIfOpen();   // Start stays up over a click on the pill and would cover the results list (user 10-04)
             }
 
             _taskbar.TakeFocus();
