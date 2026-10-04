@@ -86,6 +86,20 @@ public sealed class DownloadTrackerTests
     }
 
     [Fact]
+    public void Known_totals_give_one_fraction_for_all_and_one_unknown_keeps_the_bar_flowing()
+    {
+        var tracker = new DownloadTracker();
+        var a = File("a.zip", 250, T0) with { Total = 1000 };
+        var b = File("b.zip", 250, T0) with { Total = 1000 };
+        var item = tracker.Update(T0, [a, b])!;
+        Assert.Equal(0.25, item.Fraction!.Value, 3);
+        Assert.Equal("download", item.Stage);   // still shows the speed, not a percentage
+
+        var unknown = tracker.Update(T0.AddSeconds(1), [a, b with { Total = 0 }])!;
+        Assert.Null(unknown.Fraction);
+    }
+
+    [Fact]
     public void A_paused_download_waits_behind_music_but_a_moving_one_does_not()
     {
         var music = new ActivityState { RawKind = ActivityState.KindMusic, UpdatedAt = T0 };

@@ -14,12 +14,16 @@ internal sealed class DownloadWatcher : IDisposable
 {
     private static readonly string[] PartialExtensions = [".crdownload", ".part", ".opdownload", ".download"];
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan LookupInterval = TimeSpan.FromSeconds(3);   // the browser writes a new download's row within seconds
 
     private readonly string _folder;
     private readonly CancellationTokenSource _stop = new();
     private readonly DownloadTracker _tracker = new();
     private readonly List<ActivityState> _finished = [];
     private HashSet<string> _lastPartials = [];
+    private readonly Dictionary<string, long> _totals = new(StringComparer.OrdinalIgnoreCase);   // partial file → full size (from the browser)
+    private readonly HashSet<string> _loggedMiss = new(StringComparer.OrdinalIgnoreCase);
+    private DateTimeOffset _nextLookup;
 
     public DownloadWatcher(string? folder = null)
     {
@@ -93,6 +97,9 @@ internal sealed class DownloadWatcher : IDisposable
             }
         }
 
+        LookUpTotals(now, files);
+        files = files.Select(f => _totals.TryGetValue(f.Path, out var total) ? f with { Total = total } : f).ToList();
+
         // all downloads under way become one item: summed speed · earliest name · "+N"
         if (_tracker.Update(now, files) is { } summary)
         {
@@ -100,6 +107,12 @@ internal sealed class DownloadWatcher : IDisposable
         }
 
         var partials = new HashSet<string>(_tracker.Tracked, StringComparer.OrdinalIgnoreCase);
+        foreach (var gone in _totals.Keys.Where(k => !partials.Contains(k)).ToList())
+        {
+            _totals.Remove(gone);
+        }
+
+        _loggedMiss.RemoveWhere(k => !partials.Contains(k));
 
         // The partial file from last time is gone and the original-name file exists → done (shown briefly)
         foreach (var gone in _lastPartials.Where(p => !partials.Contains(p)))
@@ -126,6 +139,39 @@ internal sealed class DownloadWatcher : IDisposable
         _finished.RemoveAll(f => now - f.UpdatedAt > ActivityStore.DoneLinger);
         result.AddRange(_finished);
         return result;
+    }
+
+    /// <summary>
+    /// Full sizes of the partial files, from Edge's/Chrome's download list (<see cref="BrowserDownloadHistory"/>) — asked every few
+    /// seconds while some file still has none. A row matches by its partial file, or by its final name in this folder.
+    /// Firefox and other programs aren't in that list: they keep the flowing bar.
+    /// </summary>
+    private void LookUpTotals(DateTimeOffset now, List<PartialDownload> files)
+    {
+        var missing = files.Where(f => !_totals.ContainsKey(f.Path) && now - f.LastWrite <= DownloadTracker.StaleOnArrival).ToList();
+        if (missing.Count == 0 || now < _nextLookup)
+        {
+            return;
+        }
+
+        _nextLookup = now + LookupInterval;
+        var rows = BrowserDownloadHistory.InProgress();
+        foreach (var file in missing)
+        {
+            var final = Path.Combine(_folder, file.Name);
+            var row = rows.FirstOrDefault(r => string.Equals(r.CurrentPath, file.Path, StringComparison.OrdinalIgnoreCase))
+                      ?? rows.FirstOrDefault(r => string.Equals(r.TargetPath, final, StringComparison.OrdinalIgnoreCase));
+            if (row is { Total: > 0 })
+            {
+                _totals[file.Path] = row.Total;
+                Interop.AppLog.Write($"download total: {file.Name} = {row.Total} bytes (browser download list)");
+            }
+            else if (_loggedMiss.Add(file.Path))
+            {
+                // once per file: no row yet (asked again later), or the server didn't say the size (total 0 → flowing bar)
+                Interop.AppLog.Write($"download total: {file.Name} not known yet ({(row is null ? $"no matching row among {rows.Count}" : "browser has total 0")})");
+            }
+        }
     }
 
     /// <summary>"report.pdf.crdownload" → "report.pdf". Chrome's "Unconfirmed 123.crdownload" stays as-is (name not known yet).</summary>

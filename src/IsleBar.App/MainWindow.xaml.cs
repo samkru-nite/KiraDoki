@@ -2152,6 +2152,7 @@ public sealed partial class MainWindow : Window
         {
             ActivityRunState.Done => _theme.Ok,
             ActivityRunState.Error => _theme.Bad,
+            _ when state.IsPausedTransfer => _theme.Hint,   // a paused download's bar stays where it stopped, dimmed like its text
             _ when state.Kind == ActivityKind.Music && _albumTint is { } tint => tint,   // music uses the album color (09-30 design G2)
             _ when state.Kind == ActivityKind.Timer && TimerRemaining(state, DateTimeOffset.UtcNow) <= TimeSpan.Zero => _theme.Ok,   // a finished timer is green, like the border
             _ => _theme.Accent,

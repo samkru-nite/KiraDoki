@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using IsleBar.App.Interop;
 using IsleBar.Core.Localization;
 using IsleBar.Core.SystemWatch;
 
@@ -150,9 +151,9 @@ internal sealed class ToastWatcher(Func<LanguageStrings> strings) : NoticeWatche
     private static List<Row>? Read(long after)
     {
         var rows = new List<Row>();
-        if (Sqlite.sqlite3_open_v2(DatabasePath, out var db, Sqlite.OpenReadOnly, IntPtr.Zero) != 0)
+        if (WinSqlite.sqlite3_open_v2(DatabasePath, out var db, WinSqlite.OpenReadOnly, IntPtr.Zero) != 0)
         {
-            Sqlite.sqlite3_close(db);
+            WinSqlite.sqlite3_close(db);
             return null;
         }
 
@@ -161,7 +162,7 @@ internal sealed class ToastWatcher(Func<LanguageStrings> strings) : NoticeWatche
             var sql = after == long.MaxValue
                 ? "select n.Id, h.PrimaryId, n.Payload from Notification n join NotificationHandler h on h.RecordId = n.HandlerId order by n.Id desc limit 1"
                 : "select n.Id, h.PrimaryId, n.Payload from Notification n join NotificationHandler h on h.RecordId = n.HandlerId where n.Type = 'toast' and n.Id > ?1 order by n.Id limit 20";
-            if (Sqlite.sqlite3_prepare16_v2(db, sql, -1, out var statement, IntPtr.Zero) != 0)
+            if (WinSqlite.sqlite3_prepare16_v2(db, sql, -1, out var statement, IntPtr.Zero) != 0)
             {
                 return null;
             }
@@ -170,13 +171,13 @@ internal sealed class ToastWatcher(Func<LanguageStrings> strings) : NoticeWatche
             {
                 if (after != long.MaxValue)
                 {
-                    Sqlite.sqlite3_bind_int64(statement, 1, after);
+                    WinSqlite.sqlite3_bind_int64(statement, 1, after);
                 }
 
                 int step;
-                while ((step = Sqlite.sqlite3_step(statement)) == Sqlite.Row)
+                while ((step = WinSqlite.sqlite3_step(statement)) == WinSqlite.Row)
                 {
-                    rows.Add(new Row(Sqlite.sqlite3_column_int64(statement, 0), Sqlite.Text(statement, 1), Sqlite.Blob(statement, 2)));
+                    rows.Add(new Row(WinSqlite.sqlite3_column_int64(statement, 0), WinSqlite.Text(statement, 1), WinSqlite.Blob(statement, 2)));
                 }
 
                 if (step != 101)   // SQLITE_DONE — anything else (busy, locked) stopped the read part-way
@@ -186,12 +187,12 @@ internal sealed class ToastWatcher(Func<LanguageStrings> strings) : NoticeWatche
             }
             finally
             {
-                Sqlite.sqlite3_finalize(statement);
+                WinSqlite.sqlite3_finalize(statement);
             }
         }
         finally
         {
-            Sqlite.sqlite3_close(db);
+            WinSqlite.sqlite3_close(db);
         }
 
         return rows;
@@ -290,61 +291,5 @@ internal sealed class ToastWatcher(Func<LanguageStrings> strings) : NoticeWatche
         void GetAttributes(uint mask, out uint attributes);
 
         void Compare(IShellItem other, uint hint, out int order);
-    }
-
-    /// <summary>The SQLite that ships with Windows (winsqlite3.dll) — nothing extra to install.</summary>
-    private static class Sqlite
-    {
-        public const int OpenReadOnly = 0x00000001;
-        public const int Row = 100;
-        private const string Dll = "winsqlite3.dll";
-
-        [DllImport(Dll, CallingConvention = CallingConvention.StdCall)]
-        public static extern int sqlite3_open_v2([MarshalAs(UnmanagedType.LPUTF8Str)] string path, out IntPtr db, int flags, IntPtr vfs);
-
-        [DllImport(Dll, CallingConvention = CallingConvention.StdCall)]
-        public static extern int sqlite3_close(IntPtr db);
-
-        [DllImport(Dll, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Unicode)]
-        public static extern int sqlite3_prepare16_v2(IntPtr db, string sql, int bytes, out IntPtr statement, IntPtr tail);
-
-        [DllImport(Dll, CallingConvention = CallingConvention.StdCall)]
-        public static extern int sqlite3_bind_int64(IntPtr statement, int index, long value);
-
-        [DllImport(Dll, CallingConvention = CallingConvention.StdCall)]
-        public static extern int sqlite3_step(IntPtr statement);
-
-        [DllImport(Dll, CallingConvention = CallingConvention.StdCall)]
-        public static extern int sqlite3_finalize(IntPtr statement);
-
-        [DllImport(Dll, CallingConvention = CallingConvention.StdCall)]
-        public static extern long sqlite3_column_int64(IntPtr statement, int column);
-
-        [DllImport(Dll, CallingConvention = CallingConvention.StdCall)]
-        private static extern IntPtr sqlite3_column_text16(IntPtr statement, int column);
-
-        [DllImport(Dll, CallingConvention = CallingConvention.StdCall)]
-        private static extern IntPtr sqlite3_column_blob(IntPtr statement, int column);
-
-        [DllImport(Dll, CallingConvention = CallingConvention.StdCall)]
-        private static extern int sqlite3_column_bytes(IntPtr statement, int column);
-
-        public static string Text(IntPtr statement, int column)
-            => Marshal.PtrToStringUni(sqlite3_column_text16(statement, column)) ?? string.Empty;
-
-        /// <summary>Notification content is stored as a BLOB (UTF-8 XML).</summary>
-        public static string Blob(IntPtr statement, int column)
-        {
-            var pointer = sqlite3_column_blob(statement, column);
-            var length = sqlite3_column_bytes(statement, column);
-            if (pointer == IntPtr.Zero || length <= 0)
-            {
-                return string.Empty;
-            }
-
-            var bytes = new byte[length];
-            Marshal.Copy(pointer, bytes, 0, length);
-            return System.Text.Encoding.UTF8.GetString(bytes);
-        }
     }
 }
