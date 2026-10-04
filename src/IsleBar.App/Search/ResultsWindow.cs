@@ -29,13 +29,20 @@ internal sealed class ResultsWindow : Window
     /// <summary>About the height 12 rows of the old list took (user 10-04: "at most about 12"); the rest scrolls.</summary>
     private const double MaxListHeight = 534;
 
-    private const double HeaderHeight = 32;   // Explorer's column header height
+    // One spacing rhythm, measured on the user's screenshots (10-04): window top → header text, header text → first row,
+    // row → row and last row → window bottom are all ~14. Before: 11 / 21 / 14 / 16, which the first row's highlight hid.
+    private const double HeaderTop = 11;      // + the window's own ~3 above = 14 to the header text
+    private const double HeaderBottom = 4;    // + the first row's own ~10 above its text = 14 (1 measured 11 — "a little tight", user 10-04)
+    private const double HeaderText = 16;     // line height of the 12 px header labels
+    private const double HeaderHeight = HeaderTop + HeaderText + HeaderBottom;
+    private const double HoverPad = 4;        // hover background around a header label: the same above and below it
     private const double IconSize = 20;
     private const double DateWidth = 100;     // "2026/10/14 18:34"
     private const double SizeWidth = 58;      // "238.8 MB"
     private const double ColumnGap = 12;      // the same between every column (user 10-04)
     private const double ItemPadding = 12;    // the ListViewItem's side padding
     private const double ListPadding = 4;
+    private const double ListBottom = 2;      // + the last row's own ~12 below its text = 14 to the window edge
 
     /// <summary>Room left for the name and path.</summary>
     private const double NameWidth = WidthDip - (2 * ListPadding) - (2 * ItemPadding) - IconSize - DateWidth - SizeWidth - (3 * ColumnGap);
@@ -45,17 +52,16 @@ internal sealed class ResultsWindow : Window
         SelectionMode = ListViewSelectionMode.Single,
         IsItemClickEnabled = true,
         IsTabStop = false,
-        Padding = new Thickness(ListPadding, 0, ListPadding, ListPadding),
+        Padding = new Thickness(ListPadding, 0, ListPadding, ListBottom),
     };
 
     private readonly Grid _header = new()
     {
-        Height = HeaderHeight,
-        Padding = new Thickness(ListPadding + ItemPadding, 0, ListPadding + ItemPadding, 0),
+        Padding = new Thickness(ListPadding + ItemPadding, HeaderTop, ListPadding + ItemPadding, HeaderBottom),
         ColumnSpacing = ColumnGap,
     };
 
-    private readonly StackPanel _empty = new() { Spacing = 4, Padding = new Thickness(16, 14, 16, 12) };
+    private readonly StackPanel _empty = new() { Padding = new Thickness(16, 10, 16, 14) };
     private readonly Grid _root = new() { Width = WidthDip };   // fixed: long names used to stretch the window (user 10-04)
     private readonly MenuFlyout _menu = new();
     private readonly ShellIcons _shellIcons = new();
@@ -155,14 +161,21 @@ internal sealed class ResultsWindow : Window
 
     public FileHit? SelectedHit => Selected >= 0 && Selected < _hits.Count ? _hits[Selected] : null;
 
+    /// <summary>The top row — what Enter opens when nothing is selected (as the Start menu's search does).</summary>
+    public FileHit? FirstHit => _hits.Count > 0 ? _hits[0] : null;
+
     public bool HasHits => _hits.Count > 0;
 
-    /// <summary>Shows results (or a single hint message). Starts with the first row selected.</summary>
+    /// <summary>
+    /// Shows results (or a single hint line under the header). Nothing starts selected — ↓ selects the first row, Enter opens
+    /// the top one, Esc closes (user 10-04: a pre-selected first row read as a choice already made).
+    /// </summary>
+    /// <param name="noteAction">What clicking the hint does (it's then drawn as a link): search in Everything, start it…</param>
     /// <param name="sort">Current sort setting value — its header shows the arrow.</param>
-    public void Show(IReadOnlyList<FileHit> hits, string? note, int anchorX, int bandTop, string sort, LanguageStrings text)
+    public void Show(IReadOnlyList<FileHit> hits, string? note, Action? noteAction, int anchorX, int bandTop, string sort, LanguageStrings text)
     {
         var clock = System.Diagnostics.Stopwatch.StartNew();
-        (_hits, _anchorX, _bandTop, Selected, _text) = (hits, anchorX, bandTop, 0, text);
+        (_hits, _anchorX, _bandTop, Selected, _text) = (hits, anchorX, bandTop, -1, text);
         if ((Content as Control)?.FontFamily is { } font)
         {
             _nameProbe.FontFamily = font;   // measure in the font the list is drawn in (set per language by AppFonts)
@@ -177,19 +190,32 @@ internal sealed class ResultsWindow : Window
             _list.Items.Add(Row(hits[i], i));
         }
 
-        BuildEmpty(hits.Count == 0 ? note : null, text);
-        _header.Visibility = hits.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        BuildEmpty(hits.Count == 0 ? note : null, noteAction);
+        // the header always stays — the frame doesn't change, only what's in it (user 10-04)
         _list.Visibility = hits.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
         // at most about 12 old rows tall, and never past the top of the screen — the rest scrolls (wheel / two-finger swipe)
         _list.MaxHeight = Math.Max(120, Math.Min(MaxListHeight, PopupPlacement.MaxHeightAbove(anchorX, bandTop) - HeaderHeight - 8));
+        _list.SelectedIndex = -1;
         if (hits.Count > 0)
         {
-            _list.SelectedIndex = 0;
             _list.ScrollIntoView(_list.Items[0]);
         }
 
         _root.UpdateLayout();
+
+        // only whole rows: a half-cut last row made the bottom margin look larger than the top one (user 10-04)
+        if (hits.Count > 0 && _list.ContainerFromIndex(0) is ListViewItem first && first.ActualHeight > 0)
+        {
+            var pitch = first.ActualHeight + first.Margin.Top + first.Margin.Bottom;
+            var room = _list.MaxHeight - ListBottom;
+            if (hits.Count * pitch > room)
+            {
+                _list.MaxHeight = (Math.Floor(room / pitch) * pitch) + ListBottom;
+                _root.UpdateLayout();
+            }
+        }
+
         PopupPlacement.SizeToContent(this, _root, WidthDip);
         PopupPlacement.PlaceAbove(this, _anchorX, _bandTop);
         AppWindow.Show(activateWindow: false);
@@ -209,10 +235,26 @@ internal sealed class ResultsWindow : Window
             return false;
         }
 
-        Selected = Math.Clamp(Selected + delta, 0, _hits.Count - 1);
+        if (Selected < 0 && delta < 0)
+        {
+            return true;   // nothing selected yet: ↑ has nowhere to go
+        }
+
+        SelectAt(Selected < 0 ? 0 : Selected + delta);   // the first ↓ selects the top row
+        return true;
+    }
+
+    /// <summary>Selects row <paramref name="index"/> (clamped) and scrolls it into view.</summary>
+    public void SelectAt(int index)
+    {
+        if (_hits.Count == 0)
+        {
+            return;
+        }
+
+        Selected = Math.Clamp(index, 0, _hits.Count - 1);
         _list.SelectedIndex = Selected;
         _list.ScrollIntoView(_list.Items[Selected]);   // ↑↓ past the visible rows scrolls
-        return true;
     }
 
     // ---------------- header ----------------
@@ -222,19 +264,19 @@ internal sealed class ResultsWindow : Window
     {
         _header.Children.Clear();
         // every header and column starts at its left edge, as the name lines up with its icon (user 10-04, option A)
-        AddHeader(0, 2, FileSearchQuery.SortName, text.SortName, sort, ascending: true);
-        AddHeader(2, 1, FileSearchQuery.SortModified, text.SortModified, sort, ascending: false);
-        AddHeader(3, 1, FileSearchQuery.SortSize, text.SortSize, sort, ascending: false);
+        AddHeader(0, 2, FileSearchQuery.SortName, text.SortName, sort);
+        AddHeader(2, 1, FileSearchQuery.SortModified, text.SortModified, sort);
+        AddHeader(3, 1, FileSearchQuery.SortSize, text.SortSize, sort);
     }
 
-    private void AddHeader(int column, int span, string value, string label, string sort, bool ascending)
+    private void AddHeader(int column, int span, string value, string label, string sort)
     {
         const double pad = 6;
         var on = value == sort;
         var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
         var arrow = new FontIcon
         {
-            Glyph = ascending ? "" : "",   // chevron up / down, as Explorer marks the sorted column
+            Glyph = "",   // chevron down on every column — the same mark means "sorted by this" (user 10-04)
             FontSize = 8,
             Foreground = Brush("TextFillColorSecondaryBrush"),
             VerticalAlignment = VerticalAlignment.Center,
@@ -255,15 +297,16 @@ internal sealed class ResultsWindow : Window
             Content = content,
             Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
             BorderThickness = new Thickness(0),
-            Padding = new Thickness(pad, 0, pad, 0),
+            // the hover background hugs the label with the same room above and below (it sat low before — user 10-04); the
+            // negative margin pulls the button out by its padding, so the label itself stays exactly where the layout puts it
+            Padding = new Thickness(pad, HoverPad, pad, HoverPad),
+            Margin = new Thickness(-pad, -HoverPad, 0, -HoverPad),
+            Height = HeaderText + (2 * HoverPad),
             MinHeight = 0,
             IsTabStop = false,
-            // the button fills the header's height and centres its label in it — a padded button merely centred itself,
-            // and its label sat visibly off-centre (user 10-04)
-            VerticalAlignment = VerticalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Top,
             VerticalContentAlignment = VerticalAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Left,
-            Margin = new Thickness(-pad, 2, 0, 2),   // pulled left by its padding, so the label lines up exactly with the column below
         };
         button.Click += (_, _) => SortChosen?.Invoke(value);
         Grid.SetColumn(button, column);
@@ -392,8 +435,11 @@ internal sealed class ResultsWindow : Window
         KeepTyping?.Invoke();
     }
 
-    /// <summary>Nothing to list: the hint centred (Everything not running, no results…) and a link to search in Everything itself.</summary>
-    private void BuildEmpty(string? note, LanguageStrings text)
+    /// <summary>
+    /// Nothing to list: one centred line under the header — a link when it leads somewhere ("No results — search in
+    /// Everything", "Everything isn't running — start it"), plain text otherwise (user 10-04).
+    /// </summary>
+    private void BuildEmpty(string? note, Action? action)
     {
         _empty.Children.Clear();
         _empty.Visibility = note is null ? Visibility.Collapsed : Visibility.Visible;
@@ -402,16 +448,27 @@ internal sealed class ResultsWindow : Window
             return;
         }
 
-        _empty.Children.Add(new TextBlock
+        if (action is null)
         {
-            Text = note,
-            Foreground = Brush("TextFillColorSecondaryBrush"),
-            TextAlignment = TextAlignment.Center,
-            TextWrapping = TextWrapping.Wrap,
+            _empty.Children.Add(new TextBlock
+            {
+                Text = note,
+                FontSize = 13,
+                Foreground = Brush("TextFillColorSecondaryBrush"),
+                TextAlignment = TextAlignment.Center,
+                TextWrapping = TextWrapping.Wrap,
+                HorizontalAlignment = HorizontalAlignment.Center,
+            });
+            return;
+        }
+
+        var link = new HyperlinkButton
+        {
+            Content = new TextBlock { Text = note, FontSize = 13, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center },
             HorizontalAlignment = HorizontalAlignment.Center,
-        });
-        var link = new HyperlinkButton { Content = text.OpenInEverything, HorizontalAlignment = HorizontalAlignment.Center, FontSize = 12 };
-        link.Click += (_, _) => OpenInEverything?.Invoke();
+            IsTabStop = false,
+        };
+        link.Click += (_, _) => action();
         _empty.Children.Add(link);
     }
 

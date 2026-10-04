@@ -73,6 +73,10 @@ public sealed class LanguageStrings
     public required string FileExcludeHint { get; init; }
     public required string ResetDefaults { get; init; }
 
+    /// <summary>File search, one clickable line in place of the list (10-04): nothing found → search in Everything; Everything off → start it.</summary>
+    public required string NoResultLink { get; init; }
+    public required string EsOffLink { get; init; }
+
     /// <summary>Title of "Tab order" in the settings window.</summary>
     public required string TabOrder { get; init; }
 

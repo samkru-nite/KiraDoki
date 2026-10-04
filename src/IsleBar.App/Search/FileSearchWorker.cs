@@ -22,10 +22,11 @@ internal sealed class FileSearchWorker : IDisposable
     {
         _onResult = onResult;
         _thread = new Thread(Loop) { IsBackground = true, Name = "IsleBar Everything" };
+        _thread.SetApartmentState(ApartmentState.STA);   // Windows' recent list is read through the shell's COM shortcut object
         _thread.Start();
     }
 
-    /// <summary>Requests a search. Returns a request number (used to match results).</summary>
+    /// <summary>Requests a search — an empty query asks for recent files. Returns a request number (used to match results).</summary>
     public long Request(string query, int max, string sort, IReadOnlyList<IsleBar.Core.Search.FileExcludes.Rule> hidden)
     {
         var seq = Interlocked.Increment(ref _seq);
@@ -49,6 +50,14 @@ internal sealed class FileSearchWorker : IDisposable
                 current = newer;
             }
 
+            // nothing typed yet: Windows' recently opened files when it keeps them, else files changed this week (user 10-04)
+            if (current.Query.Trim().Length == 0 && RecentFiles.WindowsKeepsThem()
+                && ReadWindowsRecent(current) is { Count: > 0 } recent)
+            {
+                _onResult(current.Seq, recent, SearchProblem.None);
+                continue;
+            }
+
             if (sdk is null)
             {
                 _onResult(current.Seq, [], SearchProblem.SdkMissing);
@@ -58,7 +67,10 @@ internal sealed class FileSearchWorker : IDisposable
             try
             {
                 var clock = System.Diagnostics.Stopwatch.StartNew();
-                var hits = sdk.Search(current.Query, current.Max, current.Sort, current.Hidden, out var problem);
+                SearchProblem problem;
+                var hits = current.Query.Trim().Length == 0
+                    ? sdk.Search(IsleBar.Core.Search.FileSearchQuery.RecentQuery, current.Max, current.Sort, current.Hidden, out problem)
+                    : sdk.Search(current.Query, current.Max, current.Sort, current.Hidden, out problem);
                 if (clock.ElapsedMilliseconds >= 30)
                 {
                     Interop.TaskbarHost.Log($"file search: Everything took {clock.ElapsedMilliseconds} ms for {hits.Count} rows");
@@ -74,6 +86,19 @@ internal sealed class FileSearchWorker : IDisposable
             {
                 _onResult(current.Seq, [], SearchProblem.Failed);
             }
+        }
+    }
+
+    private static List<FileHit> ReadWindowsRecent((long Seq, string Query, int Max, string Sort, IReadOnlyList<IsleBar.Core.Search.FileExcludes.Rule> Hidden) request)
+    {
+        try
+        {
+            var rows = RecentFiles.Read(request.Max, path => IsleBar.Core.Search.FileExcludes.IsHidden(path, request.Hidden));
+            return IsleBar.Core.Search.FileSearchQuery.Order(rows, request.Sort, h => h.Name, h => h.Modified, h => h.Size, h => h.IsFolder);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return [];   // fall back to files changed this week
         }
     }
 

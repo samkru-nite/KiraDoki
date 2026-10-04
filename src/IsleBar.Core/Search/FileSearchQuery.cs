@@ -35,6 +35,25 @@ public static class FileSearchQuery
         _ => 1,               // EVERYTHING_SORT_NAME_ASCENDING
     };
 
+    /// <summary>
+    /// What the list shows before anything is typed (user 10-04: "like the Start menu, open with something in it"), when Windows'
+    /// own "recently opened" list is off: files changed in the last week. Hidden folders are exactly the search's
+    /// (<see cref="FileExcludes"/>) — one list in settings governs both (user 10-04).
+    /// </summary>
+    public const string RecentQuery = "file: dm:last7days";
+
+    /// <summary>
+    /// Sorts rows here the way Everything would for <paramref name="sort"/> — for lists that don't come from Everything
+    /// (Windows' recently opened files): name A→Z with folders first, newest first, largest first.
+    /// </summary>
+    public static List<T> Order<T>(IEnumerable<T> items, string? sort, Func<T, string> name, Func<T, DateTime?> modified, Func<T, long?> size, Func<T, bool> folder)
+        => NormalizeSort(sort) switch
+        {
+            SortModified => [.. items.OrderByDescending(i => modified(i) ?? DateTime.MinValue)],
+            SortSize => [.. items.OrderByDescending(i => size(i) ?? -1)],
+            _ => [.. items.OrderByDescending(folder).ThenBy(name, StringComparer.CurrentCultureIgnoreCase)],
+        };
+
     /// <summary>Whether the query names a path itself — then nothing is hidden: the person is deliberately looking in a folder.</summary>
     public static bool TargetsPath(string query) => query.Contains('\\') || query.Contains('/');
 }

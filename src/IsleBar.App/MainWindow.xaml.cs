@@ -155,6 +155,7 @@ public sealed partial class MainWindow : Window
             Entry.Focus(FocusState.Programmatic);
         }));
         _watchdog.Start();
+        _foreground = new ForegroundEvents(_ => _ui.TryEnqueue(CheckForeground));
         StartIslandPolling();
         _ = UpdateModelAliasesAsync();
     }
@@ -167,7 +168,8 @@ public sealed partial class MainWindow : Window
         {
             // A right click on the idle pill also focuses the input box; starting to type there swapped in the box's
             // copy/paste menu, so right click showed "Paste" instead of our menu (seen 10-02). Right click never starts typing.
-            if (!_menuOpen && DateTimeOffset.UtcNow - _rightPressAt > TimeSpan.FromMilliseconds(500))
+            if (!_menuOpen && DateTimeOffset.UtcNow - _rightPressAt > TimeSpan.FromMilliseconds(500)
+                && DateTimeOffset.UtcNow - _closedByClickAt > TimeSpan.FromMilliseconds(500))   // the click that just closed the list
             {
                 BeginTyping();   // when the right-click menu closed and the window came forward, the input box got focus and typing started (measured on PC 09-30)
             }
@@ -247,6 +249,15 @@ public sealed partial class MainWindow : Window
                 || IsInside(e.OriginalSource as DependencyObject, HoverActions))
             {
                 return;   // ⌄ and the island buttons (⏮⏯⏭) do their own job (not the start of typing)
+            }
+
+            // A second click on the empty pill while the file list is open closes it, like a switch — no hunting for an empty spot
+            // after a mistaken click. With text typed, a click only moves the caret (user 10-04).
+            if (_typing && _results is not null && Entry.Text.Length == 0)
+            {
+                _closedByClickAt = DateTimeOffset.UtcNow;
+                EndTyping();
+                return;
             }
 
             if (!_typing && TryIslandAction())
@@ -344,6 +355,7 @@ public sealed partial class MainWindow : Window
         var before = Interop.NativeMethods.GetForegroundWindow();
         _previousForeground = before != _taskbar.OuterWindow ? before : IntPtr.Zero;   // window to give focus back to when closed with Esc
         _typing = true;
+        _typingHadFront = false;
         _switching = true;
         Entry.ContextFlyout = _entryMenu;   // copy/paste menu while typing
         _taskbar.Detach(Spot.X, Spot.Y, _width, _height);
@@ -365,6 +377,48 @@ public sealed partial class MainWindow : Window
             _switching = false;
         });
         UpdateTabHint();
+        if (_mode == BarMode.Files)
+        {
+            ScheduleSearch();   // file search as the first mode: the recent-files list opens right away, like the Start menu's
+        }
+    }
+
+    private ForegroundEvents? _foreground;
+    private DateTimeOffset _closedByClickAt;
+
+    /// <summary>Whether one of our windows has been in front since typing began (until then, ending on "not ours" would be premature).</summary>
+    private bool _typingHadFront;
+
+    /// <summary>
+    /// Typing ends as soon as a window that isn't IsleBar's comes to the front (a click on the desktop, another app, Alt+Tab).
+    /// Called by Windows' foreground notification, and every tick as a backstop. When the click went to the results list, the
+    /// keyboard is handed back to the input box once the click is over — so Esc and typing keep working (user 10-04).
+    /// </summary>
+    private void CheckForeground()
+    {
+        if (!_typing || _switching)
+        {
+            return;
+        }
+
+        var front = NativeMethods.GetForegroundWindow();
+        if (ForegroundEvents.IsOurs(front))
+        {
+            _typingHadFront = true;
+            if (_results is { } list && front == list.Handle && !list.MenuOpen && !NativeMethods.MouseButtonDown())
+            {
+                ReclaimTyping();
+            }
+
+            return;
+        }
+
+        if (!_typingHadFront || NativeMethods.MouseButtonDown() || _compose is not null || _menuOpen)
+        {
+            return;   // not ours yet / mid-click or drag (looked at again next tick) / the compose box or our menu takes over
+        }
+
+        EndTyping();
     }
 
     /// <summary>When typing ends, go back into the taskbar.</summary>
@@ -915,6 +969,11 @@ public sealed partial class MainWindow : Window
           try
           {
             RetryAttachIfNeeded();
+            if (_typing)
+            {
+                CheckForeground();   // backstop for the foreground notification
+            }
+
             FollowRealSearchBox();
             RefreshBesideColor();
             if (DateTimeOffset.UtcNow - _lastPrune > TimeSpan.FromMinutes(1))
@@ -3325,7 +3384,8 @@ public sealed partial class MainWindow : Window
     /// <summary>Opens the selected result. Ctrl+Enter selects the file in Explorer instead.</summary>
     private void OpenSelectedFile(bool revealInFolder)
     {
-        if (_results?.SelectedHit is not { } hit || _shownQuery != Entry.Text.Trim())
+        // nothing selected: the top row, as the Start menu's search opens its best match on Enter (user 10-04)
+        if ((_results?.SelectedHit ?? _results?.FirstHit) is not { } hit || _shownQuery != Entry.Text.Trim())
         {
             // if the list hasn't caught up with the current input, search with the current input now and open the first item (same as the Python version)
             _openWhenReady = revealInFolder ? OpenRequest.Reveal : OpenRequest.Open;
@@ -3378,7 +3438,13 @@ public sealed partial class MainWindow : Window
             _searchTimer = _ui.CreateTimer();
             _searchTimer.Interval = SearchDebounce;
             _searchTimer.IsRepeating = false;
-            _searchTimer.Tick += (_, _) => RequestSearch(Entry.Text.Trim());
+            _searchTimer.Tick += (_, _) =>
+            {
+                if (_typing)
+                {
+                    RequestSearch(Entry.Text.Trim());
+                }
+            };
         }
 
         _searchTimer.Stop();
@@ -3440,7 +3506,8 @@ public sealed partial class MainWindow : Window
     /// <summary>Row <paramref name="index"/> of the results: open it, or show it in Explorer.</summary>
     private void OpenResult(int index, bool revealInFolder)
     {
-        if (_results?.Move(index - _results.Selected) == true && _results.SelectedHit is { } hit)
+        _results?.SelectAt(index);
+        if (_results?.SelectedHit is { } hit)
         {
             OpenHit(hit, revealInFolder);
         }
@@ -3451,7 +3518,7 @@ public sealed partial class MainWindow : Window
     {
         if (EverythingExe() is not { } exe)
         {
-            TaskbarHost.Log("file search: Everything.exe not found");
+            OpenEverythingDownload();
             return;
         }
 
@@ -3469,6 +3536,59 @@ public sealed partial class MainWindow : Window
         }
 
         Entry.Text = string.Empty;
+        EndTyping();
+    }
+
+    /// <summary>
+    /// "Everything isn't running — start it": starts it in the background (no window) and searches again once it has its index
+    /// up — typing carries on. Not installed → its download page.
+    /// </summary>
+    private void StartEverything()
+    {
+        ReclaimTyping();   // the click on the link activated the list
+        if (EverythingExe() is not { } exe)
+        {
+            OpenEverythingDownload();
+            return;
+        }
+
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(exe, "-startup") { UseShellExecute = false });
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            TaskbarHost.Log("file search: starting Everything failed — " + ex.Message);
+            return;
+        }
+
+        var retry = _ui.CreateTimer();
+        retry.Interval = TimeSpan.FromSeconds(1.5);
+        retry.IsRepeating = false;
+        retry.Tick += (_, _) =>
+        {
+            if (_typing && _mode == BarMode.Files)
+            {
+                RequestSearch(Entry.Text.Trim());
+            }
+        };
+        retry.Start();
+    }
+
+    /// <summary>Everything isn't installed: its official download page in the browser.</summary>
+    private void OpenEverythingDownload()
+    {
+        TaskbarHost.Log("file search: Everything.exe not found — opening the download page");
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://www.voidtools.com/downloads/") { UseShellExecute = true });
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            TaskbarHost.Log("file search: opening the download page failed — " + ex.Message);
+            return;
+        }
+
         EndTyping();
     }
 
@@ -3503,7 +3623,9 @@ public sealed partial class MainWindow : Window
     private void OnSearchResult(long seq, IReadOnlyList<FileHit> hits, SearchProblem problem)
         => _ui.TryEnqueue(() =>
         {
-            if (seq != _fileSearch.LatestSeq || _mode != BarMode.Files)
+            // not typing (Esc / a click away just ended it): clearing the box then asked for the recent list, which popped up
+            // after typing had ended — and nothing closed it any more (user 10-04)
+            if (seq != _fileSearch.LatestSeq || _mode != BarMode.Files || !_typing)
             {
                 return;
             }
@@ -3518,20 +3640,15 @@ public sealed partial class MainWindow : Window
                 }
             }
 
-            var query = Entry.Text.Trim();
-            string? note = problem switch
+            // An empty box shows recent files, so the list is there as soon as file search opens (user 10-04). Nothing to show
+            // → one line under the header, a link where it leads somewhere.
+            (string? note, Action? noteAction) = problem switch
             {
-                SearchProblem.SdkMissing => _text.NoSdk,
-                SearchProblem.ServiceOff => _text.EsOff,
-                SearchProblem.Failed => _text.EsFail,
-                _ => hits.Count == 0 && query.Length > 0 ? _text.NoResult : null,
+                SearchProblem.SdkMissing => (_text.NoSdk, null),
+                SearchProblem.ServiceOff => (_text.EsOffLink, StartEverything),
+                SearchProblem.Failed => (_text.EsFail, null),
+                _ => hits.Count == 0 ? (_text.NoResultLink, (Action)OpenInEverything) : (null, null),
             };
-
-            if (query.Length == 0 || (hits.Count == 0 && note is null))
-            {
-                CloseResults();
-                return;
-            }
 
             if (_results is null)
             {
@@ -3544,7 +3661,7 @@ public sealed partial class MainWindow : Window
                 _results.RevealClicked += index => OpenResult(index, revealInFolder: true);
             }
 
-            _results.Show(hits, note, PopupAnchorX, TaskbarTop(), _settings.FileSort, _text);
+            _results.Show(hits, note, noteAction, PopupAnchorX, TaskbarTop(), _settings.FileSort, _text);
             _shownQuery = _requestedQuery;   // the latest request's results (older ones were dropped above)
         });
 
@@ -3831,6 +3948,7 @@ public sealed partial class MainWindow : Window
     private void Cleanup()
     {
         _watchdog.Quitting = true;
+        _foreground?.Dispose();
         // every window closed, so the app ends by itself instead of waiting 4 s for the forced exit (review 10-03) — first, while
         // the meter and timers still exist (closing compose re-renders the pill)
         foreach (var close in new Action?[] { _settingsWindow is null ? null : _settingsWindow.Close, _expanded is null ? null : _expanded.CloseAll, _preview is null ? null : _preview.Close, _compose is null ? null : _compose.Close })
