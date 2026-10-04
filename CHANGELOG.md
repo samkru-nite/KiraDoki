@@ -36,7 +36,9 @@
 - A download whose file stops growing for 5 seconds shows as paused (⏸, dimmed, no bar) and stays until it finishes or is
   removed — it used to vanish after two minutes. It waits behind music and timers. (A paused download and a stalled
   connection look the same from the file.)
-- Download folders are a setting (one per line; empty = the system Downloads folder), for browsers set to save elsewhere.
+- Download folders are a setting (one per line), for browsers set to save elsewhere. The box starts with your own Downloads
+  folder as Windows reports it (no user name is stored; it follows the folder if moved), with a reset link. The hints under
+  this box and the hidden-folders box now spell out every form a line can take.
 - Baidu Netdisk downloads show too (".baiduyun.p.downloading"). Baidu reserves the whole file up front, so its size says
   nothing: the speed is what Baidu's helper process writes, and the bar is an estimate from that against the reserved size.
 - Chrome/Edge keep a download as "Unconfirmed 123.crdownload" until it ends: the bar says "Downloading" instead of the number,

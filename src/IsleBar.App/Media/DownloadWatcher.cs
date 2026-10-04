@@ -44,8 +44,8 @@ internal sealed partial class DownloadWatcher : IDisposable
 
     public void Start() => _ = Task.Run(LoopAsync);
 
-    /// <summary>The user's downloads folder (if relocated, that location — the path the shell knows).</summary>
-    private static string DefaultFolder()
+    /// <summary>This user's Downloads folder (if relocated, that location — the path the shell knows). Also the settings box's default.</summary>
+    internal static string DefaultFolder()
     {
         try
         {

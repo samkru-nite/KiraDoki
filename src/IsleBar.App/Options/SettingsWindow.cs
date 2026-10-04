@@ -476,13 +476,18 @@ internal sealed class SettingsWindow : Window
         };
     }
 
-    /// <summary>Folders watched for downloads, one per line; empty = the system Downloads folder (user 10-04).</summary>
+    /// <summary>
+    /// Folders watched for downloads, one per line (user 10-04). Unset shows this user's own Downloads folder — the path Windows
+    /// gives for them, so no user name is ever written in — and is also the format example. Keeping just that line stores "unset",
+    /// like the hidden-folders list, so the setting follows the folder if it moves and doesn't carry one PC's path to another.
+    /// </summary>
     private void DownloadFoldersRow()
     {
+        var system = Media.DownloadWatcher.DefaultFolder();
         _body.Children.Add(new TextBlock { Text = _text.DownloadFoldersLabel, Margin = new Thickness(0, 8, 0, 4) });
         var box = new TextBox
         {
-            Text = string.Join("\r", _settings.DownloadFolders),
+            Text = _settings.DownloadFolders.Count == 0 ? system : string.Join("\r", _settings.DownloadFolders),
             AcceptsReturn = true,
             TextWrapping = TextWrapping.NoWrap,
             Height = 80,
@@ -499,10 +504,17 @@ internal sealed class SettingsWindow : Window
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 4, 0, 0),
         });
+        var reset = new HyperlinkButton { Content = _text.ResetDefaults, Padding = new Thickness(0, 2, 0, 2), FontSize = 12 };
+        _body.Children.Add(reset);
 
         void Commit()
         {
             var lines = box.Text.Split('\r', '\n').Select(line => line.Trim().Trim('"')).Where(line => line.Length > 0).ToList();
+            if (lines.Count == 1 && string.Equals(lines[0].TrimEnd('\\', '/'), system.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase))
+            {
+                lines = [];   // just the system folder = unset
+            }
+
             if (!lines.SequenceEqual(_settings.DownloadFolders))
             {
                 _settings.DownloadFolders = lines;
@@ -512,6 +524,11 @@ internal sealed class SettingsWindow : Window
 
         box.LostFocus += (_, _) => Commit();
         _commitOnClose.Add(Commit);
+        reset.Click += (_, _) =>
+        {
+            box.Text = system;
+            Commit();
+        };
     }
 
     private void TextRow(string label, string hint, Func<string> get, Action<string> set)
