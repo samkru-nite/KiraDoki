@@ -25,7 +25,7 @@
 - 构建前必须先关掉正在运行的开发版（它锁住 dll，否则 MSB3027）；只关本项目路径下的进程，不动用户装的正式版。
 - git 没有配置用户名：提交时用 `git -c user.name="Kasumi" -c user.email="188979868+samkru-nite@users.noreply.github.com" commit ...`。没有 remote（源码是 zip 下载的，不是 clone）。
 - 日志：`%LOCALAPPDATA%\IsleBar\logs\islebar.log`（文件搜索 >30ms 会记 "file search: ..."）。
-- 用 Python 脚本批量改文件时注意：中文路径/反斜杠在 Python 字符串里会出转义错误，失败时改用 Edit 工具；C# 字符串里的 `\` 要写成 `\`。
+- 用 Python 脚本批量改文件时注意：中文路径/反斜杠在 Python 字符串里会出转义错误，失败时改用 Edit 工具；C# 普通字符串里的一个反斜杠要写成两个（`"C:\\Recovery"`），或用 `@"..."`。
 - 项目根目录：`C:\Users\Kasumi\Desktop\islebar-0.1.0 (2)\islebar-0.1.0`（比压缩包外层多一层）。
 - 用户需求原文档：`C:\Users\Kasumi\Desktop\新建 Microsoft Word 文档.docx`（内容已整理进 TODO.md，另有 2 张截图未看，需要时从 `word/media/` 提取）。
 
@@ -39,8 +39,7 @@
 Get-Process IsleBar.App -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*islebar-0.1.0 (2)*' } | Stop-Process -Force
 dotnet build src/IsleBar.App -v q -nologo
 dotnet test tests/IsleBar.Core.Tests -v q -nologo
-Start-Process "src\IsleBar.Appin\Debug
-et8.0-windows10.0.26100.0\IsleBar.App.exe"
+Start-Process "src\IsleBar.App\bin\Debug\net8.0-windows10.0.26100.0\IsleBar.App.exe"
 ```
 - 加界面文案：`LanguageStrings.cs` 加属性 + `LanguageCatalog.cs` 10 种语言都要加 + `tests/.../LocalizationTests.cs` 里的文案总数 +N（当前 110）。
 - 加设置项：`IsleBarSettings`（属性 + `Clone()`）+ `SettingsCodec`（key、读、写）+ `Options/SettingsWindow.cs`。
