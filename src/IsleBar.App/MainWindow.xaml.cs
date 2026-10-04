@@ -2324,7 +2324,7 @@ public sealed partial class MainWindow : Window
             ActivityRunState.Done => "\uE73E",                          // ✓
             ActivityRunState.Error => "\uEA39",
             _ when state.IsPausedTransfer => "\uE769",                  // pause (download stopped growing)
-            _ when state.Stage == "copy" => "\uE8C8",                    // copy (Explorer copying, unzipping, compressing)
+            _ when state.Stage == "copy" => state.Glyph ?? "\uE8C8",     // Explorer: copy / unzip / compress, chosen by the watcher
             _ => state.Direction == TransferDirection.Incoming ? "\uE896" : "\uE898",   // receive ↓ / send ↑
         },
         ActivityKind.AgentDone => "\uE73E",

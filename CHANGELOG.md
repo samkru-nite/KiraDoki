@@ -41,9 +41,10 @@
   nothing: the speed is what Baidu's helper process writes, and the bar is an estimate from that against the reserved size.
 - Chrome/Edge keep a download as "Unconfirmed 123.crdownload" until it ends: the bar says "Downloading" instead of the number,
   and the "done" notice finds the renamed file.
-- Explorer's file operations show anywhere on disk: copy, move and unzip follow the percentage in Explorer's progress window,
-  with the speed Explorer writes at; compressing to an archive (no progress window) shows the archive's name, speed and a
-  flowing bar, found through Everything. Copied files are created at full size up front, so their size says nothing.
+- Explorer's file operations show anywhere on disk as icon · speed · file name, the icon telling copy, unzip and compress
+  apart. Copy, move and unzip follow the percentage in Explorer's progress window, and the file name is read from that window
+  (unzip is a "copy" from an archive there). Compressing (no progress window) shows the archive being written, found through
+  Everything, with a flowing bar. Copied files are created at full size up front, so their size says nothing.
 
 ### Fixes
 - The flowing bar under a download of unknown size moved in jumps — it was redrawn four times a second. It now runs on the

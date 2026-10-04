@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
+using Interop.UIAutomationClient;
 using IsleBar.App.Interop;
 using IsleBar.App.Search;
 using IsleBar.Core.Island;
@@ -14,6 +15,9 @@ namespace IsleBar.App.Media;
 /// <item>Windows' own compress shows no such window; the archive just grows. When Explorer writes a lot with no progress window,
 /// Everything is asked for an archive changed in the last seconds, and its size is followed (Everything's own size lags).</item>
 /// </list>
+/// The window's text (read through UI Automation while it shows) names the operation and the file being handled — "Copying 15
+/// items from X.zip to Y … Name: DSC01495.ARW". Windows' unzip says "copying" too, from an archive: that's how it's told apart.
+/// The pill shows icon · speed · file name, the icon saying copy / unzip / compress.
 /// Speed is what that Explorer process wrote. Idle cost: a FindWindow and one process's write count a second.
 /// Runs on the download watcher's thread.
 /// </summary>
@@ -23,6 +27,15 @@ internal sealed partial class FileOperationWatcher : IDisposable
     private const long BusyBytes = 1024 * 1024;   // Explorer writes thumbnails and settings all the time; less than this a second is not a transfer
     private const string ArchiveQuery = "file: ext:zip;7z;tar;gz;tgz;rar";
     private static readonly TimeSpan ArchiveIdle = TimeSpan.FromSeconds(5);
+    private static readonly string[] ArchiveExtensions = [".zip", ".7z", ".tar", ".gz", ".tgz", ".rar", ".cab"];
+
+    // icons on the pill's left (Segoe Fluent Icons)
+    internal const string CopyGlyph = "\uE8C8";
+    internal const string UnzipGlyph = "\uE838";      // open folder
+    internal const string CompressGlyph = "\uF012";   // zip folder
+
+    private IUIAutomation? _automation;
+    private IUIAutomationCondition? _all;
 
     private readonly ProcessWriteMeter _explorer = new("explorer");
     private readonly RateMeter _rate = new();
@@ -46,10 +59,13 @@ internal sealed partial class FileOperationWatcher : IDisposable
             _opSince ??= now;
             _archive = null;
             var percent = Percent(window.Title);
+            var (name, unzip) = ReadWindow(window.Handle);
             result.Add(new ActivityState
             {
                 RawKind = ActivityState.KindTransfer,
                 Title = "Files",
+                Name = name,
+                Glyph = unzip ? UnzipGlyph : CopyGlyph,
                 Stage = "copy",
                 Done = percent,
                 Total = percent is null ? null : 100,
@@ -123,6 +139,7 @@ internal sealed partial class FileOperationWatcher : IDisposable
             RawKind = ActivityState.KindTransfer,
             Title = "Files",
             Name = Path.GetFileName(_archive),
+            Glyph = CompressGlyph,
             Stage = "copy",
             Done = _archiveSize,   // size so far; the total isn't known, so the bar flows
             Speed = _rate.Speed(now),
@@ -168,6 +185,57 @@ internal sealed partial class FileOperationWatcher : IDisposable
         }
     }
 
+    /// <summary>
+    /// From the progress window's text: the file being handled (the element after the first "label:" — "Name:" / "名称:"), and
+    /// whether it unpacks an archive (an element other than that file ends in an archive's extension — the source, "X.zip";
+    /// the sentence around it ends in the percentage, so it doesn't count).
+    /// Every element read is released at once: COM references left behind make Explorer sluggish (see SearchBoxTracker).
+    /// </summary>
+    private (string? Name, bool Unzip) ReadWindow(IntPtr handle)
+    {
+        var names = new List<string>();
+        try
+        {
+            _automation ??= (IUIAutomation)new CUIAutomation();
+            _all ??= _automation.CreateTrueCondition();
+            var window = _automation.ElementFromHandle(handle);
+            if (window is null)
+            {
+                return (null, false);
+            }
+
+            var found = window.FindAll(TreeScope.TreeScope_Descendants, _all);
+            for (var i = 0; found is not null && i < found.Length; i++)
+            {
+                var element = found.GetElement(i);
+                if (element.CurrentName is { } text && text.Trim().Length > 0)
+                {
+                    names.Add(text.Trim());
+                }
+
+                Marshal.ReleaseComObject(element);
+            }
+
+            if (found is not null)
+            {
+                Marshal.ReleaseComObject(found);
+            }
+
+            Marshal.ReleaseComObject(window);
+        }
+        catch (COMException)
+        {
+            return (null, false);
+        }
+
+        var label = names.FindIndex(n => n.EndsWith(':') || n.EndsWith('：'));
+        var name = label >= 0 && label + 1 < names.Count ? names[label + 1] : null;
+        var unzip = names.Any(n => n != name && IsArchive(n));
+        return (name, unzip);
+    }
+
+    private static bool IsArchive(string name) => ArchiveExtensions.Any(ext => name.EndsWith(ext, StringComparison.OrdinalIgnoreCase));
+
     /// <summary>"37% complete" in any language → 37.</summary>
     private static long? Percent(string title)
         => PercentPattern().Match(title) is { Success: true } match && long.TryParse(match.Groups[1].Value, out var value)
@@ -194,7 +262,14 @@ internal sealed partial class FileOperationWatcher : IDisposable
         return null;
     }
 
-    public void Dispose() => _everything?.Dispose();
+    public void Dispose()
+    {
+        _everything?.Dispose();
+        if (_all is not null)
+        {
+            Marshal.ReleaseComObject(_all);
+        }
+    }
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern IntPtr FindWindowExW(IntPtr parent, IntPtr after, string className, string? title);
