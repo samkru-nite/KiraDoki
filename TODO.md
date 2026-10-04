@@ -9,9 +9,9 @@
 > 总大小方案（未验证，先加诊断）：**Edge** 读本机下载历史 SQLite（`%LOCALAPPDATA%\Microsoft\Edge\User Data\Default\History`，`downloads` 表有 total_bytes、current_path = .crdownload 路径）——总大小只需开始时读一次，已下载量继续用临时文件大小。待验证：Edge 运行时能否读（被锁就复制后读）、开始下载时那一行是否立即写入。服务器不给大小时 total=0，继续流动条。**百度网盘**：先诊断它下载时在下载目录/安装目录产生什么文件（边下边长的临时文件？预分配整文件？任务数据库？），再定方案；最坏只有速度+文件名。③ 涉及外部程序，建议 Opus。
 - [x] 1.1 下载总容量未知时，循环进度条卡顿（10-04 完成，用户已测顺滑：XAML 新增 `FlowTrack`/`FlowPiece`，MW `StartFlow()/StopFlow()` 用合成器 Translation.X 循环动画，宽度变才重启；打字时照常显示）
   → MW `UpdateProgressLine()`。原因：循环条位置每 250ms 才算一次（一秒 4 帧），所以一跳一跳。改成合成器动画（像均衡器那样）即可 ｜ 中 ｜ Sonnet
-- [ ] 1.2 总容量已知时仍是循环条
+- [x] 1.2 总容量已知时仍是循环条（10-04 完成：`Media/BrowserDownloadHistory.cs` 以 immutable 方式读 Edge/Chrome 各 profile 的 History（普通只读会报 locked，已实测），`downloads` 表 state=0 的行按 current_path 或 target_path 匹配临时文件，每 3 秒查一次直到拿到；文字仍显示速度，进度条显示合计百分比（全部已知才显示，否则流动）；暂停时灰色停住。日志 "download total: …" 记录每个文件是否拿到。**待用户实测**：新下载开始后行是否及时写入。SQLite 封装从 ToastWatcher 移到 `Interop/WinSqlite.cs`）
   → `IsleBar.App/Media/DownloadWatcher.cs`：只看临时文件大小，**根本不知道总大小**；且 `Stage="download"` 会强制走循环条。要拿总大小得换数据源（见 4.2a） ｜ 中-难 ｜ Sonnet，调研部分可用 Opus
-- [ ] 1.3 多个下载仍只显示循环条
+- [x] 1.3 多个下载仍只显示循环条（10-04 完成：`Core/Island/DownloadTracker.cs` 汇总成一条「合计速度  最早仍在下的文件名  +N」；5 秒不增长=暂停；`IslandSelector.Rank` 让暂停的下载排在音乐/计时之后）
   （10-04 用户追加：**暂停**——临时文件约 5 秒不变大即「已暂停」（分不清手动暂停和网络卡住，1.2 读 Edge 记录后再细分）；样式照音乐暂停：左 ⏸、文字「已暂停 · 文件名」变暗、进度条消失，恢复增长立即复原。用户选 B：暂停的下载**一直显示**直到删除/下完（现在 2 分钟不动就消失，`DownloadWatcher.Stalled`），但优先级排在音乐、计时之后。和速度一起做）
   → 同上 + `IslandSelector` 只显示一个。可合并成"N 个下载 · 合计"一条 ｜ 中 ｜ Sonnet
 
