@@ -31,6 +31,8 @@
   the isle — its new item peeks in for four seconds instead.
 
 ### Fixes
+- The flowing bar under a download of unknown size moved in jumps — it was redrawn four times a second. It now runs on the
+  compositor at the screen's frame rate (same speed and length).
 - The results list could stay open after clicking elsewhere (once the list itself had been clicked). Typing now ends as soon
   as another app's window comes to the front.
 - With the Start menu open, a click on the pill closes it first — it used to cover the results list.

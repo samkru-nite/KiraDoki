@@ -159,6 +159,23 @@
             VerticalAlignment="Bottom"
             Margin="0,0,0,3" />
 
+        <!--
+          Flowing bar (transfer with unknown size): a quarter-length piece slides across this track, animated by the compositor
+          (moving it from the 250ms tick drew only 4 frames a second, so it stuttered). Code sets the track's margin, width and clip.
+        -->
+        <Grid
+            x:Name="FlowTrack"
+            Grid.Column="0"
+            Grid.ColumnSpan="4"
+            Height="2"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Bottom"
+            Margin="0,0,0,3"
+            Visibility="Collapsed"
+            IsHitTestVisible="False">
+            <Border x:Name="FlowPiece" HorizontalAlignment="Left" />
+        </Grid>
+
         <!-- Right: on hover, the island's buttons (music ⏮⏸⏭ etc.). ⌄ moved to the far left (as in the Python version) -->
         <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="4,0,8,0" VerticalAlignment="Center">
             <!-- Music playing: four dancing bars — at the far right as in the mockup (moved to the left icon spot if there's no album art). Purely decorative, unrelated to the audio,

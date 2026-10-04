@@ -2125,6 +2125,7 @@ public sealed partial class MainWindow : Window
         if (_snapshot.Primary is not { } state)
         {
             ProgressLine.Width = 0;
+            StopFlow();
             TimerRing.Visibility = Visibility.Collapsed;
             return;
         }
@@ -2143,6 +2144,7 @@ public sealed partial class MainWindow : Window
             // gray background ring (so the remaining part is visible, as in the mockup)
             TimerTrack.Stroke = BrushOf(Windows.UI.Color.FromArgb(0x40, _theme.Hint.R, _theme.Hint.G, _theme.Hint.B));
             ProgressLine.Width = 0;
+            StopFlow();
             return;
         }
         ProgressLine.Background = BrushOf(state.RunState switch
@@ -2158,18 +2160,62 @@ public sealed partial class MainWindow : Window
             && (state.IsIndeterminate || state.Stage == "download"))
         {
             // if the fraction is unknown (preparing/finishing), a quarter-length segment flows left to right (same as the Python version)
-            var piece = track / 4;
-            var phase = now.ToUnixTimeMilliseconds() % 1600 / 1600.0;
-            var x = (phase * (track + piece)) - piece;
-            var left = Math.Max(0, x);
-            ProgressLine.Margin = new Thickness(ProgressTrackLeft() + left, 0, 0, 3);
-            ProgressLine.Width = Math.Max(1, Math.Min(track, x + piece) - left);
+            ProgressLine.Width = 0;
+            StartFlow(ProgressLine.Background, ProgressTrackLeft(), track);
             return;
         }
 
+        StopFlow();
         ProgressLine.Margin = new Thickness(ProgressTrackLeft(), 0, 0, 3);
         // progress is based on the amount actually transferred
         ProgressLine.Width = fraction is { } f ? Math.Max(1, track * f) : 0;
+    }
+
+    private const double FlowSeconds = 1.6;   // one pass of the flowing piece across the track
+    private double _flowWidth = -1;   // track width the running animation was built for; -1 = stopped
+
+    /// <summary>
+    /// The flowing bar runs on the compositor — it used to be moved from the 250ms tick, only 4 frames a second, so it stuttered.
+    /// Called every tick: only the color and position are refreshed; the animation restarts only when the track width changes.
+    /// </summary>
+    private void StartFlow(Brush brush, double left, double track)
+    {
+        FlowPiece.Background = brush;
+        FlowTrack.Margin = new Thickness(left, 0, 0, 3);
+        FlowTrack.Visibility = Visibility.Visible;
+        if (Math.Abs(track - _flowWidth) < 0.5)
+        {
+            return;
+        }
+
+        _flowWidth = track;
+        var piece = track / 4;
+        FlowTrack.Width = track;
+        FlowTrack.Clip = new RectangleGeometry { Rect = new Windows.Foundation.Rect(0, 0, track, 2) };   // the piece slides in and out at the ends
+        FlowPiece.Width = piece;
+
+        Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.SetIsTranslationEnabled(FlowPiece, true);
+        var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(FlowPiece);
+        var compositor = visual.Compositor;
+        var linear = compositor.CreateLinearEasingFunction();
+        var slide = compositor.CreateScalarKeyFrameAnimation();
+        slide.InsertKeyFrame(0f, (float)-piece, linear);
+        slide.InsertKeyFrame(1f, (float)track, linear);
+        slide.Duration = TimeSpan.FromSeconds(FlowSeconds);
+        slide.IterationBehavior = Microsoft.UI.Composition.AnimationIterationBehavior.Forever;
+        visual.StartAnimation("Translation.X", slide);
+    }
+
+    private void StopFlow()
+    {
+        if (_flowWidth < 0)
+        {
+            return;
+        }
+
+        _flowWidth = -1;
+        FlowTrack.Visibility = Visibility.Collapsed;
+        try { Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(FlowPiece).StopAnimation("Translation.X"); } catch (ArgumentException) { }
     }
 
     /// <summary>Prefix text. Differs by kind, and its length varies by language and progress, so it's included when truncating the name.</summary>
