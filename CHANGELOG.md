@@ -1,5 +1,32 @@
 # Changelog
 
+## Unreleased
+
+### File search
+- The results list is rebuilt on the system list control: Explorer-style column headers (name · date modified · size)
+  that sort when clicked, the shell's own file icons, long names and paths shortened in the middle (the extension and the
+  last folders stay), a fixed width, and Start-menu acrylic that stays on. Past about a dozen rows it scrolls.
+- Default order is Everything's own — by name, folders first. Newest-first used to fill the list with logs Windows rewrites
+  every minute. The order chosen in the header is remembered.
+- Right-click a result: open · open file location · copy path · copy name · open in Everything.
+- With nothing typed, the list shows recent files: Windows' "recently opened" list, or files changed this week when that
+  list is turned off.
+- Nothing is selected until <kbd>↓</kbd>; <kbd>Enter</kbd> opens the top result; <kbd>Esc</kbd> — or a second click on the
+  empty pill — closes the list.
+- One clickable line when there's nothing to list: "No results — search in Everything", "Everything isn't running — start it"
+  (starts it in the background and searches again; opens the download page if it isn't installed).
+- Hidden folders are a list in settings: full paths, folder names or `*` patterns, one per line. The default hides only
+  Windows, restore/upgrade folders, Temp and caches. They're filtered by the bar rather than in the Everything query —
+  32 path exclusions made each search take ~820 ms instead of ~60.
+- How many results to show is a setting (3–50, default 8).
+
+### Fixes
+- The results list could stay open after clicking elsewhere (once the list itself had been clicked). Typing now ends as soon
+  as another app's window comes to the front.
+- With the Start menu open, a click on the pill closes it first — it used to cover the results list.
+- The Windows-notification card that grows out of the pill is off by default (new setting) and no longer runs off the screen
+  when the pill sits near its edge.
+
 ## 0.1.0 — first public build (2026-10-03)
 
 ### The bar
