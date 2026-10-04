@@ -30,7 +30,7 @@
 - 用户需求原文档：`C:\Users\Kasumi\Desktop\新建 Microsoft Word 文档.docx`（内容已整理进 TODO.md，另有 2 张截图未看，需要时从 `word/media/` 提取）。
 
 ## 基线
-- 原始源码：构建 0 警告 0 错误，测试 783 个。**截至 10-04（1.1/1.2/1.3 下载三项完成后）：构建 0 警告 0 错误，测试 853 个全过；界面文案 112 条。**
+- 原始源码：构建 0 警告 0 错误，测试 783 个。**截至 10-04（下载 1.1/1.3 完成后）：构建 0 警告 0 错误，测试 852 个全过；界面文案 112 条。**
 - git：`07041cf` = 原始源码；`10d87c9`/`86c50fc`/`985850d` 只改了 CLAUDE.md/TODO.md（**这些不要进 PR**）；之后每块功能一个提交。
 - 已完成（10-04）：4.6 消息卡片默认关闭+开关；4.5/3.4 文件搜索整套重做（见 TODO 4.5 注记）；开始菜单遮挡列表；2.2 启动失败报错复制；4.4 浏览器媒体开关 + 媒体选择规则重写（`9d736c1`）。2.1 不是 bug（用户没装命令行版）。
 
@@ -66,7 +66,7 @@ Start-Process "src\IsleBar.App\bin\Debug\net8.0-windows10.0.26100.0\IsleBar.App.
 ### 各功能对应文件
 | 功能 | 文件 |
 |---|---|
-| 下载 | `App/Media/DownloadWatcher.cs`（每秒扫"下载"文件夹里的 .crdownload/.part）→ `Core/Island/DownloadTracker.cs`（速度、暂停、多个合成一条 +N）；总大小 `App/Media/BrowserDownloadHistory.cs`（immutable 读 Edge/Chrome History 的 downloads 表）；百度网盘尚未支持（4.2a） |
+| 下载 | `App/Media/DownloadWatcher.cs`（每秒扫"下载"文件夹里的 .crdownload/.part）→ `Core/Island/DownloadTracker.cs`（速度、暂停、多个合成一条 +N）；**拿不到总大小**（1.2 做过又撤销，见 TODO）；百度网盘尚未支持（4.2a） |
 | 音乐 | `App/Media/MediaWatcher.cs`（Windows 媒体控制 SMTC；浏览器默认排除，设置 `BrowserMedia` 可开，`Core/Island/MediaSources.cs`；进度来自 app 上报的 Timeline，**网易云不报**（实测 00:00/00:00）。选择规则（10-04 用户定）：在播的取「最后开始」的，都不播显示最后显示的；换内容需播 0.5 秒；切换中最多保位 8 秒；窗口在前台时换标题＝用户选择，后台换＝自动连播→临时显示 4 秒。规则说明在类注释里。Edge 全浏览器只有一个 SMTC 会话，切视频时会先报别的标签页的旧标题） |
 | Claude/Codex 启动 | `MainWindow.Launch()`；路径查找 `Core/Launch/ClaudeExecutable.cs`、`ClaudeProfile.cs`、`CodexProfile.cs`、`NpmShim.cs`、参数 `ClaudeArguments.cs` |
 | Claude/Codex 图标 | `App/Interop/ClaudeGlyph.cs`（从本机 claude.exe 图标里抠火花）、`Core/Ui/CodexMark.cs`（从 VS Code 的 Codex 扩展里找 SVG）；都找不到就退回字体图标（就是"聊天图标"） |
