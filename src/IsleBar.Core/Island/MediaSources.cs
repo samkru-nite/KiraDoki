@@ -17,12 +17,34 @@ public static class MediaSources
     /// <summary>Whether the playback comes from a browser.</summary>
     public static bool IsBrowser(string? appId)
     {
-        if (string.IsNullOrWhiteSpace(appId))
+        if (AppName(appId) is not { } name)
         {
             return false;
         }
 
-        // accepts all of "C:\...\chrome.exe" · "chrome.exe" · "Chrome" · "Microsoft.MicrosoftEdge_8wekyb3d8bbwe!MicrosoftEdge"
+        // short names (arc, edge) only on exact match — so unrelated apps like "archive.exe" are not mistaken for browsers
+        return name.Contains("microsoftedge", StringComparison.Ordinal)
+               || BrowserNames.Any(b => name == b || (b.Length >= 5 && name.StartsWith(b, StringComparison.Ordinal)));
+    }
+
+    /// <summary>
+    /// Whether the player <paramref name="appId"/> is the program <paramref name="processName"/> (e.g. the app in front):
+    /// <c>MSEdge</c> ↔ <c>msedge</c>, <c>cloudmusic.exe</c> ↔ <c>cloudmusic</c>, <c>SpotifyAB.SpotifyMusic_…!Spotify</c> ↔ <c>Spotify</c>.
+    /// </summary>
+    public static bool IsApp(string? appId, string? processName)
+        => AppName(appId) is { } app && AppName(processName) is { } process && app == process;
+
+    /// <summary>
+    /// The program's short name, lower case — accepts all of "C:\...\chrome.exe" · "chrome.exe" · "Chrome" ·
+    /// "Microsoft.MicrosoftEdge_8wekyb3d8bbwe!MicrosoftEdge". Null if empty.
+    /// </summary>
+    private static string? AppName(string? appId)
+    {
+        if (string.IsNullOrWhiteSpace(appId))
+        {
+            return null;
+        }
+
         var name = appId.Trim();
         var cut = name.LastIndexOfAny(['\\', '/', '!']);
         if (cut >= 0)
@@ -35,9 +57,6 @@ public static class MediaSources
             name = name[..^4];
         }
 
-        name = name.ToLowerInvariant();
-        // short names (arc, edge) only on exact match — so unrelated apps like "archive.exe" are not mistaken for browsers
-        return name.Contains("microsoftedge", StringComparison.Ordinal)
-               || BrowserNames.Any(b => name == b || (b.Length >= 5 && name.StartsWith(b, StringComparison.Ordinal)));
+        return name.Length == 0 ? null : name.ToLowerInvariant();
     }
 }

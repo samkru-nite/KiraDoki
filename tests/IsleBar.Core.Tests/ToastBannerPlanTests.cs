@@ -80,4 +80,15 @@ public sealed class ToastBannerPlanTests
         Assert.True(SettingsCodec.FromJson(raw).ToastCard);
         Assert.True(new IsleBarSettings { ToastCard = true }.Clone().ToastCard);
     }
+
+    [Fact]
+    public void Browser_media_is_off_by_default_and_saved()
+    {
+        Assert.False(new IsleBarSettings().BrowserMedia);
+        var raw = new System.Text.Json.Nodes.JsonObject();
+        SettingsCodec.Apply(new IsleBarSettings { BrowserMedia = true }, raw);
+        Assert.True(raw["browser_media"]!.GetValue<bool>());
+        Assert.True(SettingsCodec.FromJson(raw).BrowserMedia);
+        Assert.True(new IsleBarSettings { BrowserMedia = true }.Clone().BrowserMedia);
+    }
 }

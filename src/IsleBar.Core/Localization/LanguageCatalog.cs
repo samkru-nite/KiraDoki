@@ -107,6 +107,7 @@ public static class LanguageCatalog
             NotifyToasts = "Windows notifications (reads every notification)",
             HideToastBanners = "Show Windows notifications only on the bar (hide Windows pop-ups)",
             ToastCard = "Pop up a message card above the bar",
+            BrowserMedia = "Show media playing in browsers (videos)",
 
             CrashReports = "Send crash reports (the error, app and Windows version, basic device info — no files, titles or questions)",
             CheckUpdates = "Check for updates once a day",
@@ -212,6 +213,7 @@ public static class LanguageCatalog
             NotifyToasts = "Windows 알림 끌어오기(모든 알림 내용을 읽어요)",
             HideToastBanners = "Windows 알림은 바에서만 보기(Windows 팝업 숨김)",
             ToastCard = "바 위에 메시지 카드 띄우기",
+            BrowserMedia = "브라우저에서 재생 중인 미디어도 표시(동영상)",
 
             CrashReports = "오류 보고 보내기 (오류 내용·앱/Windows 버전·기본 기기 정보만 — 파일·창 제목·질문은 보내지 않음)",
             CheckUpdates = "하루에 한 번 업데이트 확인",
@@ -318,6 +320,7 @@ public static class LanguageCatalog
             NotifyToasts = "Windows の通知(すべての通知内容を読みます)",
             HideToastBanners = "Windows の通知をバーだけに表示(Windows のポップアップを隠す)",
             ToastCard = "バーの上にメッセージカードを表示",
+            BrowserMedia = "ブラウザーで再生中のメディアも表示(動画)",
 
             CrashReports = "クラッシュレポートを送信(エラー・アプリと Windows のバージョン・基本的な機器情報のみ — ファイル・タイトル・質問は送りません)",
             CheckUpdates = "1日1回アップデートを確認",
@@ -424,6 +427,7 @@ public static class LanguageCatalog
             NotifyToasts = "Windows 通知(会读取所有通知内容)",
             HideToastBanners = "Windows 通知只在栏中显示(隐藏 Windows 弹窗)",
             ToastCard = "在栏上方弹出消息卡片",
+            BrowserMedia = "也显示浏览器里播放的媒体(视频)",
 
             CrashReports = "发送崩溃报告(仅错误、应用与 Windows 版本及基本设备信息 — 不含文件、标题或提问)",
             CheckUpdates = "每天检查一次更新",
@@ -530,6 +534,7 @@ public static class LanguageCatalog
             NotifyToasts = "Windows 通知(會讀取所有通知內容)",
             HideToastBanners = "Windows 通知只在列中顯示(隱藏 Windows 彈出視窗)",
             ToastCard = "在列上方彈出訊息卡片",
+            BrowserMedia = "也顯示瀏覽器中播放的媒體(影片)",
 
             CrashReports = "傳送當機報告(僅錯誤、應用程式與 Windows 版本及基本裝置資訊 — 不含檔案、標題或提問)",
             CheckUpdates = "每天檢查一次更新",
@@ -636,6 +641,7 @@ public static class LanguageCatalog
             NotifyToasts = "Notifications Windows (lit toutes les notifications)",
             HideToastBanners = "Notifications Windows uniquement sur la barre (masquer les fenêtres Windows)",
             ToastCard = "Afficher une carte de message au-dessus de la barre",
+            BrowserMedia = "Afficher aussi les médias lus dans le navigateur (vidéos)",
 
             CrashReports = "Envoyer les rapports de plantage (erreur, versions de l’app et de Windows, infos de base sur l’appareil — ni fichiers, ni titres, ni questions)",
             CheckUpdates = "Rechercher les mises à jour une fois par jour",
@@ -742,6 +748,7 @@ public static class LanguageCatalog
             NotifyToasts = "Windows-Benachrichtigungen (liest alle Benachrichtigungen)",
             HideToastBanners = "Windows-Benachrichtigungen nur in der Leiste (Windows-Pop-ups ausblenden)",
             ToastCard = "Nachrichtenkarte über der Leiste anzeigen",
+            BrowserMedia = "Auch Medien aus dem Browser anzeigen (Videos)",
 
             CrashReports = "Absturzberichte senden (Fehler, App- und Windows-Version, Basisdaten zum Gerät – keine Dateien, Titel oder Fragen)",
             CheckUpdates = "Einmal täglich nach Updates suchen",
@@ -848,6 +855,7 @@ public static class LanguageCatalog
             NotifyToasts = "Notifiche di Windows (legge tutte le notifiche)",
             HideToastBanners = "Notifiche di Windows solo sulla barra (nascondi i popup di Windows)",
             ToastCard = "Mostra una scheda messaggio sopra la barra",
+            BrowserMedia = "Mostra anche i contenuti riprodotti nel browser (video)",
 
             CrashReports = "Invia segnalazioni di arresto anomalo (errore, versione app e Windows, dati base del dispositivo — niente file, titoli o domande)",
             CheckUpdates = "Controlla gli aggiornamenti una volta al giorno",
@@ -954,6 +962,7 @@ public static class LanguageCatalog
             NotifyToasts = "Notificações do Windows (lê todas as notificações)",
             HideToastBanners = "Notificações do Windows só na barra (ocultar pop-ups do Windows)",
             ToastCard = "Mostrar um cartão de mensagem acima da barra",
+            BrowserMedia = "Mostrar também mídia tocando no navegador (vídeos)",
 
             CrashReports = "Enviar relatórios de falha (erro, versão do app e do Windows, dados básicos do aparelho — sem arquivos, títulos ou perguntas)",
             CheckUpdates = "Procurar atualizações uma vez por dia",
@@ -1060,6 +1069,7 @@ public static class LanguageCatalog
             NotifyToasts = "Notificaciones de Windows (lee todas las notificaciones)",
             HideToastBanners = "Notificaciones de Windows solo en la barra (ocultar ventanas de Windows)",
             ToastCard = "Mostrar una tarjeta de mensaje sobre la barra",
+            BrowserMedia = "Mostrar también lo que se reproduce en el navegador (vídeos)",
 
             CrashReports = "Enviar informes de errores (error, versión de la app y de Windows, datos básicos del equipo — sin archivos, títulos ni preguntas)",
             CheckUpdates = "Buscar actualizaciones una vez al día",

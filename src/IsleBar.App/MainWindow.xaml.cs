@@ -110,7 +110,7 @@ public sealed partial class MainWindow : Window
         _history = new HistoryNavigator(_settings.History);
 
         _tracker = new SearchBoxTracker(_width, _height);
-        _media = new MediaWatcher();
+        _media = new MediaWatcher(() => _settings.BrowserMedia);
         _animator = new IslandAnimator([LeadSlot, IslandContent], IslandContent, GlowRing, PillBody);
         _fileSearch = new FileSearchWorker(OnSearchResult);
         _watchdog = new Watchdog(_taskbar, () => ThemeColors.FromSystem().Light, RequestExit,
@@ -797,9 +797,27 @@ public sealed partial class MainWindow : Window
             _history = new HistoryNavigator(_settings.History);
         }
 
-        var notice = IsleBar.Core.SystemWatch.SystemNotice.Make(_text.FormatLaunchFail(message), "\uE7BA", DateTimeOffset.UtcNow, urgent: true);
+        var text = _text.FormatLaunchFail(message);
+        var notice = IsleBar.Core.SystemWatch.SystemNotice.Make(text, "\uE7BA", DateTimeOffset.UtcNow, urgent: true);
         notice.State = "error";   // red, like other things that need fixing
         _activities.Write("islebar_launch", notice);
+
+        // The error also goes on the clipboard, so it can be pasted into a bug report (10-04) \u2014 long ones only scroll by on the pill.
+        // Copied 2 s later: the clipboard's "Copied \u00B7 \u2026" notice then shows once the error has been seen, and the error comes back
+        // after it. Copied at once, the two notices arrived together and the pill flipped between them (user 10-04).
+        _ = Task.Delay(TimeSpan.FromSeconds(2)).ContinueWith(_ => _ui.TryEnqueue(() =>
+        {
+            try
+            {
+                var data = new Windows.ApplicationModel.DataTransfer.DataPackage();
+                data.SetText(text);
+                Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(data);
+            }
+            catch (System.Runtime.InteropServices.COMException)
+            {
+                // the clipboard is busy (another app holds it) \u2014 the error is still on the pill and in the log
+            }
+        }), TaskScheduler.Default);
     }
 
     /// <returns>Whether the agent was started (false: the question is kept for another try).</returns>

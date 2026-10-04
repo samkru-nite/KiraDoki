@@ -20,6 +20,16 @@
   32 path exclusions made each search take ~820 ms instead of ~60.
 - How many results to show is a setting (3–50, default 8).
 
+### Other
+- When Claude Code or Codex can't be started, the error is also copied to the clipboard, two seconds later (so the "Copied" notice follows the error instead of flipping with it) — long
+  errors only scroll past on the pill.
+- New setting (off by default): also show media playing in a browser — YouTube, Bilibili and other videos — on the music isle.
+  The isle shows the player you started last while it plays, and the one shown last (paused) when nothing plays — so music comes
+  back once the video stops. Switching videos no longer flashes older videos' titles or lets background music cut in while the
+  next video loads; a different track or video takes over after half a second of playing. Picking another song or video in a
+  player's window counts as starting it; a player in the background moving on by itself (next track, next episode) doesn't take
+  the isle — its new item peeks in for four seconds instead.
+
 ### Fixes
 - The results list could stay open after clicking elsewhere (once the list itself had been clicked). Typing now ends as soon
   as another app's window comes to the front.

@@ -350,6 +350,7 @@ internal sealed class SettingsWindow : Window
         Section(_text.StyleSection);
         ToggleRow(_text.StyleGlass, () => _settings.StyleGlass, v => _settings.StyleGlass = v);
         ToggleRow(_text.AudioBars, () => _settings.AudioBars, v => _settings.AudioBars = v);
+        ToggleRow(_text.BrowserMedia, () => _settings.BrowserMedia, v => _settings.BrowserMedia = v);   // 10-04
         if (File.Exists(Path.Combine(AppContext.BaseDirectory, "native", "IsleBarTap.dll")))   // left out of a -NoNativeMode Store package (10-03)
         {
             ToggleRow(_text.NativeSearchBox, () => _settings.NativeSearchBox, v => _settings.NativeSearchBox = v);
