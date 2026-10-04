@@ -12,9 +12,10 @@
   → 同上 + `IslandSelector` 只显示一个。可合并成"N 个下载 · 合计"一条 ｜ 中 ｜ Sonnet
 
 ## 2. Claude / ChatGPT(Codex) 适配
-- [ ] 2.1 Claude 和 Codex 启动失败
+- [x] 2.1 Claude 和 Codex 启动失败 — **不是 bug**（10-04）：用户没装命令行版（只有桌面 App / ChatGPT 桌面端）。可选改进：未安装时报错改成「没找到 Claude Code 命令行版 — 点此查看安装方法」（适合提 PR）
+  （10-04 报错原文：start process 'C:\Users\Kasumi\.local\bin\claude.exe' … 系统找不到指定的文件。即没装命令行版；该路径正是官方安装脚本的默认位置）
   → MW `Launch()`；路径查找 `IsleBar.Core/Launch/ClaudeExecutable.cs`、`CodexProfile.cs`、`NpmShim.cs`。需要先拿到实际报错文字（日志在 `%LOCALAPPDATA%\IsleBar\logs`）才能定位 ｜ 未知 ｜ 先 Sonnet 看报错，修不好换 Opus
-- [ ] 2.2 启动失败报错自动复制到剪贴板
+- [x] 2.2 启动失败报错自动复制到剪贴板（10-04 完成，用户已测：`ShowLaunchFailure()` 复制「启动失败: …」全文，报错立即显示，2 秒后再复制（原有「已复制」播报约 1.5 秒后回到红色报错））
   → MW `ShowLaunchFailure()` 里加一句复制 ｜ 易 ｜ Sonnet
 - [ ] 2.3 中文输入法有时只输入拼音字母（微信输入法）
   → MW `BeginTyping()`（打字时窗口脱离任务栏、`ImeFont.Apply`）、`OnEntryKeyDown()`（Enter/Tab 等在输入法组字时可能被截走）。需要实测复现 ｜ 难（系统接口） ｜ Opus
@@ -27,7 +28,7 @@
 - [ ] 3.2 Codex 启动失败报错字体
 - [ ] 3.3 音乐歌名和作者名不居中
   → 3.1–3.3 都走 MW `ShowIslandText()` 末尾的 `Canvas.SetTop(...)`；3.1/3.2 报错文字很长会滚动（`StartMarquee/RunMarquee`） ｜ 易-中 ｜ Sonnet
-- [ ] 3.4 "Everything 未运行"提示不居中
+- [x] 3.4 "Everything 未运行"提示不居中（10-04 随 4.5 第 2 步完成）
   → `IsleBar.App/Search/ResultsWindow.cs` 的 `Show()`，提示 TextBlock 没设居中 ｜ 易 ｜ Sonnet
 
 ## 4. 其他
@@ -39,9 +40,9 @@
   → `IsleBar.App/SystemWatch/ClipboardWatcher.cs` + `IsleBar.Core/SystemWatch/ClipboardRules.cs`。需用户说明想看到什么 ｜ 易-中 ｜ Sonnet
 - [ ] 4.3 网易云/QQ 音乐没进度条
   → `IsleBar.App/Media/MediaWatcher.cs` `ReadAsync()`：进度来自 app 向 Windows 上报的时间线，网易云不报就没有。可做"按开始播放时间自己估算"的兜底（拖动进度会不准） ｜ 中 ｜ Sonnet
-- [ ] 4.4 Edge/B 站视频不显示媒体信息
+- [x] 4.4 Edge/B 站视频不显示媒体信息（10-04 完成，用户已简单测过；后台连播 4 秒提示尚未实测：设置「外观」里新开关「也显示浏览器里播放的媒体」`IsleBarSettings.BrowserMedia`，默认关；开启后正在播放的音乐软件仍优先于浏览器，逻辑在 `MediaWatcher.PickMusicSession()`）。**bug（用户 10-04）**：B 站同一标签页先播 A，回首页开 B，再切同合集的 C，胶囊会 A→B→C 跳一遍；后台开网易云也类似。日志证实：Edge 只有一个会话，切视频时会先报约 1 秒旧标题（更早的 A、上一个 B）再报新标题。10-04 讨论后重写 `MediaWatcher`（用户的规则）：在播的显示「最后开始播放的」，都不播显示最后显示过的（暂停样式，30 秒）；换成另一个媒体需连续播放 0.5 秒（所有来源统一）；暂停/继续立即生效；播放器停下时标题与胶囊上的不同＝正在切换，最多 8 秒内仍算它在播。继续播放中换标题：该软件窗口在最前＝你的选择（算新开始）；在后台＝自动连播，不抢胶囊，若不是当前显示的播放器则胶囊临时显示它的新内容 4 秒（用户 10-04 选方案 C + 提示）。诊断日志已删（需要时参考提交历史里的 `LogAsync`）
   → **作者故意排除了浏览器**（`IsleBar.Core/Island/MediaSources.cs` + `MediaWatcher.PickMusicSession()`）。去掉过滤或加开关即可 ｜ 易 ｜ Sonnet
-- [ ] 4.5 Everything 搜索界面丑
+- [x] 4.5 Everything 搜索界面丑（10-04 用户确认满意）
   → `IsleBar.App/Search/ResultsWindow.cs` `Row()`：只有文件夹/文档两种字体图标。可改用系统真实文件图标、调排版 ｜ 中 ｜ Sonnet
   （用户截图 10-04：所有结果同一个文档图标；结果里大量 AppData/ProgramData 系统缓存文件，排序没价值）
   [~] 第 1 步已做（10-04，讨论后改定）：尽量贴近 Everything 自己的窗口——默认按名称排序（文件夹在前）；只隐藏 `C:\Windows`（AppData 不能藏：软件装在 AppData\Local\Programs，开始菜单快捷方式也在 AppData；回收站按用户要求不藏）；搜索词含 \ 或 / 时不过滤。设置里可改显示条数（3–50，默认 8，列表可滚动）；结果列表底部有排序按钮（名称/修改时间/大小）+「在 Everything 中打开」按钮。逻辑 `IsleBar.Core/Search/FileSearchQuery.cs`（有测试），设置项 `FileResults`/`FileSort`。

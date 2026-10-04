@@ -23,16 +23,16 @@
 - 新终端若找不到 dotnet/git，先刷新 PATH：`$env:Path=[Environment]::GetEnvironmentVariable("Path","Machine")+";"+[Environment]::GetEnvironmentVariable("Path","User")`
 - Smart App Control 已关闭。**`run_dev.ps1` 在本机不可用**（要求 `%USERPROFILE%\.dotnet\dotnet.exe`，不存在）；直接运行构建出的 exe 即可（见下方命令）。
 - 构建前必须先关掉正在运行的开发版（它锁住 dll，否则 MSB3027）；只关本项目路径下的进程，不动用户装的正式版。
-- git 没有配置用户名：提交时用 `git -c user.name="Kasumi" -c user.email="188979868+samkru-nite@users.noreply.github.com" commit ...`。没有 remote（源码是 zip 下载的，不是 clone）。
+- git 没有配置用户名：提交时用 `git -c user.name="Kasumi" -c user.email="188979868+samkru-nite@users.noreply.github.com" commit ...`。没有 remote（源码是 zip 下载的，不是 clone）。**提交说明里有双引号时 PowerShell 5.1 会把参数拆坏**：把说明写进 scratchpad 的文本文件，用 `commit -F 文件`。
 - 日志：`%LOCALAPPDATA%\IsleBar\logs\islebar.log`（文件搜索 >30ms 会记 "file search: ..."）。
 - 用 Python 脚本批量改文件时注意：中文路径/反斜杠在 Python 字符串里会出转义错误，失败时改用 Edit 工具；C# 普通字符串里的一个反斜杠要写成两个（`"C:\\Recovery"`），或用 `@"..."`。
 - 项目根目录：`C:\Users\Kasumi\Desktop\islebar-0.1.0 (2)\islebar-0.1.0`（比压缩包外层多一层）。
 - 用户需求原文档：`C:\Users\Kasumi\Desktop\新建 Microsoft Word 文档.docx`（内容已整理进 TODO.md，另有 2 张截图未看，需要时从 `word/media/` 提取）。
 
 ## 基线
-- 原始源码：构建 0 警告 0 错误，测试 783 个。**截至 10-04（`eb53570`）：构建 0 警告 0 错误，测试 836 个全过。**
+- 原始源码：构建 0 警告 0 错误，测试 783 个。**截至 10-04（`9d736c1`）：构建 0 警告 0 错误，测试 845 个全过。**
 - git：`07041cf` = 原始源码；`10d87c9`/`86c50fc`/`985850d` 只改了 CLAUDE.md/TODO.md（**这些不要进 PR**）；之后每块功能一个提交。
-- 已完成（10-04）：4.6 消息卡片默认关闭+开关；4.5/3.4 文件搜索整套重做（见 TODO 4.5 注记）；开始菜单遮挡列表。
+- 已完成（10-04）：4.6 消息卡片默认关闭+开关；4.5/3.4 文件搜索整套重做（见 TODO 4.5 注记）；开始菜单遮挡列表；2.2 启动失败报错复制；4.4 浏览器媒体开关 + 媒体选择规则重写（`9d736c1`）。2.1 不是 bug（用户没装命令行版）。
 
 ## 常用命令（在项目根目录）
 ```
@@ -67,7 +67,7 @@ Start-Process "src\IsleBar.App\bin\Debug\net8.0-windows10.0.26100.0\IsleBar.App.
 | 功能 | 文件 |
 |---|---|
 | 下载 | `App/Media/DownloadWatcher.cs`（只扫"下载"文件夹里的 .crdownload/.part，每秒一次，**拿不到总大小**） |
-| 音乐 | `App/Media/MediaWatcher.cs`（Windows 媒体控制 SMTC；**故意排除浏览器** `Core/Island/MediaSources.cs`；进度来自 app 上报的 Timeline，app 不报就没进度条） |
+| 音乐 | `App/Media/MediaWatcher.cs`（Windows 媒体控制 SMTC；浏览器默认排除，设置 `BrowserMedia` 可开，`Core/Island/MediaSources.cs`；进度来自 app 上报的 Timeline，**网易云不报**（实测 00:00/00:00）。选择规则（10-04 用户定）：在播的取「最后开始」的，都不播显示最后显示的；换内容需播 0.5 秒；切换中最多保位 8 秒；窗口在前台时换标题＝用户选择，后台换＝自动连播→临时显示 4 秒。规则说明在类注释里。Edge 全浏览器只有一个 SMTC 会话，切视频时会先报别的标签页的旧标题） |
 | Claude/Codex 启动 | `MainWindow.Launch()`；路径查找 `Core/Launch/ClaudeExecutable.cs`、`ClaudeProfile.cs`、`CodexProfile.cs`、`NpmShim.cs`、参数 `ClaudeArguments.cs` |
 | Claude/Codex 图标 | `App/Interop/ClaudeGlyph.cs`（从本机 claude.exe 图标里抠火花）、`Core/Ui/CodexMark.cs`（从 VS Code 的 Codex 扩展里找 SVG）；都找不到就退回字体图标（就是"聊天图标"） |
 | 文件搜索 | `App/Search/EverythingSdk.cs`（分页取回+本地过滤隐藏目录）、`FileSearchWorker.cs`（空输入=最近文件）、`ResultsWindow.cs`（ListView、表头排序、右键菜单、间距常量）、`ShellIcons.cs`（后台取系统图标）、`RecentFiles.cs`（Windows 最近打开）；Core：`Search/FileSearchQuery.cs`、`FileExcludes.cs`（隐藏规则）、`FileListText.cs`（大小格式、中间省略）。焦点/关闭：`Interop/ForegroundEvents.cs` + MainWindow `CheckForeground()`；开始菜单 `Interop/StartMenu.cs`；常亮亚克力 `Interop/ActiveAcrylic.cs` |
