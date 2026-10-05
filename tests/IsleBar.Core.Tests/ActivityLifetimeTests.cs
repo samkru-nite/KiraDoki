@@ -1,4 +1,4 @@
-using IsleBar.Core.Island;
+﻿using IsleBar.Core.Island;
 using Xunit;
 
 namespace IsleBar.Core.Tests;
@@ -26,18 +26,21 @@ public class ActivityLifetimeTests
     }
 
     [Fact]
-    public void Timer_disappears_10_seconds_after_ending()
+    public void A_timer_that_ended_stays_until_closed()
     {
+        // time's up is an inform card: closed by hand (user 10-05), with the same 12-hour backstop as a finished agent
         var timer = TimerParser.ToActivity(TimeSpan.FromMinutes(1), Now.AddMinutes(-1));
-        Assert.True(ActivityStore.IsAlive(timer, Now.AddMinutes(-1), Now.AddSeconds(9)));
-        Assert.False(ActivityStore.IsAlive(timer, Now.AddMinutes(-1), Now.AddSeconds(11)));
+        Assert.True(ActivityStore.IsAlive(timer, Now.AddMinutes(-1), Now.AddSeconds(11)));
+        Assert.True(ActivityStore.IsAlive(timer, Now.AddMinutes(-1), Now.AddHours(11)));
+        Assert.False(ActivityStore.IsAlive(timer, Now.AddMinutes(-1), Now.AddHours(12).AddMinutes(1)));
     }
 
     [Theory]
     [InlineData("done", 5, true)]
     [InlineData("done", 7, false)]
     [InlineData("error", 11, true)]
-    [InlineData("error", 13, false)]
+    [InlineData("error", 13, true)]               // a failed transfer is an inform card now: stays until closed (10-05)
+    [InlineData("error", (12 * 3600) + 60, false)]   // … up to the 12-hour backstop
     [InlineData("run", 110, true)]
     [InlineData("run", 130, false)]
     [InlineData("run", -30, true)]   // clock skew stamped it in the future

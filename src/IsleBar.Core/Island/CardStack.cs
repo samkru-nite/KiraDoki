@@ -2,17 +2,18 @@ namespace IsleBar.Core.Island;
 
 /// <summary>
 /// The four card types of the new design (TODO 7.2). <b>Value order is the order among pinned cards</b> — a smaller value sits
-/// higher. Pinned = "someone is waiting for you"; things you started yourself never push in front.
+/// higher. Pinned = "someone is waiting for you"; things you started yourself never push in front. When a status card ends it
+/// becomes a reminder: an inform card if it matters (must be closed by hand), else a temporary one (gone in a few seconds).
 /// </summary>
 public enum CardType
 {
-    /// <summary>Pinned, gone by itself in a few seconds: copied, Bluetooth, battery, an error, download finished, timer finished.</summary>
+    /// <summary>Pinned, gone by itself in a few seconds — fine to miss: copied, Bluetooth, network, battery, a download / copy finished.</summary>
     Temporary = 0,
 
-    /// <summary>Pinned until handled in the terminal / card: an agent asking for permission. Can't be closed by hand.</summary>
+    /// <summary>Pinned until handled in the terminal / card: an agent asking for permission. Can't be closed by hand (closing it wouldn't let the agent go on).</summary>
     Pending = 1,
 
-    /// <summary>Pinned until looked at (opened and put back) or closed: an agent finished.</summary>
+    /// <summary>Pinned until closed by hand (or looked at): an agent finished or failed, a timer reached zero.</summary>
     Inform = 2,
 
     /// <summary>Not pinned, waits behind the others: music, a running timer, a download in progress, an agent working.</summary>
@@ -25,27 +26,29 @@ public enum CardType
 public sealed record Card(string Key, CardType Type, bool Pinned, ActivityState State);
 
 /// <summary>
-/// The new design's card rules (TODO 7.2 / 7.3): every item is a card in one ordered stack; the big pill shows one of them.
+/// The new design's card rules (TODO 7.2 / 7.3, user 10-05): every item is a card in one ordered stack; the big pill shows one.
 /// <list type="bullet">
 /// <item>Order: pinned cards first — temporary, then pending, then inform; newest first within a type. Then the status cards in the
-/// order they arrived (oldest first: a new one waits at the back). A card fixed with "keep showing" goes first among the status cards.</item>
-/// <item>The pill shows the top card — or, while peeking, the card scrolled to. Scrolling never deletes anything. The peek holds while
-/// the mouse is on the pill and ends <see cref="PeekLinger"/> after it leaves, or when a new pinned card arrives (it jumps to the front).</item>
+/// order they arrived (oldest first: a new one waits at the back). A card that changes type counts as newly arrived.</item>
+/// <item>Scrolling chooses the card to show, wrapping round at both ends, and the choice stays — it never deletes anything.</item>
+/// <item>While the mouse is on the pill (= still scrolling) and for <see cref="HoldAfterLeave"/> after it leaves, the shown card
+/// doesn't change, even when a pinned card arrives. After that: a pinned card there → the top one shows; none → the chosen card
+/// (the top card if nothing was chosen or it ended).</item>
 /// <item>"Close" on a status card hides it until it ends (its key drops out of the list).</item>
 /// </list>
-/// Deterministic: the same items and the same actions always give the same stack (user: "the computer must not be a black box").
+/// Deterministic: the same items and the same actions always give the same result (user: "the computer must not be a black box").
 /// </summary>
 public sealed class CardStack
 {
-    /// <summary>How long the scrolled-to card stays after the mouse leaves the pill (user 10-05: about 3 s).</summary>
-    public static readonly TimeSpan PeekLinger = TimeSpan.FromSeconds(3);
+    /// <summary>How long the shown card is held after the mouse leaves the pill before a pinned card takes over (user 10-05: 3 s).</summary>
+    public static readonly TimeSpan HoldAfterLeave = TimeSpan.FromSeconds(3);
 
     private readonly Dictionary<string, (CardType Type, DateTimeOffset Since)> _arrived = new(StringComparer.Ordinal);
     private readonly HashSet<string> _hidden = new(StringComparer.Ordinal);
     private IReadOnlyList<ActivityState> _items = [];
     private IReadOnlySet<ActivityKind> _neverPin = new HashSet<ActivityKind>();
-    private string? _fixedKey;
-    private string? _peekKey;
+    private string? _chosenKey;
+    private string? _shownKey;
     private bool _hovering;
     private DateTimeOffset _leftAt = DateTimeOffset.MinValue;
 
@@ -58,21 +61,24 @@ public sealed class CardStack
     /// <summary>The card on the big pill, or null when there are none (only the ball shows).</summary>
     public Card? Shown => Cards.Count == 0 ? null : Cards[ShownIndex];
 
-    /// <summary>Whether the pill is showing a scrolled-to card rather than the top one.</summary>
-    public bool Peeking => _peekKey is not null;
+    /// <summary>The status card last scrolled to, if it is still there.</summary>
+    public string? ChosenKey => _chosenKey;
 
-    /// <summary>The key of the card fixed with "keep showing", if it is still there.</summary>
-    public string? FixedKey => _fixedKey;
-
-    /// <summary>The type of an item. Timers count as status until they reach zero, then as a temporary "time's up".</summary>
+    /// <summary>The type of an item. A timer is status until it reaches zero, then an inform "time's up".</summary>
     public static CardType TypeOf(ActivityState state, DateTimeOffset now) => state.Kind switch
     {
         ActivityKind.AgentPermission => CardType.Pending,
-        ActivityKind.AgentDone => CardType.Inform,
-        ActivityKind.Error or ActivityKind.Notice => CardType.Temporary,
-        ActivityKind.Transfer => state.RunState == ActivityRunState.Running ? CardType.Status : CardType.Temporary,
+        ActivityKind.AgentDone or ActivityKind.Error => CardType.Inform,
+        // an agent's own failure (usage limit, stopped on an error, couldn't be started) is inform; the system's notices are temporary
+        ActivityKind.Notice => state.RunState == ActivityRunState.Error && state.Agent is not null ? CardType.Inform : CardType.Temporary,
+        ActivityKind.Transfer => state.RunState switch
+        {
+            ActivityRunState.Running => CardType.Status,
+            ActivityRunState.Error => CardType.Inform,
+            _ => CardType.Temporary,
+        },
         ActivityKind.Timer => !state.IsPaused && !TimerParser.IsStopwatch(state) && TimerParser.Remaining(state, now) <= TimeSpan.Zero
-            ? CardType.Temporary
+            ? CardType.Inform
             : CardType.Status,
         _ => CardType.Status,   // music, agent working
     };
@@ -108,7 +114,7 @@ public sealed class CardStack
         Rebuild(now);
     }
 
-    /// <summary>Wheel / touchpad: <paramref name="steps"/> &gt; 0 = further down the stack, &lt; 0 = back up. Stops at both ends.</summary>
+    /// <summary>Wheel / touchpad: <paramref name="steps"/> &gt; 0 = further down the stack, &lt; 0 = back up. Wraps round at both ends.</summary>
     public void Scroll(int steps, DateTimeOffset now)
     {
         if (Cards.Count == 0 || steps == 0)
@@ -116,16 +122,22 @@ public sealed class CardStack
             return;
         }
 
-        var index = Math.Clamp(ShownIndex + steps, 0, Cards.Count - 1);
-        _peekKey = index == 0 ? null : Cards[index].Key;   // back at the top = not peeking any more
+        var index = (((ShownIndex + steps) % Cards.Count) + Cards.Count) % Cards.Count;
+        var card = Cards[index];
+        if (!card.Pinned)
+        {
+            _chosenKey = card.Key;   // a pinned card shows by itself anyway — the choice to come back to is the status card
+        }
+
+        _shownKey = card.Key;
         ShownIndex = index;
         if (!_hovering)
         {
-            _leftAt = now;   // scrolled without a hover notice (shouldn't happen) — still return to the top in time
+            _leftAt = now;   // scrolled without a hover notice (shouldn't happen) — still hold it for a moment
         }
     }
 
-    /// <summary>The mouse entered / left the pill. Leaving starts the <see cref="PeekLinger"/> countdown.</summary>
+    /// <summary>The mouse entered / left the pill. Leaving starts the <see cref="HoldAfterLeave"/> countdown.</summary>
     public void SetHover(bool hovering, DateTimeOffset now)
     {
         if (_hovering && !hovering)
@@ -134,27 +146,6 @@ public sealed class CardStack
         }
 
         _hovering = hovering;
-    }
-
-    /// <summary>Ends a peek at once (e.g. the cards were spread out or the ball was clicked).</summary>
-    public void ReturnToTop()
-    {
-        _peekKey = null;
-        ShownIndex = 0;
-    }
-
-    /// <summary>"Keep showing" from a card's menu: it goes first among the status cards until it ends or is unfixed.</summary>
-    public void Fix(string key, DateTimeOffset now)
-    {
-        _fixedKey = key;
-        _peekKey = null;
-        Rebuild(now);
-    }
-
-    public void Unfix(DateTimeOffset now)
-    {
-        _fixedKey = null;
-        Rebuild(now);
     }
 
     /// <summary>"Close" on a status card that can't be ended from here (music, a download, an agent working): hidden until it ends.</summary>
@@ -168,7 +159,6 @@ public sealed class CardStack
     {
         var cards = new List<(Card Card, DateTimeOffset Since, DateTimeOffset Updated)>();
         var present = new HashSet<string>(StringComparer.Ordinal);
-        var pinnedArrived = false;
         foreach (var state in _items)
         {
             var key = KeyOf(state);
@@ -185,7 +175,6 @@ public sealed class CardStack
             {
                 seen = (type, now);
                 _arrived[key] = seen;
-                pinnedArrived |= pinned;
             }
 
             if (!_hidden.Contains(key))
@@ -194,18 +183,13 @@ public sealed class CardStack
             }
         }
 
-        // forget what ended: a hidden card that comes back shows again, a fixed one is no longer fixed
+        // forget what ended: a hidden card that comes back shows again, a chosen one is no longer chosen
         foreach (var gone in _arrived.Keys.Where(k => !present.Contains(k)).ToList())
         {
             _arrived.Remove(gone);
         }
 
         _hidden.RemoveWhere(k => !present.Contains(k));
-        if (_fixedKey is not null && !present.Contains(_fixedKey))
-        {
-            _fixedKey = null;
-        }
-
         cards.Sort((a, b) =>
         {
             if (a.Card.Pinned != b.Card.Pinned)
@@ -225,29 +209,43 @@ public sealed class CardStack
                 return byNew != 0 ? byNew : string.CompareOrdinal(a.Card.Key, b.Card.Key);
             }
 
-            var aFixed = a.Card.Key == _fixedKey;
-            var bFixed = b.Card.Key == _fixedKey;
-            if (aFixed != bFixed)
-            {
-                return aFixed ? -1 : 1;
-            }
-
             var byArrival = a.Since.CompareTo(b.Since);   // oldest first: a new status card waits at the back
             return byArrival != 0 ? byArrival : string.CompareOrdinal(a.Card.Key, b.Card.Key);
         });
 
         var ordered = cards.Select(c => c.Card).ToList();
         Cards = ordered;
-
-        // the peek ends when: a new pinned card arrived, the mouse has been away long enough, or the card it shows is gone
-        var peekAt = _peekKey is null ? -1 : ordered.FindIndex(c => c.Key == _peekKey);
-        if (peekAt < 0 || pinnedArrived || (!_hovering && now - _leftAt >= PeekLinger))
+        if (_chosenKey is not null && ordered.FindIndex(c => c.Key == _chosenKey) < 0)
         {
-            _peekKey = null;
-            peekAt = 0;
+            _chosenKey = null;
         }
 
-        ShownIndex = peekAt;
+        ShownIndex = PickShown(ordered, now);
+        _shownKey = ordered.Count == 0 ? null : ordered[ShownIndex].Key;
+    }
+
+    private int PickShown(List<Card> cards, DateTimeOffset now)
+    {
+        if (cards.Count == 0)
+        {
+            return 0;
+        }
+
+        // still scrolling (mouse on the pill) or just left: keep what is shown, so nothing changes under the hand
+        var holding = _hovering || now - _leftAt < HoldAfterLeave;
+        var shown = _shownKey is null ? -1 : cards.FindIndex(c => c.Key == _shownKey);
+        if (holding && shown >= 0)
+        {
+            return shown;
+        }
+
+        if (cards[0].Pinned)
+        {
+            return 0;   // someone is waiting for you
+        }
+
+        var chosen = _chosenKey is null ? -1 : cards.FindIndex(c => c.Key == _chosenKey);
+        return chosen >= 0 ? chosen : 0;
     }
 }
 

@@ -781,6 +781,7 @@ public sealed partial class MainWindow : Window
         var text = _text.FormatLaunchFail(message);
         var notice = IsleBar.Core.SystemWatch.SystemNotice.Make(text, "\uE7BA", DateTimeOffset.UtcNow, urgent: true);
         notice.State = "error";   // red, like other things that need fixing
+        notice.Agent = _settings.Agent;   // an agent's failure → an inform card that stays until closed (user 10-05)
         _feed.Store.Write("islebar_launch", notice);
 
         // The error also goes on the clipboard, so it can be pasted into a bug report (10-04) \u2014 long ones only scroll by on the pill.

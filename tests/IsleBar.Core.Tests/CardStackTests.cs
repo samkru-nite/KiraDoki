@@ -33,31 +33,49 @@ public sealed class CardStackTests
     [Theory]
     [InlineData(ActivityKind.AgentPermission, "run", CardType.Pending)]
     [InlineData(ActivityKind.AgentDone, "done", CardType.Inform)]
+    [InlineData(ActivityKind.Error, "error", CardType.Inform)]
     [InlineData(ActivityKind.AgentWorking, "run", CardType.Status)]
     [InlineData(ActivityKind.Music, "run", CardType.Status)]
     [InlineData(ActivityKind.Notice, "run", CardType.Temporary)]
-    [InlineData(ActivityKind.Error, "error", CardType.Temporary)]
+    [InlineData(ActivityKind.Notice, "error", CardType.Temporary)]   // the system's warnings (battery low, offline)
     [InlineData(ActivityKind.Transfer, "run", CardType.Status)]
     [InlineData(ActivityKind.Transfer, "done", CardType.Temporary)]
     public void Each_kind_has_a_type(ActivityKind kind, string state, CardType expected)
         => Assert.Equal(expected, CardStack.TypeOf(Item(kind, "a", state: state), T0));
 
     [Fact]
-    public void A_timer_is_status_while_running_and_temporary_once_it_reaches_zero()
+    public void An_agents_own_failure_is_an_inform_card()
+    {
+        var limit = AgentNotices.UsageLimit("claude", T0.AddHours(2), null, T0);
+        Assert.Equal(CardType.Inform, CardStack.TypeOf(limit, T0));
+    }
+
+    [Fact]
+    public void A_timer_is_status_while_running_and_inform_once_it_reaches_zero()
     {
         Assert.Equal(CardType.Status, CardStack.TypeOf(Timer("t", 60, T0), T0));
-        Assert.Equal(CardType.Temporary, CardStack.TypeOf(Timer("t", -1, T0), T0));
+        Assert.Equal(CardType.Inform, CardStack.TypeOf(Timer("t", -1, T0), T0));
         var paused = Timer("t", -1, T0);
         paused.Left = 30;
         Assert.Equal(CardType.Status, CardStack.TypeOf(paused, T0));
     }
 
     [Fact]
+    public void Inform_cards_stay_until_closed_and_temporary_ones_go_by_themselves()
+    {
+        var hourLater = T0.AddHours(1);
+        Assert.True(ActivityStore.IsAlive(Timer("t", -1, T0), T0, hourLater));                   // time's up: stays
+        Assert.True(ActivityStore.IsAlive(Item(ActivityKind.Error, "e", state: "error"), T0, hourLater));
+        var launch = Item(ActivityKind.Notice, "islebar_launch", state: "error");
+        launch.Agent = "claude";
+        Assert.True(ActivityStore.IsAlive(launch, T0, hourLater));
+        Assert.False(ActivityStore.IsAlive(Item(ActivityKind.Notice, "n", state: "error"), T0, T0.AddMinutes(1)));
+    }
+
+    [Fact]
     public void All_music_is_one_card_and_the_merged_download_keeps_its_key()
     {
-        var a = Item(ActivityKind.Music, "media:spotify");
-        var b = Item(ActivityKind.Music, "media:cloudmusic");
-        Assert.Equal(CardStack.KeyOf(a), CardStack.KeyOf(b));
+        Assert.Equal(CardStack.KeyOf(Item(ActivityKind.Music, "media:spotify")), CardStack.KeyOf(Item(ActivityKind.Music, "media:cloudmusic")));
         Assert.Equal(CardStack.KeyOf(Item(ActivityKind.Transfer, "download:a.zip")), CardStack.KeyOf(Item(ActivityKind.Transfer, "download:b.zip")));
         Assert.NotEqual(CardStack.KeyOf(Item(ActivityKind.Transfer, "download:a.zip")), CardStack.KeyOf(Item(ActivityKind.Transfer, "download-done:a.zip")));
     }
@@ -117,7 +135,6 @@ public sealed class CardStackTests
         Assert.Equal(["s", "music"], Keys(stack));
 
         stack.Update([Item(ActivityKind.AgentDone, "s", 2, "done"), Item(ActivityKind.Music, "m")], T0.AddSeconds(2));
-        Assert.Equal(["s", "music"], Keys(stack));
         Assert.True(stack.Cards[0].Pinned);
 
         stack.Update([Item(ActivityKind.AgentWorking, "s", 4), Item(ActivityKind.Music, "m")], T0.AddSeconds(4));
@@ -136,114 +153,132 @@ public sealed class CardStackTests
         Assert.False(stack.Cards[1].Pinned);
     }
 
-    // ---------------- Scrolling (peek) ----------------
+    // ---------------- Scrolling ----------------
 
+    private static readonly ActivityState[] Three =
+        [Item(ActivityKind.Music, "m"), Item(ActivityKind.AgentWorking, "w"), Item(ActivityKind.Transfer, "download:x")];
+
+    /// <summary>music · w · download, arrived in that order.</summary>
     private static CardStack ThreeStatusCards()
     {
         var stack = new CardStack();
-        stack.Update([Item(ActivityKind.Music, "m")], T0);
-        stack.Update([Item(ActivityKind.Music, "m"), Item(ActivityKind.AgentWorking, "w")], T0.AddSeconds(1));
-        stack.Update([Item(ActivityKind.Music, "m"), Item(ActivityKind.AgentWorking, "w"), Item(ActivityKind.Transfer, "download:x")], T0.AddSeconds(2));
+        stack.Update(Three[..1], T0);
+        stack.Update(Three[..2], T0.AddSeconds(1));
+        stack.Update(Three, T0.AddSeconds(2));
         return stack;
     }
 
     [Fact]
-    public void Scrolling_moves_through_the_stack_and_stops_at_both_ends()
+    public void Scrolling_moves_through_the_stack_and_wraps_round_at_both_ends()
     {
         var stack = ThreeStatusCards();
         stack.SetHover(true, T0);
         stack.Scroll(1, T0);
         Assert.Equal("w", stack.Shown!.Key);
-        stack.Scroll(5, T0);
-        Assert.Equal("download", stack.Shown!.Key);
-        stack.Scroll(-9, T0);
-        Assert.Equal("music", stack.Shown!.Key);
-        Assert.False(stack.Peeking);
+        stack.Scroll(2, T0);
+        Assert.Equal("music", stack.Shown!.Key);   // past the bottom → the top
+        stack.Scroll(-1, T0);
+        Assert.Equal("download", stack.Shown!.Key);   // past the top → the bottom
         Assert.Equal(3, stack.Cards.Count);   // scrolling never removes anything
     }
 
     [Fact]
-    public void The_peek_holds_while_hovering_and_returns_to_the_top_three_seconds_after_leaving()
+    public void The_chosen_card_stays_after_the_mouse_leaves_when_nothing_is_pinned()
     {
         var stack = ThreeStatusCards();
-        var items = stack.Cards.Select(c => c.State).ToList();
-        stack.SetHover(true, T0);
-        stack.Scroll(1, T0);
+        stack.SetHover(true, T0.AddSeconds(3));
+        stack.Scroll(1, T0.AddSeconds(3));
+        stack.SetHover(false, T0.AddSeconds(4));
 
-        stack.Update(items, T0.AddMinutes(5));   // still on the pill
+        stack.Update(Three, T0.AddMinutes(10));
         Assert.Equal("w", stack.Shown!.Key);
+        Assert.Equal("w", stack.ChosenKey);
+    }
 
-        var left = T0.AddMinutes(5);
+    [Fact]
+    public void While_the_mouse_is_on_the_pill_a_new_pinned_card_waits_until_three_seconds_after_it_leaves()
+    {
+        var stack = ThreeStatusCards();
+        stack.SetHover(true, T0.AddSeconds(3));
+        stack.Scroll(1, T0.AddSeconds(3));
+        ActivityState[] withAsk = [.. Three, Item(ActivityKind.AgentPermission, "ask", 5)];
+
+        stack.Update(withAsk, T0.AddSeconds(5));
+        Assert.Equal("w", stack.Shown!.Key);   // still scrolling: the pill doesn't change under the hand
+        Assert.Equal("ask", stack.Cards[0].Key);   // but it is already first in the stack
+
+        var left = T0.AddMinutes(1);
         stack.SetHover(false, left);
-        stack.Update(items, left.AddSeconds(2.9));
+        stack.Update(withAsk, left.AddSeconds(2.9));
         Assert.Equal("w", stack.Shown!.Key);
-        stack.Update(items, left.AddSeconds(3));
-        Assert.Equal("music", stack.Shown!.Key);
-        Assert.False(stack.Peeking);
-    }
-
-    [Fact]
-    public void A_new_pinned_card_ends_the_peek()
-    {
-        var stack = ThreeStatusCards();
-        var items = stack.Cards.Select(c => c.State).ToList();
-        stack.SetHover(true, T0);
-        stack.Scroll(2, T0);
-
-        stack.Update([.. items, Item(ActivityKind.AgentPermission, "ask", 9)], T0.AddSeconds(9));
+        stack.Update(withAsk, left.AddSeconds(3));
         Assert.Equal("ask", stack.Shown!.Key);
-        Assert.Equal(0, stack.ShownIndex);
+        Assert.Equal(["ask", "music", "w", "download"], Keys(stack));   // the order is unchanged
+
+        stack.Update(Three, left.AddSeconds(10));   // answered
+        Assert.Equal("w", stack.Shown!.Key);   // back to the chosen card
     }
 
     [Fact]
-    public void The_peek_follows_its_card_and_ends_when_the_card_does()
+    public void Away_from_the_pill_a_new_pinned_card_shows_at_once()
     {
         var stack = ThreeStatusCards();
-        stack.SetHover(true, T0);
-        stack.Scroll(2, T0);   // the download
+        stack.Update([.. Three, Item(ActivityKind.Notice, "copied", 9)], T0.AddSeconds(9));
+        Assert.Equal("copied", stack.Shown!.Key);
+    }
 
-        // the music stops: the download moves up one place, still shown
-        stack.Update([Item(ActivityKind.AgentWorking, "w"), Item(ActivityKind.Transfer, "download:x")], T0.AddSeconds(5));
+    [Fact]
+    public void Scrolling_onto_a_pinned_card_doesnt_change_the_chosen_status_card()
+    {
+        var stack = ThreeStatusCards();
+        stack.SetHover(true, T0.AddSeconds(3));
+        stack.Scroll(2, T0.AddSeconds(3));   // download
+        stack.Update([.. Three, Item(ActivityKind.AgentDone, "d", 4, "done")], T0.AddSeconds(4));   // d is on top now; download still shown
+        stack.Scroll(1, T0.AddSeconds(5));   // past the bottom → d (pinned)
+        Assert.Equal("d", stack.Shown!.Key);
+        Assert.Equal("download", stack.ChosenKey);
+    }
+
+    [Fact]
+    public void When_the_chosen_card_ends_the_top_card_shows()
+    {
+        var stack = ThreeStatusCards();
+        stack.SetHover(true, T0.AddSeconds(3));
+        stack.Scroll(2, T0.AddSeconds(3));   // download
+        stack.SetHover(false, T0.AddSeconds(4));
+
+        stack.Update(Three[..2], T0.AddMinutes(1));   // the download finished and went away
+        Assert.Equal("music", stack.Shown!.Key);
+        Assert.Null(stack.ChosenKey);
+    }
+
+    [Fact]
+    public void While_holding_the_shown_card_follows_its_place_in_the_stack()
+    {
+        var stack = ThreeStatusCards();
+        stack.SetHover(true, T0.AddSeconds(3));
+        stack.Scroll(2, T0.AddSeconds(3));   // download, place 2
+
+        stack.Update(Three[1..], T0.AddSeconds(5));   // the music stopped
         Assert.Equal("download", stack.Shown!.Key);
         Assert.Equal(1, stack.ShownIndex);
-
-        // the download finishes and goes away
-        stack.Update([Item(ActivityKind.AgentWorking, "w")], T0.AddSeconds(6));
-        Assert.Equal("w", stack.Shown!.Key);
-        Assert.False(stack.Peeking);
     }
 
-    // ---------------- Keep showing · close ----------------
-
-    [Fact]
-    public void A_fixed_card_leads_the_status_cards_but_pinned_ones_still_come_first()
-    {
-        var stack = ThreeStatusCards();
-        var items = stack.Cards.Select(c => c.State).ToList();
-        stack.Fix("download", T0.AddSeconds(3));
-        Assert.Equal(["download", "music", "w"], Keys(stack));
-
-        stack.Update([.. items, Item(ActivityKind.Notice, "copied", 4)], T0.AddSeconds(4));
-        Assert.Equal(["copied", "download", "music", "w"], Keys(stack));
-
-        stack.Update([Item(ActivityKind.Music, "m"), Item(ActivityKind.AgentWorking, "w")], T0.AddSeconds(5));
-        Assert.Null(stack.FixedKey);   // it ended — a later download isn't fixed
-    }
+    // ---------------- Close ----------------
 
     [Fact]
     public void A_hidden_card_stays_hidden_until_it_ends_and_shows_again_when_it_comes_back()
     {
         var stack = ThreeStatusCards();
-        var items = stack.Cards.Select(c => c.State).ToList();
         stack.Hide("music", T0.AddSeconds(3));
         Assert.Equal(["w", "download"], Keys(stack));
 
-        stack.Update(items, T0.AddSeconds(4));
+        stack.Update(Three, T0.AddSeconds(4));   // a new song is still the music card — still hidden
         Assert.DoesNotContain("music", Keys(stack));
 
-        stack.Update([Item(ActivityKind.AgentWorking, "w")], T0.AddSeconds(5));   // music stopped
-        stack.Update([Item(ActivityKind.AgentWorking, "w"), Item(ActivityKind.Music, "m")], T0.AddSeconds(6));
-        Assert.Equal(["w", "music"], Keys(stack));
+        stack.Update(Three[1..], T0.AddSeconds(5));   // music stopped
+        stack.Update(Three, T0.AddSeconds(6));
+        Assert.Equal(["w", "download", "music"], Keys(stack));
     }
 
     // ---------------- Wheel ----------------

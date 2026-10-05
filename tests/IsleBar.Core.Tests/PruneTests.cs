@@ -1,4 +1,4 @@
-using IsleBar.Core.Island;
+﻿using IsleBar.Core.Island;
 using Xunit;
 
 namespace IsleBar.Core.Tests;
@@ -12,8 +12,9 @@ public class PruneTests
         var store = new ActivityStore(dir.Path);
         var now = DateTimeOffset.UtcNow;
 
-        var old = store.Write("old", TimerParser.ToActivity(TimeSpan.FromMinutes(1), now.AddMinutes(-10)));
-        File.SetLastWriteTimeUtc(old, now.AddMinutes(-10).UtcDateTime);
+        // a timer that ended stays until closed (10-05), so only one past the 12-hour backstop is dead
+        var old = store.Write("old", TimerParser.ToActivity(TimeSpan.FromMinutes(1), now.AddHours(-13)));
+        File.SetLastWriteTimeUtc(old, now.AddHours(-13).UtcDateTime);
         var live = store.Write("live", TimerParser.ToActivity(TimeSpan.FromMinutes(25), now.AddMinutes(-5)));
         File.SetLastWriteTimeUtc(live, now.AddMinutes(-5).UtcDateTime);
         var paused = store.Write("paused", TimerParser.Pause(TimerParser.ToActivity(TimeSpan.FromMinutes(5), now.AddHours(-2)), now.AddHours(-2)));

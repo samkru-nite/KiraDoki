@@ -54,7 +54,10 @@ public sealed class ActivityStore
 
         if (state.Due is { } due)
         {
-            return now.ToUnixTimeMilliseconds() / 1000.0 <= due + TimerDoneLinger.TotalSeconds;
+            // a timer that reached zero is an inform card — it stays until closed by hand (user 10-05), up to the same backstop as a
+            // finished agent. Other items with an end (an agent's usage limit) go when it is reached: the thing itself is over.
+            var linger = state.Kind == ActivityKind.Timer ? AgentDoneLinger : TimerDoneLinger;
+            return now.ToUnixTimeMilliseconds() / 1000.0 <= due + linger.TotalSeconds;
         }
 
         var age = now - updated;
@@ -73,7 +76,8 @@ public sealed class ActivityStore
         return state.RunState switch
         {
             ActivityRunState.Done => age <= DoneLinger,
-            ActivityRunState.Error => age <= ErrorLinger,
+            // an error that is an inform card (an agent's failure, a failed transfer) stays until closed by hand (user 10-05)
+            ActivityRunState.Error => age <= (CardStack.TypeOf(state, now) == CardType.Inform ? AgentDoneLinger : ErrorLinger),
             _ => age <= StaleAfter,   // ones stamped in the future due to clock skew (negative) are kept
         };
     }
