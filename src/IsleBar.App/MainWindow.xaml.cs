@@ -1,4 +1,5 @@
-﻿using IsleBar.App.Interop;
+﻿using IsleBar.App.Engine;
+using IsleBar.App.Interop;
 using IsleBar.App.IslandUi;
 using IsleBar.App.Media;
 using IsleBar.App.Search;
@@ -42,14 +43,14 @@ public sealed partial class MainWindow : Window
     private readonly int _height = DpiSetup.Px(BaseHeight);
 
     private readonly ConfigStore _store = new(AppPaths.SettingsFile);
-    private readonly ActivityStore _activities = ActivityStore.CreateDefault();
+    private readonly ActivityFeed _feed;
     private readonly DispatcherQueue _ui;
 
     private readonly IntPtr _hwnd;
     private readonly TaskbarHost _taskbar;
     private readonly SearchBoxTracker _tracker;
     private readonly IslandAnimator _animator;
-    private readonly FileSearchWorker _fileSearch;
+    private readonly FileSearchRequests _fileSearch;
     private readonly Watchdog _watchdog;
 
     private IsleBarSettings _settings;
@@ -61,13 +62,6 @@ public sealed partial class MainWindow : Window
     private BarMode _mode = BarMode.Claude;
     // not "Hidden": a first placement of Hidden must still be applied (it compared equal and the window stayed where WinUI put it — review 10-03)
     private BarPlacement _placement = new(PlacementMode.Hide, int.MinValue, int.MinValue);
-
-    private readonly MediaWatcher _media;
-    private readonly DownloadWatcher _downloads;
-    private readonly PhoneDrop _phoneDrop = new();
-
-    /// <summary>Brief notices (charging, Bluetooth, internet, focus, copy, overload, calendar, mic/camera; features added 09-30).</summary>
-    private SystemWatch.SystemWatchers? _system;
 
     /// <summary>While a file is dragged over the pill (blue border).</summary>
     private bool _dropHover;
@@ -82,7 +76,6 @@ public sealed partial class MainWindow : Window
 
     // the text of the latest file search sent, and of the one the results list shows — Enter right after editing (before the
     // 90 ms debounce and Everything's answer) opened the old query's first hit, an .exe or .lnk included (review 10-03)
-    private string _requestedQuery = string.Empty;
     private string? _shownQuery;
     private Options.SettingsWindow? _settingsWindow;
     private Microsoft.UI.Xaml.Media.Imaging.WriteableBitmap? _claudeGlyph;
@@ -110,10 +103,9 @@ public sealed partial class MainWindow : Window
         _history = new HistoryNavigator(_settings.History);
 
         _tracker = new SearchBoxTracker(_width, _height);
-        _media = new MediaWatcher(() => _settings.BrowserMedia);
-        _downloads = new DownloadWatcher(() => _settings.DownloadFolders);
+        _feed = new ActivityFeed(() => _settings, () => _text);
         _animator = new IslandAnimator([LeadSlot, IslandContent], IslandContent, GlowRing, PillBody);
-        _fileSearch = new FileSearchWorker(OnSearchResult);
+        _fileSearch = new FileSearchRequests(OnSearchResult);
         _watchdog = new Watchdog(_taskbar, () => ThemeColors.FromSystem().Light, RequestExit,
             _ => _ui.TryEnqueue(Retheme));
 
@@ -142,11 +134,8 @@ public sealed partial class MainWindow : Window
         // 250ms island tick — this is what makes it follow the icons naturally instead of lagging behind (user 10-01).
         _tracker.OnChanged = () => _ui.TryEnqueue(FollowRealSearchBox);
         _tracker.Start();
-        _media.Start();
-        _downloads.Start();
-        _system = new SystemWatch.SystemWatchers(() => _text);
-        _system.Start(WatchOptions());
-        OfferToConnectAgents();
+        _feed.Start();
+        _feed.OfferToConnectAgents();
 
         // Ctrl+Alt+C = type from anywhere (same key as the Python version). Switches to the input box even if an island is showing.
         _hotkey = new GlobalHotkey(() => _ui.TryEnqueue(() =>
@@ -741,7 +730,7 @@ public sealed partial class MainWindow : Window
             _pendingTimer = null;
             if (Entry.Text.Trim().Length == 0)
             {
-                ReplaceTimer(pending);
+                _feed.ReplaceTimer(pending);
                 EndTyping();
                 return;
             }
@@ -787,21 +776,12 @@ public sealed partial class MainWindow : Window
     private void ShowLaunchFailure(string message, string question)
     {
         TaskbarHost.Log("launch failed: " + message);
-        if (question.Length > 0)
-        {
-            _store.Update((IsleBarSettings s) =>
-            {
-                s.History = QuestionHistory.Add(s.History, question);
-                return true;
-            });
-            _settings.History = QuestionHistory.Add(_settings.History, question);
-            _history = new HistoryNavigator(_settings.History);
-        }
+        RememberQuestion(question);
 
         var text = _text.FormatLaunchFail(message);
         var notice = IsleBar.Core.SystemWatch.SystemNotice.Make(text, "\uE7BA", DateTimeOffset.UtcNow, urgent: true);
         notice.State = "error";   // red, like other things that need fixing
-        _activities.Write("islebar_launch", notice);
+        _feed.Store.Write("islebar_launch", notice);
 
         // The error also goes on the clipboard, so it can be pasted into a bug report (10-04) \u2014 long ones only scroll by on the pill.
         // Copied 2 s later: the clipboard's "Copied \u00B7 \u2026" notice then shows once the error has been seen, and the error comes back
@@ -824,103 +804,15 @@ public sealed partial class MainWindow : Window
     /// <returns>Whether the agent was started (false: the question is kept for another try).</returns>
     private bool Launch(string question)
     {
-        var profile = AgentProfiles.Get(_settings.Agent);
-        var args = profile.BuildArgs(ClaudeExecutable.Resolve(profile), question, _settings.ValuesFor(_settings.Agent)).ToList();
-        if ((args[0].EndsWith(".cmd", StringComparison.OrdinalIgnoreCase) || args[0].EndsWith(".bat", StringComparison.OrdinalIgnoreCase))
-            && File.Exists(args[0]))   // not installed at all: starting it below says so
+        if (AgentLauncher.Start(_settings, question) is { } error)
         {
-            // npm's codex.cmd: a .cmd runs through cmd.exe, which re-reads the prompt — "&" ran other commands, %NAME% was replaced
-            // and only the first line arrived (review 10-03). Start node with the CLI's script instead; never through cmd.exe.
-            if (IsleBar.Core.Launch.NpmShim.Unwrap(args[0], File.Exists, File.ReadAllText, Environment.GetEnvironmentVariable("PATH")) is not { } direct)
-            {
-                ShowLaunchFailure($"{Path.GetFileName(args[0])}: node / script not found", question);
-                return false;
-            }
-
-            args = [.. direct, .. args.Skip(1)];
-        }
-
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        string workDir;
-        if (Directory.Exists(_settings.Folder))
-        {
-            workDir = _settings.Folder;
-        }
-        else
-        {
-            // Claude Code doesn't persist trust for the home folder, so the Security guide shows every time → use a dedicated folder
-            workDir = Path.Combine(home, FolderTrust.DefaultFolderName);
-            Directory.CreateDirectory(workDir);
-        }
-
-        // Only IsleBar's own folder is marked trusted: for a folder the person picked (a repository just cloned, say) the agent's
-        // own trust question stays — it guards against that folder's hooks and settings (review 10-03).
-        if (string.Equals(Path.GetFullPath(workDir).TrimEnd('\\'), Path.Combine(home, FolderTrust.DefaultFolderName), StringComparison.OrdinalIgnoreCase))
-        {
-            if (_settings.Agent != AgentKind.Codex)
-            {
-                FolderTrust.Ensure(Path.Combine(home, ".claude.json"), workDir);
-            }
-            else
-            {
-                var codexHome = Environment.GetEnvironmentVariable("CODEX_HOME") is { Length: > 0 } custom ? custom : Path.Combine(home, ".codex");
-                FolderTrust.EnsureCodex(Path.Combine(codexHome, "config.toml"), workDir);
-            }
-        }
-
-        try
-        {
-            var startInfo = new System.Diagnostics.ProcessStartInfo(args[0])
-            {
-                WorkingDirectory = workDir,
-                UseShellExecute = false,
-            };
-            // if the bar was launched from inside another Claude session, that session marker is inherited and the new session's history saving is disabled
-            // ("inherited CLAUDE_CODE_CHILD_SESSION marker", measured on PC 09-29) → don't pass session variables through.
-            // A variable the person set themselves (user or system environment — CLAUDE_CODE_GIT_BASH_PATH, Bedrock / Vertex
-            // switches, …) is theirs and stays; the bar used to drop those too, and claude failed only when started from it (review 10-03).
-            foreach (var key in startInfo.Environment.Keys
-                         .Where(k => (k.StartsWith("CLAUDECODE", StringComparison.OrdinalIgnoreCase)
-                                      || k.StartsWith("CLAUDE_CODE_", StringComparison.OrdinalIgnoreCase)
-                                      || k is "CLAUDE_PID" or "CLAUDE_EFFORT")
-                                     && Environment.GetEnvironmentVariable(k, EnvironmentVariableTarget.User) is null
-                                     && Environment.GetEnvironmentVariable(k, EnvironmentVariableTarget.Machine) is null)
-                         .ToList())
-            {
-                startInfo.Environment.Remove(key);
-            }
-
-            // Launching into a fresh console (a GUI app has no TERM/COLORTERM to inherit) made the agent decide there was no colour
-            // support and print monochrome — ugly (user 10-01). Force colour on; the CLI turns on the console's VT processing itself,
-            // so the codes render. FORCE_COLOR covers Claude (Node), CLICOLOR_FORCE covers Codex, COLORTERM advertises truecolor.
-            startInfo.Environment["FORCE_COLOR"] = "3";
-            startInfo.Environment["CLICOLOR_FORCE"] = "1";
-            startInfo.Environment["COLORTERM"] = "truecolor";
-
-            foreach (var arg in args.Skip(1))
-            {
-                startInfo.ArgumentList.Add(arg);   // don't leave quoting to the shell
-            }
-
-            System.Diagnostics.Process.Start(startInfo);
-        }
-        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or FileNotFoundException)
-        {
-            ShowLaunchFailure(ex.Message, question);
+            ShowLaunchFailure(error, question);
             return false;
         }
 
         if (question.Length > 0)
         {
-            _store.Update((IsleBarSettings s) =>
-            {
-                s.History = QuestionHistory.Add(s.History, question);
-                return true;
-            });
-            // in place: an open settings window holds this same object — replacing it with a fresh load made every switch flipped
-            // there afterwards change a copy nobody saved (review 10-03)
-            _settings.History = QuestionHistory.Add(_settings.History, question);
-            _history = new HistoryNavigator(_settings.History);
+            RememberQuestion(question);
             // the model list check writes these to the file in the background; keep them current in memory too, or the next
             // settings save wrote the old ones back (review 10-03)
             TakeBackgroundModelLists();
@@ -928,6 +820,25 @@ public sealed partial class MainWindow : Window
 
         EndTyping();
         return true;
+    }
+
+    /// <summary>Adds the question to the ↑ history (file and memory).</summary>
+    private void RememberQuestion(string question)
+    {
+        if (question.Length == 0)
+        {
+            return;
+        }
+
+        _store.Update((IsleBarSettings s) =>
+        {
+            s.History = QuestionHistory.Add(s.History, question);
+            return true;
+        });
+        // in place: an open settings window holds this same object — replacing it with a fresh load made every switch flipped
+        // there afterwards change a copy nobody saved (review 10-03)
+        _settings.History = QuestionHistory.Add(_settings.History, question);
+        _history = new HistoryNavigator(_settings.History);
     }
 
     /// <summary>Tab: Claude → files → web → Claude (files skipped if file search is off).</summary>
@@ -1004,29 +915,7 @@ public sealed partial class MainWindow : Window
 
             FollowRealSearchBox();
             RefreshBesideColor();
-            if (DateTimeOffset.UtcNow - _lastPrune > TimeSpan.FromMinutes(1))
-            {
-                _lastPrune = DateTimeOffset.UtcNow;
-                _activities.PruneDead(_lastPrune);   // so finished timer files don't pile up
-            }
-
-            var items = _activities.Read(DateTimeOffset.UtcNow).ToList();
-            AdvancePomodoros(items);
-            ChimeFinishedTimers(items);
-            DismissSeenAgents(items);   // first, so a completion whose terminal is already gone is cleared without a chime
-            ChimeFinishedAgents(items);
-            if (_media.Current is { } music)
-            {
-                items.Add(music);
-            }
-
-            items.AddRange(_downloads.Current);   // browser downloads (in progress / just finished)
-            items.AddRange(_phoneDrop.Current(items));   // dropped files being sent to the phone
-            if (_system is not null)
-            {
-                items.AddRange(_system.Current);   // brief notices
-            }
-
+            var items = _feed.Collect(DateTimeOffset.UtcNow);
             UpdatePrivacyDot();
             EndStaleHover();
 
@@ -1733,7 +1622,7 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private async void ShowAlbumArt(bool on)
     {
-        var art = on ? _media.CurrentArt : null;
+        var art = on ? _feed.Media.CurrentArt : null;
         if (art is null)
         {
             AlbumArt.Visibility = Visibility.Collapsed;
@@ -1742,7 +1631,7 @@ public sealed partial class MainWindow : Window
 
         LeadIcon.Visibility = Visibility.Collapsed;
         AlbumArt.Visibility = Visibility.Visible;
-        var key = _media.CurrentArtKey;
+        var key = _feed.Media.CurrentArtKey;
         if (key == _albumArtKey)
         {
             return;
@@ -1915,7 +1804,6 @@ public sealed partial class MainWindow : Window
             StopLoopBars();
         }
     }
-    private DateTimeOffset _lastPrune = DateTimeOffset.MinValue;
 
     /// <summary>
     /// If not attached to the taskbar, reattach every 2s. On startup SetParent sometimes fails with error 87,
@@ -2495,44 +2383,6 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Notice settings for the watchers. The Store build leaves updates to the Store (its policy forbids self-updating) and
-    /// doesn't offer hiding Windows' banners (it has no uninstaller that could give them back).
-    /// </summary>
-    private IsleBar.Core.SystemWatch.SystemWatchOptions WatchOptions()
-    {
-        var options = IsleBar.Core.SystemWatch.SystemWatchOptions.From(_settings);
-        return AppPaths.IsPackaged ? options with { Updates = false, HideBanners = false } : options;
-    }
-
-    /// <summary>
-    /// Store build, first start: there was no setup program to connect Claude Code / Codex, so offer it once with a card
-    /// (clicking it connects; settings has the same switch).
-    /// </summary>
-    private void OfferToConnectAgents()
-    {
-        var flag = Path.Combine(AppPaths.DataDirectory, "connect_offered.txt");
-        if (!AppPaths.IsPackaged || HookConnector.IsConnected || File.Exists(flag))
-        {
-            return;
-        }
-
-        try
-        {
-            File.WriteAllText(flag, "1");
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return;
-        }
-
-        var notice = IsleBar.Core.SystemWatch.SystemNotice.Make("Claude Code · Codex", "", DateTimeOffset.UtcNow,
-            msg: _text.ConnectAgentsCard, open: HookConnector.Command);
-        notice.Stage = "expand";
-        notice.Name = "IsleBar";
-        _activities.Write("islebar_connect", notice);
-    }
-
-    /// <summary>
     /// Light/dark switched while running: recolour in place. The taskbar itself often repaints a few seconds after the
     /// setting changes, so the colours sampled from it are taken again a few times while it settles.
     /// </summary>
@@ -2744,24 +2594,15 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    /// <summary>Timer pause ↔ resume. Rewrites the state file (so other windows/commands see the same state).</summary>
+    /// <summary>Timer pause ↔ resume on the shown timer.</summary>
     private void ToggleTimerPause()
     {
-        if (_snapshot.Primary is not { Kind: ActivityKind.Timer, SourcePath: { } path } state)
+        if (_snapshot.Primary is not { Kind: ActivityKind.Timer } state)
         {
             return;
         }
 
-        var now = DateTimeOffset.UtcNow;
-        var next = state.IsPaused ? TimerParser.Resume(state, now) : TimerParser.Pause(state, now);
-        try
-        {
-            _activities.Write(Path.GetFileName(path), next);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-        }
-
+        _feed.TogglePause(state);
         UpdateHoverButtons();
         RenderIsland();
     }
@@ -2769,17 +2610,9 @@ public sealed partial class MainWindow : Window
     /// <summary>Removes the currently shown item (cancel a timer, clear a finished alert).</summary>
     private void DismissPrimary()
     {
-        if (_snapshot.Primary?.SourcePath is not { } path)
+        if (_snapshot.Primary?.SourcePath is { } path)
         {
-            return;
-        }
-
-        try
-        {
-            File.Delete(path);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
+            ActivityFeed.DeleteState(path);
         }
     }
 
@@ -2794,7 +2627,7 @@ public sealed partial class MainWindow : Window
 
     /// <summary>TODO(phase 2): send via GlobalSystemMediaTransportControlsSessionManager.</summary>
     private void SendMediaCommand(MediaCommand command)
-        => _ = _media.SendAsync(command switch
+        => _ = _feed.Media.SendAsync(command switch
         {
             MediaCommand.PlayPause => MediaAction.PlayPause,
             MediaCommand.Previous => MediaAction.Previous,
@@ -2907,7 +2740,7 @@ public sealed partial class MainWindow : Window
     private void OnSettingsChanged()
     {
         ApplyNativeSearchBox();
-        _system?.Apply(WatchOptions());
+        _feed.ApplySettings();
         TakeBackgroundModelLists();
         _store.Save(_settings);
         PaintChevron();
@@ -3010,7 +2843,7 @@ public sealed partial class MainWindow : Window
                 var paths = items.Select(i => i.Path).Where(p => !string.IsNullOrEmpty(p)).ToList();
                 if (hasCommand)
                 {
-                    if (!_phoneDrop.Send(paths, _settings.DropCommand))
+                    if (!_feed.PhoneDrop.Send(paths, _settings.DropCommand))
                     {
                         TaskbarHost.Log($"drop→command: nothing to run or not files ({paths.Count})");
                     }
@@ -3083,264 +2916,26 @@ public sealed partial class MainWindow : Window
 
     private void UpdatePrivacyDot()
     {
-        var on = _system is { } s && (s.MicInUse || s.CameraInUse);
+        var on = _feed.Watchers is { } s && (s.MicInUse || s.CameraInUse);
         if (on != _privacyOn)
         {
             _privacyOn = on;
-            TaskbarHost.Log($"privacy dot {(on ? "on" : "off")}: {_system?.PrivacyApp}");
+            TaskbarHost.Log($"privacy dot {(on ? "on" : "off")}: {_feed.Watchers?.PrivacyApp}");
         }
 
         PrivacyDot.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
-        var sig = on ? $"{Attention()}|{_system!.PrivacyApp}" : null;
+        var sig = on ? $"{Attention()}|{_feed.Watchers!.PrivacyApp}" : null;
         if (on && sig != _privacySig)
         {
             // only on a change: a new brush and tooltip 4 times a second piled up native objects while the mic was on (review 10-03)
             PrivacyDot.Fill = BrushOf(Attention());
-            Microsoft.UI.Xaml.Controls.ToolTipService.SetToolTip(PrivacyDot, _system!.PrivacyApp);
+            Microsoft.UI.Xaml.Controls.ToolTipService.SetToolTip(PrivacyDot, _feed.Watchers!.PrivacyApp);
         }
 
         _privacySig = sig;
     }
 
     private string? _privacySig;
-
-    private IsleBar.Core.Island.PomodoroLengths PomodoroLengths()
-        => IsleBar.Core.Island.PomodoroLengths.FromMinutes(_settings.PomodoroFocus, _settings.PomodoroBreak, _settings.PomodoroLong);
-
-    /// <summary>
-    /// Advance Pomodoro phases: after focus (green border 3s) comes a break, after a break the next focus round, and after round 4's long break it ends.
-    /// Rewrites the same file, so the island treats it as "the same item" and doesn't jump — only the text and ring change.
-    /// </summary>
-    private void AdvancePomodoros(List<ActivityState> items)
-    {
-        var now = DateTimeOffset.UtcNow;
-        for (var i = 0; i < items.Count; i++)
-        {
-            var state = items[i];
-            if (state.Kind != ActivityKind.Timer || TimerParser.PomodoroPhase(state) is null || state.SourcePath is not { } path)
-            {
-                continue;
-            }
-
-            var next = TimerParser.AdvancePomodoro(state, now, _text.Focus, _text.Break, PomodoroLengths());
-            if (ReferenceEquals(next, state))
-            {
-                continue;
-            }
-
-            // write the next phase first, then ring: a write that failed (file locked) used to ring again every tick (review 10-03)
-            var slot = Path.GetFileNameWithoutExtension(path);
-            try
-            {
-                if (next is null)
-                {
-                    File.Delete(path);
-                    items.RemoveAt(i--);
-                }
-                else
-                {
-                    next.SourcePath = _activities.Write(slot, next);
-                    items[i] = next;
-                }
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                continue;   // tried again next tick, still silent
-            }
-
-            PlayChime(alarm: true);   // a pomodoro phase just ended (focus → break, or the whole set finished)
-        }
-    }
-
-    private readonly HashSet<string> _chimed = new();   // timer slots we have already sounded, so a finished timer chimes once, not every tick
-
-    /// <summary>
-    /// Rings once the moment a plain (non-pomodoro) timer reaches zero. Pomodoro phase-ends chime from <see cref="AdvancePomodoros"/>.
-    /// The slot is remembered so it does not ring every tick while the finished timer sits there; the memory is cleared when the
-    /// timer file is gone (dismissed) so the same slot can ring again next time (user 09-30: play a sound when timers finish).
-    /// </summary>
-    private void ChimeFinishedTimers(List<ActivityState> items)
-    {
-        var now = DateTimeOffset.UtcNow;
-        var present = new HashSet<string>();
-        foreach (var state in items)
-        {
-            if (state.Kind != ActivityKind.Timer || state.SourcePath is not { } path || TimerParser.PomodoroPhase(state) is not null)
-            {
-                continue;   // pomodoros ring from AdvancePomodoros; stopwatches have no end
-            }
-
-            var slot = Path.GetFileNameWithoutExtension(path);
-            present.Add(slot);
-            var finished = !state.IsPaused && !TimerParser.IsStopwatch(state) && TimerRemaining(state, now) <= TimeSpan.Zero;
-            if (finished && _chimed.Add(slot))
-            {
-                PlayChime(alarm: true);
-            }
-        }
-
-        _chimed.RemoveWhere(slot => !present.Contains(slot));   // a dismissed timer can ring again if it comes back
-    }
-
-    private readonly HashSet<string> _chimedDone = new();   // agent-done states already sounded, so a finished task chimes once
-
-    /// <summary>
-    /// Rings once the moment an agent task finishes. The completion already outranks music on the pill, but a silent visual change
-    /// is easy to miss while looking elsewhere (browsing, music playing) — a sound means you notice it (user 10-01).
-    /// Keyed by the state file, and forgotten when it ages out, so a later run rings again.
-    /// </summary>
-    private void ChimeFinishedAgents(List<ActivityState> items)
-    {
-        var present = new HashSet<string>();
-        var ring = false;
-        foreach (var state in items)
-        {
-            if (state.Kind != ActivityKind.AgentDone || state.SourcePath is not { } path || !File.Exists(path))
-            {
-                continue;   // (a state cleared earlier in this tick — e.g. its terminal was closed — stays silent)
-            }
-
-            // Keyed by file + when it was written, so a second completion in the same session (rewriting the same file) rings too.
-            var key = path + "|" + state.UpdatedAt.UtcTicks;
-            present.Add(key);
-            // Ring once per finished task. (We tried muting it while a terminal was focused, but it kept swallowing the sound during
-            // testing and normal use — the user wants to hear every completion; 10-01.) The card/border still shows on the pill too.
-            ring |= _chimedDone.Add(key);
-        }
-
-        // Completions already there when the bar starts (they linger 12 h) were rung when they happened — a restart
-        // (or a watchdog relaunch) must not ring them all again (code review 10-01).
-        if (ring && _chimeSeeded)
-        {
-            PlayChime();
-        }
-
-        _chimeSeeded = true;
-        _chimedDone.RemoveWhere(p => !present.Contains(p));
-    }
-
-    private bool _chimeSeeded;
-
-    // Terminal window of each finished task's session, looked up once per state file (finding it briefly attaches to the console).
-    // A failed lookup (no visible terminal — e.g. an editor's built-in terminal) is retried after a while rather than kept forever.
-    private readonly Dictionary<string, IntPtr> _doneWindows = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, DateTimeOffset> _doneWindowRetry = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Interop.TerminalInputWatch _terminalInput = new();
-
-    /// <summary>
-    /// A finished task's green border clears once you've actually gone back to its terminal — clicked it or typed in it — or when that
-    /// terminal is closed (user 10-01). Merely having the window in front doesn't count: it can be left open while you're away, and
-    /// if you were watching it when the task ended the green vanished before you could see it. ✕, a click on the bar and the next
-    /// prompt still clear it too.
-    /// </summary>
-    private void DismissSeenAgents(List<ActivityState> items)
-    {
-        var present = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var state in items)
-        {
-            // A question/permission prompt whose terminal was closed can't be answered any more — clear the orange too.
-            // Same for "working": closing the window kills the session before its SessionEnd hook can run, which left a dead
-            // session "working" for 6 h (found 10-01 when a terminal holding three sessions closed).
-            if (state is { Kind: ActivityKind.AgentPermission or ActivityKind.AgentWorking, SourcePath: { } asked, Pid: { } askPid }
-                && !ProcessAlive(askPid))
-            {
-                TaskbarHost.Log($"{(state.Kind == ActivityKind.AgentWorking ? "working" : "permission")} cleared: {Path.GetFileName(asked)} (its terminal was closed)");
-                DeleteState(asked);
-                continue;
-            }
-
-            if (state.Kind != ActivityKind.AgentDone || state.SourcePath is not { } path || state.Pid is not { } pid)
-            {
-                continue;
-            }
-
-            if (!ProcessAlive(pid))
-            {
-                TaskbarHost.Log($"done cleared: {Path.GetFileName(path)} (its terminal was closed)");
-                DeleteState(path);
-                continue;
-            }
-
-            present.Add(path);
-            if (!_doneWindows.TryGetValue(path, out var window)
-                || (window == IntPtr.Zero && DateTimeOffset.UtcNow >= _doneWindowRetry.GetValueOrDefault(path)))
-            {
-                window = AgentWindow.Find(pid);
-                _doneWindows[path] = window;
-                _doneWindowRetry[path] = DateTimeOffset.UtcNow.AddSeconds(30);
-            }
-
-            if (window != IntPtr.Zero && _terminalInput.TakeTouched(window))
-            {
-                TaskbarHost.Log($"done seen: {Path.GetFileName(path)} (clicked or typed in its terminal)");
-                DeleteState(path);
-                present.Remove(path);
-            }
-        }
-
-        foreach (var gone in _doneWindows.Keys.Where(p => !present.Contains(p)).ToList())
-        {
-            _doneWindows.Remove(gone);
-            _doneWindowRetry.Remove(gone);
-        }
-
-        // Hooks only while a finished task is waiting (installing/removing only when that changes)
-        var windows = _doneWindows.Values.Where(w => w != IntPtr.Zero).ToHashSet();
-        if (!windows.SetEquals(_watchedWindows))
-        {
-            _watchedWindows = windows;
-            _terminalInput.Watch(windows);
-        }
-    }
-
-    private HashSet<IntPtr> _watchedWindows = [];
-
-    private static bool ProcessAlive(int pid)
-    {
-        try
-        {
-            using var process = System.Diagnostics.Process.GetProcessById(pid);
-            return !process.HasExited;
-        }
-        catch (System.ComponentModel.Win32Exception)
-        {
-            return true;   // it exists but we may not look inside (e.g. an agent in an Administrator terminal) — not "gone" (code review 10-02)
-        }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
-        {
-            return false;
-        }
-    }
-
-    /// <summary>Plays the Windows notification sound (falls back to a plain beep if none is registered).</summary>
-    /// <summary>
-    /// The chime — not during Do Not Disturb, and not over a full-screen game/video when the person asked for that (10-03).
-    /// The pill itself still changes; only the sound is held back.
-    /// </summary>
-    /// <param name="alarm">A timer or pomodoro the user set: it rings through Do Not Disturb and full screen, like Windows' own
-    /// alarms — only an agent's completion is held back (review 10-03).</param>
-    private void PlayChime(bool alarm = false)
-    {
-        if (!alarm && NativeMethods.SHQueryUserNotificationState(out var quiet) == 0
-            && (quiet == NativeMethods.QUNS_QUIET_TIME
-                || (_settings.MuteChimeFullscreen && quiet is NativeMethods.QUNS_BUSY or NativeMethods.QUNS_RUNNING_D3D_FULL_SCREEN
-                                                       or NativeMethods.QUNS_PRESENTATION_MODE)))
-        {
-            TaskbarHost.Log($"chime: quiet (notification state {quiet})");
-            return;
-        }
-
-        if (!alarm && NativeMethods.DoNotDisturbOn())
-        {
-            TaskbarHost.Log("chime: quiet (Do Not Disturb)");
-            return;
-        }
-
-        if (!NativeMethods.PlaySound("Notification.Default", IntPtr.Zero, NativeMethods.SND_ASYNC | NativeMethods.SND_ALIAS | NativeMethods.SND_NODEFAULT))
-        {
-            NativeMethods.MessageBeep(0xFFFFFFFF);
-        }
-    }
 
     private ExpandedNotice? _expanded;
     private DateTimeOffset _lastExpandedAt = DateTimeOffset.MinValue;   // high-water mark so an older notice resurfacing (e.g. after X dismisses a newer one) doesn't re-open the card
@@ -3484,21 +3079,8 @@ public sealed partial class MainWindow : Window
 
     private void OpenHit(FileHit hit, bool revealInFolder)
     {
-        TaskbarHost.Log($"file search: open {(revealInFolder ? "(reveal) " : string.Empty)}{System.IO.Path.GetExtension(hit.FullPath)}");
-        try
+        if (!FileActions.Open(hit.FullPath, revealInFolder))
         {
-            if (revealInFolder)
-            {
-                System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{hit.FullPath}\"");
-            }
-            else
-            {
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(hit.FullPath) { UseShellExecute = true });
-            }
-        }
-        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
-        {
-            TaskbarHost.Log("file search: open failed — " + ex.Message);
             if (NativeMethods.GetForegroundWindow() != _taskbar.OuterWindow)
             {
                 EndTyping();   // clicked with the mouse: the bar is no longer in front, so typing would never end (review 10-03)
@@ -3537,27 +3119,7 @@ public sealed partial class MainWindow : Window
         _searchTimer.Start();
     }
 
-    private void RequestSearch(string query)
-    {
-        _requestedQuery = query;
-        _fileSearch.Request(query, _settings.FileResults, _settings.FileSort, HiddenFolders());
-    }
-
-    private string? _hiddenSource;
-    private IReadOnlyList<FileExcludes.Rule> _hiddenRules = [];
-
-    /// <summary>The settings' hidden-folder lines as rules — parsed again only when the lines change.</summary>
-    private IReadOnlyList<FileExcludes.Rule> HiddenFolders()
-    {
-        var source = string.Join('\n', _settings.FileExcludeLines);
-        if (source != _hiddenSource)
-        {
-            _hiddenRules = FileExcludes.Parse(_settings.FileExcludeLines);
-            _hiddenSource = source;
-        }
-
-        return _hiddenRules;
-    }
+    private void RequestSearch(string query) => _fileSearch.Request(query, _settings);
 
     /// <summary>A sort button under the results: remember it and search again in that order, keeping typing in the input box.</summary>
     private void ChooseFileSort(string sort)
@@ -3602,22 +3164,14 @@ public sealed partial class MainWindow : Window
     /// <summary>"Open in Everything" under the results: Everything's own window with the same words (all results, every column).</summary>
     private void OpenInEverything()
     {
-        if (EverythingExe() is not { } exe)
+        if (FileActions.EverythingExe() is not { } exe)
         {
             OpenEverythingDownload();
             return;
         }
 
-        try
+        if (!FileActions.SearchInEverything(exe, Entry.Text.Trim()))
         {
-            var start = new System.Diagnostics.ProcessStartInfo(exe) { UseShellExecute = false };
-            start.ArgumentList.Add("-search");
-            start.ArgumentList.Add(Entry.Text.Trim());
-            System.Diagnostics.Process.Start(start);
-        }
-        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
-        {
-            TaskbarHost.Log("file search: opening Everything failed — " + ex.Message);
             return;
         }
 
@@ -3632,19 +3186,14 @@ public sealed partial class MainWindow : Window
     private void StartEverything()
     {
         ReclaimTyping();   // the click on the link activated the list
-        if (EverythingExe() is not { } exe)
+        if (FileActions.EverythingExe() is not { } exe)
         {
             OpenEverythingDownload();
             return;
         }
 
-        try
+        if (!FileActions.StartEverything(exe))
         {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(exe, "-startup") { UseShellExecute = false });
-        }
-        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
-        {
-            TaskbarHost.Log("file search: starting Everything failed — " + ex.Message);
             return;
         }
 
@@ -3664,45 +3213,10 @@ public sealed partial class MainWindow : Window
     /// <summary>Everything isn't installed: its official download page in the browser.</summary>
     private void OpenEverythingDownload()
     {
-        TaskbarHost.Log("file search: Everything.exe not found — opening the download page");
-        try
+        if (FileActions.OpenEverythingDownload())
         {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://www.voidtools.com/downloads/") { UseShellExecute = true });
+            EndTyping();
         }
-        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
-        {
-            TaskbarHost.Log("file search: opening the download page failed — " + ex.Message);
-            return;
-        }
-
-        EndTyping();
-    }
-
-    /// <summary>The running Everything's program file, else where its installer puts it (64- or 32-bit).</summary>
-    private static string? EverythingExe()
-    {
-        foreach (var process in System.Diagnostics.Process.GetProcessesByName("Everything"))
-        {
-            try
-            {
-                if (process.MainModule?.FileName is { } running && File.Exists(running))
-                {
-                    return running;
-                }
-            }
-            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
-            {
-                // running elevated: its path can't be read — fall back to the install folders
-            }
-            finally
-            {
-                process.Dispose();
-            }
-        }
-
-        return new[] { Environment.SpecialFolder.ProgramFiles, Environment.SpecialFolder.ProgramFilesX86 }
-            .Select(folder => Path.Combine(Environment.GetFolderPath(folder), "Everything", "Everything.exe"))
-            .FirstOrDefault(File.Exists);
     }
 
     /// <summary>Called from the search thread → <b>marshals to the UI thread</b> to draw. Results for stale input are dropped.</summary>
@@ -3748,7 +3262,7 @@ public sealed partial class MainWindow : Window
             }
 
             _results.Show(hits, note, noteAction, PopupAnchorX, TaskbarTop(), _settings.FileSort, _text);
-            _shownQuery = _requestedQuery;   // the latest request's results (older ones were dropped above)
+            _shownQuery = _fileSearch.RequestedQuery;   // the latest request's results (older ones were dropped above)
         });
 
     /// <summary>Windows display language (LANGID). The resolution rules live in Core (LanguageResolver).</summary>
@@ -3777,9 +3291,6 @@ public sealed partial class MainWindow : Window
     private const int MenuUpdate = 15;
     private const int MenuNotifications = 16;   // opens the Windows notification centre   // "Download update (x.y.z)" while a newer release is out
 
-    /// <summary>Timer file name — one at a time (starting a new one replaces it; same slot as typing "25min" in the input box).</summary>
-    private static string TimerSlot => $"timer_{Environment.ProcessId}";
-
     /// <summary>A new timer waiting for "Replace the running timer?" to be answered (Enter = replace, Esc = keep).</summary>
     private ActivityState? _pendingTimer;
 
@@ -3790,12 +3301,9 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private bool StartTimer(ActivityState next)
     {
-        var now = DateTimeOffset.UtcNow;
-        var running = _activities.Read(now).Any(s => s.Kind == ActivityKind.Timer
-            && (s.IsPaused || TimerParser.IsStopwatch(s) || TimerParser.Remaining(s, now) > TimeSpan.Zero));
-        if (!running)
+        if (!_feed.TimerRunning(DateTimeOffset.UtcNow))
         {
-            ReplaceTimer(next);
+            _feed.ReplaceTimer(next);
             return true;
         }
 
@@ -3810,17 +3318,6 @@ public sealed partial class MainWindow : Window
         Entry.PlaceholderText = _text.ReplaceTimerAsk;
         UpdateTabHint();
         return false;
-    }
-
-    /// <summary>Writes the timer, removing any other timer first — one left behind by an earlier bar process would otherwise stay too.</summary>
-    private void ReplaceTimer(ActivityState next)
-    {
-        foreach (var old in _activities.Read(DateTimeOffset.UtcNow).Where(s => s.Kind == ActivityKind.Timer && s.SourcePath is not null))
-        {
-            DeleteState(old.SourcePath!);
-        }
-
-        _activities.Write(TimerSlot, next);
     }
 
     /// <summary>
@@ -3855,7 +3352,7 @@ public sealed partial class MainWindow : Window
         // pill for hours) the completion was never seen — a click there deleted it unseen (review 10-03)
         if (_backgroundDone is { SourcePath: { } path } && _backgroundDoneKey is not null && _glowKey == _backgroundDoneKey)
         {
-            DeleteState(path);
+            ActivityFeed.DeleteState(path);
             _backgroundDone = null;
             _backgroundDoneKey = null;
             UpdateGlow();
@@ -3864,23 +3361,12 @@ public sealed partial class MainWindow : Window
         return false;
     }
 
-    private static void DeleteState(string path)
-    {
-        try
-        {
-            File.Delete(path);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-        }
-    }
-
     /// <summary>While the right-click menu is open (blocks starting to type).</summary>
     private bool _menuOpen;
 
     private void ShowContextMenu()
     {
-        var live = _activities.Read(DateTimeOffset.UtcNow)
+        var live = _feed.Store.Read(DateTimeOffset.UtcNow)
             .Where(a => a.SourcePath is { } path && File.Exists(path))
             .ToList();
         var items = new List<(int, string?)>();
@@ -3972,7 +3458,7 @@ public sealed partial class MainWindow : Window
         }
         else if (chosen == MenuPomodoro)
         {
-            StartTimer(TimerParser.ToPomodoro(1, focus: true, now, _text.Focus, _text.Break, PomodoroLengths()));
+            StartTimer(TimerParser.ToPomodoro(1, focus: true, now, _text.Focus, _text.Break, _feed.PomodoroLengths()));
         }
         else if (chosen == MenuStopwatch)
         {
@@ -4049,16 +3535,13 @@ public sealed partial class MainWindow : Window
         }
 
         _hotkey?.Dispose();
-        _media.Dispose();
-        _downloads.Dispose();
         StopMeterBars();
         _audioMeter.Dispose();
         if (_settings.NativeSearchBox)
         {
             NativeSearchBox.Show();   // the module restores itself when the process exits too, but on a normal exit do it right away
         }
-        _system?.Dispose();
-        _terminalInput.Dispose();
+        _feed.Dispose();
         CloseResults();
         _flyout?.Close();
         _settingsWindow?.Close();

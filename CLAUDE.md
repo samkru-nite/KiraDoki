@@ -50,13 +50,13 @@ Start-Process "src\IsleBar.App\bin\Debug\net8.0-windows10.0.26100.0\IsleBar.App.
    - 状态 JSON 文件：`%LOCALAPPDATA%\IsleBar\state\*.json` 和 `%TEMP%\tgprog\tgprog_*.json`，由 `Core/Island/ActivityStore.cs` 读写（含各类过期时长常量）。写入方：`islebar push/timer/hook`（`Cli/CommandRunner.cs`）、App 自己（如启动失败通知 `ShowLaunchFailure`）。
    - Claude/Codex 钩子：Claude Code hook / Codex notify → `islebar hook` → `Core/Island/AgentHook.cs` 翻译成状态文件。钩子安装脚本 `setup/hooks.ps1`，连接逻辑 `App/Interop/HookConnector.cs`。`App/SystemWatch/AgentRecordWatcher.cs` 读会话记录补抓无钩子的情况。
    - 内存来源（不落盘）：音乐 `App/Media/MediaWatcher.cs`、下载 `App/Media/DownloadWatcher.cs`、发手机 `App/IslandUi/PhoneDrop.cs`、系统短通知 `App/SystemWatch/SystemWatchers.cs`（电源/蓝牙/网络/专注/剪贴板/负载/日历/麦克风摄像头/系统通知 ToastWatcher/更新）。
-2. **汇总**：`MainWindow.xaml.cs` 的 `StartIslandPolling()`（每 250ms 一次 tick）把所有来源合成列表。
+2. **汇总**：`App/Engine/ActivityFeed.cs` 的 `Collect()` 把所有来源合成列表（同时推进番茄钟、响提示音、清除关掉/看过的 AI 状态）；`MainWindow.xaml.cs` 的 `StartIslandPolling()` 每 250ms 调一次。（10-05 路线 A：非界面逻辑都搬到 `App/Engine/`：`ActivityFeed`、`AgentLauncher`、`Chime`、`FileActions`、`FileSearchRequests`。）
 3. **挑选**：`Core/Island/IslandSelector.cs` 按 `ActivityKind` 数值排序（`Core/Island/ActivityKind.cs`：权限请求 0 > 错误 1 > 传输 2 > 短通知 3 > 计时 4 > 音乐 5 > 任务完成 6 > 工作中 7），只显示一个，其余用末尾小圆点 `MoreDot` 表示。**这是 TODO 5.1「圆圈+胶囊」要动的根本结构。**
 4. **绘制**：`RenderIsland()` → `RenderIslandState()` → 文字 `ShowIslandText()` / 计时 `ShowTimerText()`+`ShowClockDigits()` / 进度条 `UpdateProgressLine()` / 边框 `UpdateGlow()` / 前缀文案 `PrefixFor()` / 左图标 `GlyphFor()`。动画在 `App/IslandUi/IslandAnimator.cs`（进出场、呼吸、高亮边框 `UpdateGlow`）。
 
 ### 界面结构
 - `App/MainWindow.xaml`：胶囊只有 220×32，四列 Grid：⌄按钮 | 左图标槽 LeadSlot（Claude 火花/Codex 图/专辑封面/字体图标）| 中间（输入框 Entry 或 岛内容 IslandContent，文字放在 Canvas 里手动垂直居中）| 右侧（均衡器、悬停按钮、计时圆环、Tab 提示、隐私点、更多点）。底部 2px 进度条 `ProgressLine`。边框：`PillSurface`（常规细边）、`GlassEdge`（"玻璃边"设置）、`GlowRing`（绿/橙提醒粗边）。
-- `MainWindow.xaml.cs`（3700 行，几乎所有界面逻辑都在这）：输入 `BeginTyping/EndTyping/OnEntryKeyDown`、启动代理 `Launch()`/`ShowLaunchFailure()`、模式切换 `ToggleMode/SetMode`（Tab 切换 Claude/文件/网页）、文件搜索 `ScheduleSearch/OnSearchResult`、右键菜单 `ShowContextMenu`、番茄钟 `AdvancePomodoros`、提示音 `PlayChime`。
+- `MainWindow.xaml.cs`（约 3550 行，10-05 起只剩界面，E 步整体替换）：输入 `BeginTyping/EndTyping/OnEntryKeyDown`、启动代理 `Launch()`（调 `Engine/AgentLauncher`）/`ShowLaunchFailure()`、模式切换 `ToggleMode/SetMode`（Tab 切换 Claude/文件/网页）、文件搜索 `ScheduleSearch/OnSearchResult`、右键菜单 `ShowContextMenu`。番茄钟/提示音在 `Engine/ActivityFeed.cs`、`Engine/Chime.cs`。
 - 其他窗口：搜索结果 `App/Search/ResultsWindow.cs`、长问题编辑 `ComposeWindow.cs`、消息展开卡片 `App/IslandUi/ExpandedNotice.cs`（760 行）、设置 `App/Options/SettingsWindow.cs`、快捷选项 `OptionsFlyout.cs`、系统通知横幅 `App/SystemWatch/ToastBanners.cs`。
 - 嵌入任务栏：`App/Interop/TaskbarHost.cs`（Attach/Detach，打字时会脱离任务栏）、`App/Tracking/SearchBoxTracker.cs`（跟随真搜索框位置）、`PillRegion.cs`（裁剪成胶囊形）、`NativeSearchBox.cs`（可选 C++ 注入）。
 - 主题色 `App/Interop/ThemeColors.cs`、`Core/Ui/ThemePalette.cs`；字体 `Core/Localization/UiFonts.cs`、`App/IslandUi/AppFonts.cs`；多语言文案 `Core/Localization/LanguageCatalog.cs`。
@@ -67,7 +67,7 @@ Start-Process "src\IsleBar.App\bin\Debug\net8.0-windows10.0.26100.0\IsleBar.App.
 |---|---|
 | 下载 | `App/Media/DownloadWatcher.cs`（每秒扫"下载"文件夹里的 .crdownload/.part）→ `Core/Island/DownloadTracker.cs`（速度、暂停、多个合成一条 +N）；**拿不到浏览器下载的总大小**（1.2 做过又撤销，见 TODO）；百度网盘按进程写盘量估算；下载文件夹可在设置里改（`DownloadFolders`）；资源管理器复制/解压/压缩 `App/Media/FileOperationWatcher.cs` |
 | 音乐 | `App/Media/MediaWatcher.cs`（Windows 媒体控制 SMTC；浏览器默认排除，设置 `BrowserMedia` 可开，`Core/Island/MediaSources.cs`；进度来自 app 上报的 Timeline，**网易云不报**（实测 00:00/00:00）。选择规则（10-04 用户定）：在播的取「最后开始」的，都不播显示最后显示的；换内容需播 0.5 秒；切换中最多保位 8 秒；窗口在前台时换标题＝用户选择，后台换＝自动连播→临时显示 4 秒。规则说明在类注释里。Edge 全浏览器只有一个 SMTC 会话，切视频时会先报别的标签页的旧标题） |
-| Claude/Codex 启动 | `MainWindow.Launch()`；路径查找 `Core/Launch/ClaudeExecutable.cs`、`ClaudeProfile.cs`、`CodexProfile.cs`、`NpmShim.cs`、参数 `ClaudeArguments.cs` |
+| Claude/Codex 启动 | `App/Engine/AgentLauncher.cs`；路径查找 `Core/Launch/ClaudeExecutable.cs`、`ClaudeProfile.cs`、`CodexProfile.cs`、`NpmShim.cs`、参数 `ClaudeArguments.cs` |
 | Claude/Codex 图标 | `App/Interop/ClaudeGlyph.cs`（从本机 claude.exe 图标里抠火花）、`Core/Ui/CodexMark.cs`（从 VS Code 的 Codex 扩展里找 SVG）；都找不到就退回字体图标（就是"聊天图标"） |
 | 文件搜索 | `App/Search/EverythingSdk.cs`（分页取回+本地过滤隐藏目录）、`FileSearchWorker.cs`（空输入=最近文件）、`ResultsWindow.cs`（ListView、表头排序、右键菜单、间距常量）、`ShellIcons.cs`（后台取系统图标）、`RecentFiles.cs`（Windows 最近打开）；Core：`Search/FileSearchQuery.cs`、`FileExcludes.cs`（隐藏规则）、`FileListText.cs`（大小格式、中间省略）。焦点/关闭：`Interop/ForegroundEvents.cs` + MainWindow `CheckForeground()`；开始菜单 `Interop/StartMenu.cs`；常亮亚克力 `Interop/ActiveAcrylic.cs` |
 | 网页搜索 | `Core/Search/WebSearch.cs` |
