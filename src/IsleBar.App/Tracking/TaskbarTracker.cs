@@ -130,7 +130,7 @@ internal sealed class TaskbarTracker : IDisposable
 
                     var layout = Read(elements, tray, bar);
                     Layout = layout;
-                    var spot = BarSlot.Place(position, layout, _barWidth, _barHeight, DpiSetup.Px(12), manualOffset);
+                    var spot = BarSlot.Place(position, layout, _barWidth, _barHeight, DpiSetup.Px(12), manualOffset, topEdge: DpiSetup.Px(1));
                     SetCurrent(spot.Fits ? new BarPlacement(true, spot.X, spot.Y) : BarPlacement.Hidden);
                     if (spot.Fits != _loggedVisible || position != _loggedPosition)
                     {

@@ -34,10 +34,12 @@ public sealed record BarSpot(bool Fits, int X, int Y);
 /// </summary>
 public static class BarSlot
 {
-    public static BarSpot Place(BarPosition position, TaskbarLayout bar, int width, int height, int gap, int manualOffset)
+    /// <param name="topEdge">The light line along the taskbar's top (1 dip on Windows 11). It reads as a border, so the bar is centred
+    /// in the taskbar below it — centred over the whole height, the gap above looked 2 px short at 200% (user screenshot 10-05).</param>
+    public static BarSpot Place(BarPosition position, TaskbarLayout bar, int width, int height, int gap, int manualOffset, int topEdge = 0)
     {
         ArgumentNullException.ThrowIfNull(bar);
-        var y = bar.Top + ((bar.Bottom - bar.Top - height) / 2);
+        var y = bar.Top + topEdge + ((bar.Bottom - bar.Top - topEdge - height) / 2);
         var trayLeft = bar.TrayLeft ?? bar.Right;
         switch (position)
         {

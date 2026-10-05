@@ -21,6 +21,14 @@ public sealed class BarSlotTests
     }
 
     [Fact]
+    public void Centred_below_the_light_top_edge()
+    {
+        // 96 px taskbar with a 2 px light line on top: 94 px below it, the 64 px bar 15 px from each end (measured 10-05)
+        var spot = BarSlot.Place(BarPosition.Left, Centred, W, H, Gap, 0, topEdge: 2);
+        Assert.Equal(1824 + 2 + 15, spot.Y);
+    }
+
+    [Fact]
     public void Left_steps_past_the_widgets_button()
         => Assert.Equal(324, BarSlot.Place(BarPosition.Left, Centred with { WidgetsRight = 300 }, W, H, Gap, 0).X);
 
