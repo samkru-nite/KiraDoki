@@ -43,6 +43,9 @@ internal sealed class TaskbarHost(IntPtr windowHandle)
 
     public bool IsAttached => Host != IntPtr.Zero && GetParent(_wrap) == Host;
 
+    /// <summary>The Windows error of the last attach (0 = none; 87 = "the parameter is incorrect", the occasional refusal).</summary>
+    public int LastError { get; private set; }
+
     /// <summary>Finds the taskbar window. IntPtr.Zero if missing (Explorer is restarting).</summary>
     public static IntPtr FindTaskbar() => FindWindow("Shell_TrayWnd", null);
 
@@ -83,11 +86,14 @@ internal sealed class TaskbarHost(IntPtr windowHandle)
 
         Host = GetParent(_wrap) == tray ? tray : IntPtr.Zero;
 
+        LastError = error;
         if (Host == IntPtr.Zero)
         {
-            // Failure (usually DPI mode differs from Explorer) → restore so it works as a plain topmost window
+            // Failure (error 87 now and then, or a DPI mode that differs from Explorer) → back to a top-level window that floats
+            // above the taskbar (PlaceAt puts it topmost) until a later try succeeds — the fallback of TODO 7.8. A tool window, so
+            // it gets no taskbar button / Alt+Tab entry. (It used to stay a plain window behind the taskbar, i.e. invisible.)
             SetWindowLong(_wrap, GWL_STYLE, Signed32(_originalStyle));
-            SetWindowLong(_wrap, GWL_EXSTYLE, Signed32(_originalExStyle));
+            SetWindowLong(_wrap, GWL_EXSTYLE, Signed32(_originalExStyle | WS_EX_TOOLWINDOW));
             Log($"attach failed tray={tray:X} wrap={_wrap:X} err={error} dpi={DpiSetup.CurrentAwareness()}");
             return false;
         }
@@ -177,8 +183,8 @@ internal sealed class TaskbarHost(IntPtr windowHandle)
         }
         else
         {
-            SetWindowPos(_wrap, Detached ? HWND_TOPMOST : HWND_TOP, x, y, width, height,
-                SWP_NOACTIVATE | SWP_SHOWWINDOW);
+            // detached for typing, or floating because attaching failed: either way above the taskbar
+            SetWindowPos(_wrap, HWND_TOPMOST, x, y, width, height, SWP_NOACTIVATE | SWP_SHOWWINDOW);
         }
     }
 

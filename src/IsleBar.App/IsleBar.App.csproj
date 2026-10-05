@@ -68,7 +68,5 @@
     <Content Include="Assets\Fonts\*" CopyToOutputDirectory="PreserveNewest" />
     <!-- File search: voidtools Everything SDK (Everything64.dll, redistribution allowed). The user installs and runs Everything itself -->
     <Content Include="everything_sdk\Everything64.dll" CopyToOutputDirectory="PreserveNewest" />
-    <!-- Explorer module that makes the real search box transparent (C++, native\IsleBarTap — rebuild with build.cmd) -->
-    <Content Include="..\..\native\IsleBarTap\dist\IsleBarTap.dll" Link="native\IsleBarTap.dll" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

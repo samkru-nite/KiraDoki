@@ -272,8 +272,38 @@ public sealed class LanguageStrings
     /// <summary>Settings window: quick timer list.</summary>
     public required string QuickTimersLabel { get; init; }
 
-    /// <summary>Settings window: make the real search box transparent inside Explorer (native).</summary>
-    public required string NativeSearchBox { get; init; }
+    /// <summary>Settings: where on the taskbar the bar sits (10-05).</summary>
+    public required string PositionLabel { get; init; }
+
+    /// <summary>Position choice: the left end.</summary>
+    public required string PositionLeft { get; init; }
+
+    /// <summary>Position choice: the middle of the screen.</summary>
+    public required string PositionCenter { get; init; }
+
+    /// <summary>Position choice: left of the tray.</summary>
+    public required string PositionTray { get; init; }
+
+    /// <summary>Position choice: set by hand.</summary>
+    public required string PositionManual { get; init; }
+
+    /// <summary>Settings: the manual position, distance from the left end (dip).</summary>
+    public required string ManualOffsetLabel { get; init; }
+
+    /// <summary>Settings: diagnostics section heading.</summary>
+    public required string DiagSection { get; init; }
+
+    /// <summary>Diagnostics: is the bar inside the taskbar.</summary>
+    public required string DiagEmbed { get; init; }
+
+    /// <summary>Diagnostics: working.</summary>
+    public required string DiagOk { get; init; }
+
+    /// <summary>Diagnostics: attaching failed, the bar floats above the taskbar.</summary>
+    public required string DiagFloating { get; init; }
+
+    /// <summary>Diagnostics: no room at the chosen position, the bar is hidden.</summary>
+    public required string DiagNoRoom { get; init; }
 
     /// <summary>Settings: music bars follow the actual sound.</summary>
     public required string AudioBars { get; init; }

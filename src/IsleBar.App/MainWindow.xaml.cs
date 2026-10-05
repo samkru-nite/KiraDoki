@@ -48,7 +48,7 @@ public sealed partial class MainWindow : Window
 
     private readonly IntPtr _hwnd;
     private readonly TaskbarHost _taskbar;
-    private readonly SearchBoxTracker _tracker;
+    private readonly TaskbarTracker _tracker;
     private readonly IslandAnimator _animator;
     private readonly FileSearchRequests _fileSearch;
     private readonly Watchdog _watchdog;
@@ -61,7 +61,7 @@ public sealed partial class MainWindow : Window
 
     private BarMode _mode = BarMode.Claude;
     // not "Hidden": a first placement of Hidden must still be applied (it compared equal and the window stayed where WinUI put it — review 10-03)
-    private BarPlacement _placement = new(PlacementMode.Hide, int.MinValue, int.MinValue);
+    private BarPlacement _placement = new(false, int.MinValue, int.MinValue);
 
     /// <summary>While a file is dragged over the pill (blue border).</summary>
     private bool _dropHover;
@@ -102,7 +102,7 @@ public sealed partial class MainWindow : Window
         _theme = ThemeColors.FromSystem();
         _history = new HistoryNavigator(_settings.History);
 
-        _tracker = new SearchBoxTracker(_width, _height);
+        _tracker = new TaskbarTracker(_width, _height, () => (BarSlot.Parse(_settings.Position), DpiSetup.Px(_settings.ManualOffset)));
         _feed = new ActivityFeed(() => _settings, () => _text);
         _animator = new IslandAnimator([LeadSlot, IslandContent], IslandContent, GlowRing, PillBody);
         _fileSearch = new FileSearchRequests(OnSearchResult);
@@ -127,12 +127,11 @@ public sealed partial class MainWindow : Window
 
         PillRegion.DisableSystemFrame(_taskbar.OuterWindow);
         _taskbar.Attach();
-        ApplyNativeSearchBox();
         ApplyRegion();
 
         // Move the pill the instant the tracker sees the search box move (taskbar reflow), rather than waiting for the next
         // 250ms island tick — this is what makes it follow the icons naturally instead of lagging behind (user 10-01).
-        _tracker.OnChanged = () => _ui.TryEnqueue(FollowRealSearchBox);
+        _tracker.OnChanged = () => _ui.TryEnqueue(FollowTaskbar);
         _tracker.Start();
         _feed.Start();
         _feed.OfferToConnectAgents();
@@ -914,7 +913,7 @@ public sealed partial class MainWindow : Window
                 CheckForeground();   // backstop for the foreground notification
             }
 
-            FollowRealSearchBox();
+            FollowTaskbar();
             RefreshBesideColor();
             var items = _feed.Collect(DateTimeOffset.UtcNow);
             UpdatePrivacyDot();
@@ -984,10 +983,9 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Follows the position computed in the background. <b>No UIA calls here</b> —
-    /// it only reads one value (so it never waits on Explorer).
+    /// Follows the spot computed in the background. <b>No UIA calls here</b> — it only reads one value (so it never waits on Explorer).
     /// </summary>
-    private void FollowRealSearchBox()
+    private void FollowTaskbar()
     {
         var placement = _tracker.Current;
         if (placement == _placement)
@@ -995,14 +993,9 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        var wasOver = _placement.Mode == PlacementMode.OverRealSearchBox;
         _placement = placement;
-        Interop.TaskbarHost.Log($"follow: {placement.Mode} {placement.X},{placement.Y} size {_width}x{_height} typing={_typing}");
-        if (wasOver != (placement.Mode == PlacementMode.OverRealSearchBox) && _taskbar.IsAttached)
-        {
-            ApplyNativeSearchBox();   // the pill moved onto / away from the real box
-        }
-        if (placement.Mode == PlacementMode.Hide)
+        Interop.TaskbarHost.Log($"follow: visible={placement.Visible} {placement.X},{placement.Y} size {_width}x{_height} typing={_typing}");
+        if (!placement.Visible)
         {
             // don't use AppWindow.Show/Hide on a taskbar child window (PC 09-29: Show hung and the position was never set)
             Interop.NativeMethods.ShowWindow(_taskbar.OuterWindow, Interop.NativeMethods.SW_HIDE);
@@ -1021,30 +1014,6 @@ public sealed partial class MainWindow : Window
 
     /// <summary>When the right mouse button last went down on the pill (a right click must not start typing).</summary>
     private DateTimeOffset _rightPressAt = DateTimeOffset.MinValue;
-
-    private bool _nativeShown = true;
-
-    /// <summary>
-    /// Setting "hide the real search box (native)": when on, inject the module into Explorer (not again for the same Explorer — anew if Explorer restarts),
-    /// when off, restore. Called every time we attach to the taskbar and whenever settings change. Injecting takes a moment, so it runs in the background.
-    /// </summary>
-    private void ApplyNativeSearchBox()
-    {
-        // Only while the pill sits over the real box: with search as an icon (or turned off) the pill moves aside, and hiding the
-        // icon then left an empty gap where the person's search icon was (review 10-03)
-        // and only while attached: when attaching keeps failing the real box is shown as a fallback, and any settings change
-        // used to hide it again behind a pill that isn't there (review 10-03)
-        if (_settings.NativeSearchBox && _placement.Mode == PlacementMode.OverRealSearchBox && _taskbar.IsAttached)
-        {
-            _nativeShown = false;
-            NativeSearchBox.RequestHide();
-        }
-        else if (!_nativeShown)
-        {
-            _nativeShown = true;
-            NativeSearchBox.Show();
-        }
-    }
 
     // ---------------- Scrolling title · now-playing bars ----------------
 
@@ -1452,7 +1421,7 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private Windows.UI.Color? SampleBeside()
     {
-        if (_placement.Mode == PlacementMode.Hide)
+        if (!_placement.Visible)
         {
             return null;
         }
@@ -1807,8 +1776,9 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>
-    /// If not attached to the taskbar, reattach every 2s. On startup SetParent sometimes fails with error 87,
-    /// but retrying works (measured on PC 09-29 — left failed, the bar stays invisible).
+    /// If not attached to the taskbar, try again: every 2 s at first (on startup SetParent sometimes fails with error 87, but a retry
+    /// works — measured 09-29), then every 10 s. Meanwhile the bar floats above the taskbar (<see cref="TaskbarHost.PlaceAt"/>) —
+    /// the fallback of TODO 7.8, instead of staying invisible behind it.
     /// </summary>
     private void RetryAttachIfNeeded()
     {
@@ -1818,7 +1788,8 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        if (_typing || DateTimeOffset.UtcNow - _lastAttachTry < TimeSpan.FromSeconds(2))
+        var wait = TimeSpan.FromSeconds(_attachFailures < AttachFailuresBeforeSlowRetry ? 2 : 10);
+        if (_typing || DateTimeOffset.UtcNow - _lastAttachTry < wait)
         {
             return;
         }
@@ -1826,28 +1797,21 @@ public sealed partial class MainWindow : Window
         _lastAttachTry = DateTimeOffset.UtcNow;
         if (_taskbar.Attach())
         {
-            if (_attachFailures >= AttachFailuresBeforeFallback)
+            if (_attachFailures > 0)
             {
-                TaskbarHost.Log("attach recovered — hiding the real search box again");
+                TaskbarHost.Log($"attach recovered after {_attachFailures} tries — back inside the taskbar");
             }
 
             _attachFailures = 0;
-            ApplyNativeSearchBox();   // if Explorer restarted, inject the module into the new Explorer again
             PlaceOnTaskbar();
             ApplyRegion();
         }
         else
         {
             ++_attachFailures;
-            if (_attachFailures == AttachFailuresBeforeFallback && _settings.NativeSearchBox)
-            {
-                // Unattached, the pill sits behind the (topmost) taskbar — and with the real search box hidden the slot was just empty,
-                // no search at all, until Explorer was restarted (seen 10-01). Give the real box back while we keep retrying.
-                TaskbarHost.Log("attach keeps failing — showing the real search box until it works");
-                _nativeShown = true;
-                NativeSearchBox.Show();
-            }
-            else if (_attachFailures >= AttachFailuresBeforeRestart && _compose is null && !_menuOpen && RestartForAttachAllowed())
+            PlaceOnTaskbar();   // floating: topmost at the same spot
+            ApplyRegion();
+            if (_attachFailures >= AttachFailuresBeforeRestart && _compose is null && !_menuOpen && RestartForAttachAllowed())
             {
                 // Sometimes the taskbar keeps refusing this window (error 87) while it takes any other — a fresh start of the bar
                 // attached every time (seen twice on 10-03). Once per 5 minutes at most, so a Windows-wide refusal can't loop.
@@ -1857,7 +1821,7 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private const int AttachFailuresBeforeRestart = 15;   // 30 s
+    private const int AttachFailuresBeforeRestart = 6;    // 3 × 2 s + 3 × 10 s ≈ 36 s, as before
 
     private static bool RestartForAttachAllowed()
     {
@@ -1878,7 +1842,7 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private const int AttachFailuresBeforeFallback = 3;   // tries are 2 s apart
+    private const int AttachFailuresBeforeSlowRetry = 3;
     private int _attachFailures;
 
     private void RenderIsland()
@@ -2677,7 +2641,7 @@ public sealed partial class MainWindow : Window
     {
         get
         {
-            if (_placement.Mode != PlacementMode.Hide)
+            if (_placement.Visible)
             {
                 return (_placement.X, _placement.Y);
             }
@@ -2690,13 +2654,30 @@ public sealed partial class MainWindow : Window
     /// <summary>Puts the attached pill at its spot on the taskbar, or keeps it hidden when there is none.</summary>
     private void PlaceOnTaskbar()
     {
-        if (_placement.Mode == PlacementMode.Hide)
+        if (!_placement.Visible)
         {
             Interop.NativeMethods.ShowWindow(_taskbar.OuterWindow, Interop.NativeMethods.SW_HIDE);
             return;
         }
 
         _taskbar.PlaceAt(_placement.X, _placement.Y, _width, _height);
+    }
+
+    /// <summary>The diagnostics lines of the settings window: is the bar inside the taskbar, and where it sits.</summary>
+    private IReadOnlyList<(string Label, string Value)> Diagnostics()
+    {
+        var embed = _taskbar.IsAttached || _typing
+            ? _text.DiagOk
+            : $"{_text.DiagFloating} (err {_taskbar.LastError} ×{_attachFailures})";
+        var name = BarSlot.Parse(_settings.Position) switch
+        {
+            BarPosition.Center => _text.PositionCenter,
+            BarPosition.BesideTray => _text.PositionTray,
+            BarPosition.Manual => _text.PositionManual,
+            _ => _text.PositionLeft,
+        };
+        var place = _placement.Visible ? $"{name} · x={_placement.X}" : $"{name} · {_text.DiagNoRoom}";
+        return [(_text.DiagEmbed, embed), (_text.PositionLabel, place)];
     }
 
     /// <summary>Settings window. Brings it to the front if already open.</summary>
@@ -2708,7 +2689,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        _settingsWindow = new Options.SettingsWindow(_settings, _text, OnSettingsChanged, OnLanguageChanged, () => _language);
+        _settingsWindow = new Options.SettingsWindow(_settings, _text, OnSettingsChanged, OnLanguageChanged, () => _language, Diagnostics);
         _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         _settingsWindow.ShowAbove(PopupAnchorX, TaskbarTop());
     }
@@ -2740,7 +2721,6 @@ public sealed partial class MainWindow : Window
 
     private void OnSettingsChanged()
     {
-        ApplyNativeSearchBox();
         _feed.ApplySettings();
         TakeBackgroundModelLists();
         _store.Save(_settings);
@@ -3538,10 +3518,6 @@ public sealed partial class MainWindow : Window
         _hotkey?.Dispose();
         StopMeterBars();
         _audioMeter.Dispose();
-        if (_settings.NativeSearchBox)
-        {
-            NativeSearchBox.Show();   // the module restores itself when the process exits too, but on a normal exit do it right away
-        }
         _feed.Dispose();
         CloseResults();
         _flyout?.Close();

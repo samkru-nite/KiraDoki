@@ -1,5 +1,6 @@
 using IsleBar.App.Interop;
 using IsleBar.Core.Configuration;
+using IsleBar.Core.Ui;
 using IsleBar.Core.Launch;
 using IsleBar.Core.Localization;
 using IsleBar.Core.Search;
@@ -25,12 +26,15 @@ internal sealed class SettingsWindow : Window
     private readonly Action _changed;
     private readonly Action _languageChanged;
     private readonly Func<string> _currentLanguage;
+    private readonly Func<IReadOnlyList<(string Label, string Value)>> _diagnostics;
     private readonly StackPanel _body = new() { Padding = new Thickness(20, 8, 20, 20), Spacing = 6 };
     private LanguageStrings _text;
 
-    public SettingsWindow(IsleBarSettings settings, LanguageStrings text, Action changed, Action languageChanged, Func<string> currentLanguage)
+    public SettingsWindow(IsleBarSettings settings, LanguageStrings text, Action changed, Action languageChanged, Func<string> currentLanguage,
+        Func<IReadOnlyList<(string Label, string Value)>> diagnostics)
     {
         _currentLanguage = currentLanguage;
+        _diagnostics = diagnostics;
         Closed += (_, _) =>
         {
             foreach (var commit in _commitOnClose.ToList())
@@ -352,10 +356,16 @@ internal sealed class SettingsWindow : Window
         ToggleRow(_text.StyleGlass, () => _settings.StyleGlass, v => _settings.StyleGlass = v);
         ToggleRow(_text.AudioBars, () => _settings.AudioBars, v => _settings.AudioBars = v);
         ToggleRow(_text.BrowserMedia, () => _settings.BrowserMedia, v => _settings.BrowserMedia = v);   // 10-04
-        if (File.Exists(Path.Combine(AppContext.BaseDirectory, "native", "IsleBarTap.dll")))   // left out of a -NoNativeMode Store package (10-03)
-        {
-            ToggleRow(_text.NativeSearchBox, () => _settings.NativeSearchBox, v => _settings.NativeSearchBox = v);
-        }
+        PositionRow();
+        TextRow(_text.ManualOffsetLabel, "12",
+            () => _settings.ManualOffset.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            v =>
+            {
+                if (int.TryParse(v, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var n))
+                {
+                    _settings.ManualOffset = Math.Clamp(n, 0, 10000);
+                }
+            });
 
         // Advanced: power options, grouped under their own heading but always visible (labelled, not hidden). The drop command runs
         // a program on dropped files (we use it for phone transfer); the toggle picks whether a drop attaches to the prompt or runs it (10-01).
@@ -391,6 +401,48 @@ internal sealed class SettingsWindow : Window
                 }
             }), TaskScheduler.Default);
         });
+
+        // Diagnostics (TODO 7.8, first version 10-05): is each part that leans on Windows working — read when the window opens
+        Section(_text.DiagSection);
+        foreach (var (label, value) in _diagnostics())
+        {
+            var line = new Grid { ColumnSpacing = 12 };
+            line.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            line.Children.Add(new TextBlock { Text = label, TextWrapping = TextWrapping.Wrap });
+            var shown = new TextBlock { Text = value, IsTextSelectionEnabled = true, HorizontalAlignment = HorizontalAlignment.Right };
+            Grid.SetColumn(shown, 1);
+            line.Children.Add(shown);
+            _body.Children.Add(line);
+        }
+    }
+
+    /// <summary>Where on the taskbar the bar sits (10-05): left end · centre · left of the tray · manual.</summary>
+    private void PositionRow()
+    {
+        _body.Children.Add(new TextBlock { Text = _text.PositionLabel, Margin = new Thickness(0, 8, 0, 4) });
+        var box = new ComboBox { MinWidth = 220 };
+        foreach (var (position, name) in new[]
+                 {
+                     (BarPosition.Left, _text.PositionLeft),
+                     (BarPosition.Center, _text.PositionCenter),
+                     (BarPosition.BesideTray, _text.PositionTray),
+                     (BarPosition.Manual, _text.PositionManual),
+                 })
+        {
+            box.Items.Add(new ComboBoxItem { Content = name, Tag = BarSlot.Key(position) });
+        }
+
+        box.SelectedItem = box.Items.Cast<ComboBoxItem>().FirstOrDefault(i => (string)i.Tag == _settings.Position) ?? box.Items[0];
+        box.SelectionChanged += (_, _) =>
+        {
+            if (box.SelectedItem is ComboBoxItem { Tag: string key } && key != _settings.Position)
+            {
+                _settings.Position = key;
+                _changed();
+            }
+        };
+        _body.Children.Add(box);
     }
 
     /// <summary>A row with a name + an on/off toggle on the right.</summary>

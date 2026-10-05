@@ -31,7 +31,8 @@ public static class SettingsCodec
     private const string KeyPomoBreak = "pomo_break";
     private const string KeyPomoLong = "pomo_long";
     private const string KeyQuickTimers = "quick_timers";
-    private const string KeyNativeSearchBox = "native_searchbox";
+    private const string KeyPosition = "position";
+    private const string KeyManualOffset = "manual_offset";
     private const string KeyAudioBars = "audio_bars";
     private const string KeyHistory = "history";
     private const string KeyAgent = "agent";
@@ -156,7 +157,12 @@ public static class SettingsCodec
                 : history;
         }
 
-        s.NativeSearchBox = AsBool(raw[KeyNativeSearchBox]) ?? s.NativeSearchBox;
+        s.Position = Ui.BarSlot.Key(Ui.BarSlot.Parse(AsString(raw[KeyPosition]) ?? s.Position));
+        if (AsInt(raw[KeyManualOffset]) is { } manualOffset)
+        {
+            s.ManualOffset = Math.Clamp(manualOffset, 0, 10000);
+        }
+
         s.AudioBars = AsBool(raw[KeyAudioBars]) ?? s.AudioBars;
         s.PomodoroFocus = Minutes(raw[KeyPomoFocus]) ?? s.PomodoroFocus;
         s.PomodoroBreak = Minutes(raw[KeyPomoBreak]) ?? s.PomodoroBreak;
@@ -285,7 +291,9 @@ public static class SettingsCodec
         }
         raw[KeyModeOrder] = ToArray(s.ModeOrder);
         raw[KeyModesOff] = ToArray(s.ModesOff);
-        raw[KeyNativeSearchBox] = s.NativeSearchBox;
+        raw.Remove("native_searchbox");   // the old "hide the real search box" switch is gone (10-05)
+        raw[KeyPosition] = s.Position;
+        raw[KeyManualOffset] = s.ManualOffset;
         raw[KeyAudioBars] = s.AudioBars;
         raw[KeyPomoFocus] = s.PomodoroFocus;
         raw[KeyPomoBreak] = s.PomodoroBreak;

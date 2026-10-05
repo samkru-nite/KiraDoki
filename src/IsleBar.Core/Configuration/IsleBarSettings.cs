@@ -80,11 +80,11 @@ public sealed class IsleBarSettings
 
     public int PomodoroLong { get; set; } = 15;
 
-    /// <summary>
-    /// Makes the real search box transparent inside the taskbar (native; injects a module into Explorer). Off by default — since it
-    /// goes into Explorer, it is an opt-in feature the user turns on (09-30).
-    /// </summary>
-    public bool NativeSearchBox { get; set; }
+    /// <summary>Where on the taskbar the bar sits: "left" (default) · "center" · "tray" · "manual" (TODO 7.1, 10-05). See <see cref="Ui.BarSlot"/>.</summary>
+    public string Position { get; set; } = "left";
+
+    /// <summary>For "manual": distance from the taskbar's left end, in dip.</summary>
+    public int ManualOffset { get; set; } = 12;
 
     /// <summary>Music bars follow the actual sound (speaker peak meter) instead of a canned loop. Off by default.</summary>
     public bool AudioBars { get; set; }
@@ -200,7 +200,8 @@ public sealed class IsleBarSettings
         PomodoroBreak = PomodoroBreak,
         PomodoroLong = PomodoroLong,
         QuickTimers = [.. QuickTimers],
-        NativeSearchBox = NativeSearchBox,
+        Position = Position,
+        ManualOffset = ManualOffset,
         AudioBars = AudioBars,
         History = [.. History],
         Models = [.. Models],
