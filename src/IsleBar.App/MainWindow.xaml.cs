@@ -93,7 +93,6 @@ public sealed partial class MainWindow : Window
     private DispatcherQueueTimer? _islandTimer;
     private DispatcherQueueTimer? _searchTimer;
     private bool _typing;
-    private ScrollDiag? _scrollDiag;   // TEMPORARY (TODO 7.9 step 1)
 
     public MainWindow()
     {
@@ -163,7 +162,6 @@ public sealed partial class MainWindow : Window
             _ui.TryEnqueue(CheckForeground);
         });
         StartIslandPolling();
-        _scrollDiag = new ScrollDiag(() => _taskbar.OuterWindow);   // TEMPORARY (TODO 7.9 step 1)
         _ = UpdateModelAliasesAsync();
     }
 
@@ -298,14 +296,6 @@ public sealed partial class MainWindow : Window
         }), handledEventsToo: true);
         Root.PointerEntered += (_, _) => SetHover(true);
         Root.PointerExited += (_, _) => SetHover(false);
-        // TEMPORARY scroll diagnostic (TODO 7.9 step 1) — UI-layer half; the hook half is Interop/ScrollDiag.cs
-        Root.AddHandler(UIElement.PointerWheelChangedEvent, new PointerEventHandler((_, e) =>
-        {
-            var point = e.GetCurrentPoint(Root);
-            TaskbarHost.Log($"[scrolldiag] XAML {(point.Properties.IsHorizontalMouseWheel ? "H" : "V")} delta={point.Properties.MouseWheelDelta}"
-                + $" device={e.Pointer.PointerDeviceType} handled={e.Handled} typing={_typing}"
-                + $" front={(NativeMethods.GetForegroundWindow() == _taskbar.OuterWindow ? "pill" : "other")}");
-        }), handledEventsToo: true);
 
         ChevronButton.Click += (_, _) => ShowQuickOptions();
         PlayButton.Click += (_, _) => SendMediaCommand(MediaCommand.PlayPause);
@@ -4045,7 +4035,6 @@ public sealed partial class MainWindow : Window
     {
         _watchdog.Quitting = true;
         _foreground?.Dispose();
-        _scrollDiag?.Dispose();
         // every window closed, so the app ends by itself instead of waiting 4 s for the forced exit (review 10-03) — first, while
         // the meter and timers still exist (closing compose re-renders the pill)
         foreach (var close in new Action?[] { _settingsWindow is null ? null : _settingsWindow.Close, _expanded is null ? null : _expanded.CloseAll, _preview is null ? null : _preview.Close, _compose is null ? null : _compose.Close })
