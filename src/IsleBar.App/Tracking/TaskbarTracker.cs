@@ -34,7 +34,7 @@ internal sealed class TaskbarTracker : IDisposable
     private static readonly TimeSpan FastPoll = TimeSpan.FromMilliseconds(30);      // while the taskbar is reflowing, track closely
     private static readonly TimeSpan FastWindow = TimeSpan.FromMilliseconds(650);   // ...for this long after the last change
 
-    private readonly int _barWidth;
+    private readonly Func<int> _barWidth;
     private readonly int _barHeight;
     private readonly Func<(BarPosition Position, int ManualOffsetPx)> _settings;
     private readonly CancellationTokenSource _stop = new();
@@ -43,7 +43,7 @@ internal sealed class TaskbarTracker : IDisposable
     private bool? _loggedVisible;
     private BarPosition? _loggedPosition;
 
-    public TaskbarTracker(int barWidth, int barHeight, Func<(BarPosition Position, int ManualOffsetPx)> settings)
+    public TaskbarTracker(Func<int> barWidth, int barHeight, Func<(BarPosition Position, int ManualOffsetPx)> settings)
     {
         _barWidth = barWidth;
         _barHeight = barHeight;
@@ -55,6 +55,22 @@ internal sealed class TaskbarTracker : IDisposable
 
     /// <summary>The taskbar as last read (for the diagnostics page). Null until read once.</summary>
     public TaskbarLayout? Layout { get; private set; }
+
+    /// <summary>
+    /// The spot for a bar <paramref name="width"/> wide on the taskbar as last read. The UI thread calls this the moment the pills
+    /// change width (a card came or went), instead of waiting up to half a second for the next pass. Pure arithmetic, no UIA.
+    /// </summary>
+    public BarPlacement PlaceNow(int width)
+    {
+        if (Layout is not { } layout)
+        {
+            return Current;
+        }
+
+        var (position, manualOffset) = _settings();
+        var spot = BarSlot.Place(position, layout, width, _barHeight, DpiSetup.Px(12), manualOffset, topEdge: DpiSetup.Px(1));
+        return spot.Fits ? new BarPlacement(true, spot.X, spot.Y) : BarPlacement.Hidden;
+    }
 
     /// <summary>Fired (on the tracker thread) the moment the spot changes, so the UI moves the bar without waiting for its next tick.</summary>
     public Action? OnChanged { get; set; }
@@ -130,7 +146,7 @@ internal sealed class TaskbarTracker : IDisposable
 
                     var layout = Read(elements, tray, bar);
                     Layout = layout;
-                    var spot = BarSlot.Place(position, layout, _barWidth, _barHeight, DpiSetup.Px(12), manualOffset, topEdge: DpiSetup.Px(1));
+                    var spot = BarSlot.Place(position, layout, _barWidth(), _barHeight, DpiSetup.Px(12), manualOffset, topEdge: DpiSetup.Px(1));
                     SetCurrent(spot.Fits ? new BarPlacement(true, spot.X, spot.Y) : BarPlacement.Hidden);
                     if (spot.Fits != _loggedVisible || position != _loggedPosition)
                     {

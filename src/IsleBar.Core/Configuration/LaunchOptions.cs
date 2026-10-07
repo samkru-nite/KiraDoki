@@ -35,10 +35,7 @@ public static class LaunchOptionDefs
     /// <summary>Default used while there is no model alias list yet.</summary>
     public static readonly IReadOnlyList<string> DefaultModels = ["opus", "sonnet", "haiku", "fable"];
 
-    /// <summary>Options pinned to the quick-launch menu initially.</summary>
-    public static readonly IReadOnlyList<string> DefaultQuick = [Session, Model, Rc];
-
-    /// <summary>All pinnable options (order = menu order).</summary>
+    /// <summary>All launch options (order = settings order).</summary>
     public static readonly IReadOnlyList<string> All = [Session, Model, Effort, Perm, Rc];
 
     public static IReadOnlyList<string> ModelChoices(IReadOnlyList<string> models)

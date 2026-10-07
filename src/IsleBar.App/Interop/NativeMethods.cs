@@ -226,6 +226,9 @@ internal static partial class NativeMethods
     [LibraryImport("gdi32.dll")]
     internal static partial IntPtr CreateRoundRectRgn(int left, int top, int right, int bottom, int widthEllipse, int heightEllipse);
 
+    [LibraryImport("gdi32.dll")]
+    internal static partial IntPtr CreateRectRgn(int left, int top, int right, int bottom);
+
     /// <summary>RGN_OR — combines two regions into their union (used to clip the window to the message deck silhouette).</summary>
     internal const int RGN_OR = 2;
 

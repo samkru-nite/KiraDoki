@@ -17,10 +17,8 @@ public static class SettingsCodec
     private const string KeyValues = "values";
     private const string KeyCodexValues = "codex_values";
     private const string KeyRecentFolders = "recent_folders";
-    private const string KeyQuick = "quick";
     private const string KeyFolder = "folder";
     private const string KeyFiles = "files";
-    private const string KeyWebEngine = "web_engine";
     private const string KeyFileResults = "file_results";
     private const string KeyFileSort = "file_sort";
     private const string KeyFileExclude = "file_exclude";
@@ -33,6 +31,8 @@ public static class SettingsCodec
     private const string KeyQuickTimers = "quick_timers";
     private const string KeyPosition = "position";
     private const string KeyManualOffset = "manual_offset";
+    private const string KeyPillCorners = "pill_corners";
+    private const string KeyBallSide = "ball_side";
     private const string KeyAudioBars = "audio_bars";
     private const string KeyHistory = "history";
     private const string KeyAgent = "agent";
@@ -84,11 +84,6 @@ public static class SettingsCodec
         if (AsString(raw[KeyFolder]) is { } folder)
         {
             s.Folder = folder;
-        }
-
-        if (AsString(raw[KeyWebEngine]) is { } engine && Search.WebSearch.IsKnown(engine))
-        {
-            s.WebEngine = engine;
         }
 
         if (AsInt(raw[KeyFileResults]) is { } fileResults)
@@ -158,6 +153,8 @@ public static class SettingsCodec
         }
 
         s.Position = Ui.BarSlot.Key(Ui.BarSlot.Parse(AsString(raw[KeyPosition]) ?? s.Position));
+        s.PillCorners = AsString(raw[KeyPillCorners]) == "small" ? "small" : "round";
+        s.BallSide = AsString(raw[KeyBallSide]) == "left" ? "left" : "right";
         if (AsInt(raw[KeyManualOffset]) is { } manualOffset)
         {
             s.ManualOffset = Math.Clamp(manualOffset, 0, 10000);
@@ -180,20 +177,6 @@ public static class SettingsCodec
         if (raw[KeyModeOrder] is JsonArray orderArr)
         {
             s.ModeOrder = [.. Localization.BarModes.Normalize(StringList(orderArr)).Select(Localization.BarModes.Key)];
-        }
-
-        if (raw[KeyQuick] is JsonArray quickArr)
-        {
-            var quick = new List<string>();
-            foreach (var name in StringList(quickArr))
-            {
-                if (LaunchOptionDefs.All.Contains(name) && !quick.Contains(name))
-                {
-                    quick.Add(name);
-                }
-            }
-
-            s.Quick = quick;   // an empty list is meaningful too (all pins removed)
         }
 
         if (raw[KeyRecentFolders] is JsonArray recentArr)
@@ -269,7 +252,6 @@ public static class SettingsCodec
         raw[KeyAgent] = s.Agent;
         raw[KeyFolder] = s.Folder;
         raw[KeyFiles] = s.Files;
-        raw[KeyWebEngine] = s.WebEngine;
         raw[KeyFileResults] = s.FileResults;
         raw[KeyFileSort] = s.FileSort;
         if (s.FileExclude is null)
@@ -294,13 +276,14 @@ public static class SettingsCodec
         raw.Remove("native_searchbox");   // the old "hide the real search box" switch is gone (10-05)
         raw[KeyPosition] = s.Position;
         raw[KeyManualOffset] = s.ManualOffset;
+        raw[KeyPillCorners] = s.PillCorners;
+        raw[KeyBallSide] = s.BallSide;
         raw[KeyAudioBars] = s.AudioBars;
         raw[KeyPomoFocus] = s.PomodoroFocus;
         raw[KeyPomoBreak] = s.PomodoroBreak;
         raw[KeyPomoLong] = s.PomodoroLong;
         raw[KeyQuickTimers] = new JsonArray([.. s.QuickTimers.Select(m => (JsonNode)m)]);
         raw[KeyModelsChecked] = s.ModelsChecked;
-        raw[KeyQuick] = ToArray(s.Quick);
         raw[KeyHistory] = ToArray(s.History);
         raw[KeyModels] = ToArray(s.Models);
         raw[KeyCodexModels] = ToArray(s.CodexModels);

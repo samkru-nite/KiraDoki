@@ -21,7 +21,6 @@ public sealed class ConfigStoreTests
         Assert.True(settings.Files);
         Assert.Equal("", settings.Folder);
         Assert.Empty(settings.History);
-        Assert.Equal(LaunchOptionDefs.DefaultQuick, settings.Quick);
         Assert.Equal(LaunchOptionDefs.DefaultModels, settings.Models);
         Assert.Equal(0, settings.ModelsChecked);
     }
@@ -78,7 +77,6 @@ public sealed class ConfigStoreTests
           "folder": "/home/ubuntu",
           "files": "yes",
           "history": "문자열인데 목록이어야 함",
-          "quick": [1, 2, "model"],
           "models_checked": "어제",
           "values": { "session": true, "perm": "plan", "rc": 1, "effort": "high" }
         }
@@ -90,7 +88,6 @@ public sealed class ConfigStoreTests
         Assert.Equal("/home/ubuntu", settings.Folder);       // survives
         Assert.True(settings.Files);                         // "yes" isn't a bool → default
         Assert.Empty(settings.History);                      // not a list → default
-        Assert.Equal(["model"], settings.Quick);             // only strings are kept
         Assert.Equal(0, settings.ModelsChecked);
         Assert.Equal("new", settings.Values.Session);        // true isn't a string → default
         Assert.Equal("plan", settings.Values.Perm);          // survives
@@ -159,7 +156,6 @@ public sealed class ConfigStoreTests
             Folder = @"C:\Users\me\Desktop",
             Files = false,
             History = ["첫 질문", "두 번째 질문"],
-            Quick = ["perm", "effort"],
             Models = ["opus", "fable"],
             ModelsChecked = 1_759_000_000,
             Values = new LaunchOptions { Session = "resume", Model = "opus", Effort = "max", Perm = "plan", Rc = true },
@@ -171,7 +167,6 @@ public sealed class ConfigStoreTests
         Assert.Equal(@"C:\Users\me\Desktop", read.Folder);
         Assert.False(read.Files);
         Assert.Equal(["첫 질문", "두 번째 질문"], read.History);
-        Assert.Equal(["perm", "effort"], read.Quick);
         Assert.Equal(["opus", "fable"], read.Models);
         Assert.Equal(1_759_000_000, read.ModelsChecked);
         Assert.Equal("resume", read.Values.Session);

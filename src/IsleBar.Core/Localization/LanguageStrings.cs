@@ -53,8 +53,6 @@ public sealed class LanguageStrings
     /// <summary>"Dismiss" in the right-click menu (island item — cancel a timer, etc.).</summary>
     public required string Dismiss { get; init; }
 
-    /// <summary>Title of "Web search engine" in the settings window.</summary>
-    public required string WebEngine { get; init; }
 
     /// <summary>File search (user 10-04): the sort buttons under the results, the button that opens Everything, the row-count setting.</summary>
     public required string SortName { get; init; }
@@ -85,8 +83,6 @@ public sealed class LanguageStrings
     /// <summary>Title of "Tab order" in the settings window.</summary>
     public required string TabOrder { get; init; }
 
-    /// <summary>Mode name "Web search" (Tab order list).</summary>
-    public required string WebSearch { get; init; }
 
     /// <summary>Timer label on the island ("Timer 18:42" — like "Pomodoro 18:42" in the preview).</summary>
     public required string Timer { get; init; }
@@ -289,6 +285,24 @@ public sealed class LanguageStrings
 
     /// <summary>Settings: the manual position, distance from the left end (dip).</summary>
     public required string ManualOffsetLabel { get; init; }
+
+    /// <summary>Setting: corners of the pills (TODO 7.9 D).</summary>
+    public required string CornersLabel { get; init; }
+
+    /// <summary>Corners choice: half the height (like Windows' search box).</summary>
+    public required string CornersRound { get; init; }
+
+    /// <summary>Corners choice: small rounded corners (8).</summary>
+    public required string CornersSmall { get; init; }
+
+    /// <summary>Setting: which side of the big pill the small pill sits on.</summary>
+    public required string BallSideLabel { get; init; }
+
+    /// <summary>Small pill side: right of the big pill.</summary>
+    public required string BallSideRight { get; init; }
+
+    /// <summary>Small pill side: left of the big pill.</summary>
+    public required string BallSideLeft { get; init; }
 
     /// <summary>Settings: diagnostics section heading.</summary>
     public required string DiagSection { get; init; }

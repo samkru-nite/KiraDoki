@@ -121,15 +121,4 @@ public sealed class DownloadTrackerTests
         Assert.Equal([@"D:\Downloads", @"E:\BaiduNetdiskDownload"], back.Clone().DownloadFolders);
     }
 
-    [Fact]
-    public void A_paused_download_waits_behind_music_but_a_moving_one_does_not()
-    {
-        var music = new ActivityState { RawKind = ActivityState.KindMusic, UpdatedAt = T0 };
-        var paused = new ActivityState { RawKind = ActivityState.KindTransfer, Stage = "paused", State = "run", UpdatedAt = T0 };
-        var moving = new ActivityState { RawKind = ActivityState.KindTransfer, Stage = "download", State = "run", UpdatedAt = T0 };
-        var done = new ActivityState { RawKind = ActivityState.KindAgentDone, UpdatedAt = T0 };
-        Assert.Same(music, IslandSelector.Select([paused, music]).Primary);
-        Assert.Same(paused, IslandSelector.Select([done, paused]).Primary);
-        Assert.Same(moving, IslandSelector.Select([music, moving]).Primary);
-    }
 }

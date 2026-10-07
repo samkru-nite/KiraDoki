@@ -1,10 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Search box = a single pill. Only this window changes shape/content, inside the taskbar.
-  **No separate window floating above the taskbar** (explicitly rejected by the user — never cover the screen).
-  Measured (09-29 capture, 200%): 220x32, pill, vertically centered.
-
-  This XAML has never been built. Needs phase-0 verification on a PC.
+  The big pill (220x32, the card on top) + the small pill (the circle; task icons come in E3), side by side inside the taskbar
+  (TODO 7.1 / 7.9 D, 10-07). One window covers both and is clipped to the two pill shapes (PillRegion); it is ArcRoom (7) taller
+  than the pills above and below, room for the swap animation (E4). No card → only the small pill shows.
 -->
 <Window
     x:Class="IsleBar.App.MainWindow"
@@ -20,10 +18,18 @@
       border shows through gives a more natural edge.
     -->
     <Grid x:Name="Root" Background="Transparent" AllowDrop="True">
-    <!-- The whole pill group (background and all content): when a new item appears, this group dips slightly and springs back. The outer Root is the taskbar color -->
-    <Grid x:Name="PillBody">
+    <!-- Big pill · gap · small pill. Code puts them in columns 0 and 2 (or swapped when the small pill sits left) and sets the
+         gap to 0 while the big pill is hidden. Margin top = ArcRoom -->
+    <Grid x:Name="PillRow" Height="32" Margin="0,7,0,0" HorizontalAlignment="Left" VerticalAlignment="Top">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="Auto" />   <!-- ⌄ quick launch options (far left, as in the Python version) -->
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition x:Name="GapColumn" Width="8" />
+            <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+    <!-- The whole big pill (background and all content): when a new item appears, this group dips slightly and springs back. The outer Root is the taskbar color -->
+    <Grid x:Name="PillBody" Width="220">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />   <!-- empty (⌄ was here; the layout is redone in E2) -->
             <ColumnDefinition Width="Auto" />   <!-- Claude spark / magnifier / status icon -->
             <ColumnDefinition Width="*" />      <!-- input box or island content -->
             <ColumnDefinition Width="Auto" />   <!-- hover buttons -->
@@ -55,16 +61,6 @@
 
         <!-- When typing ends, focus moves here (so no blinking caret is left in the input box). Invisible -->
         <ContentControl x:Name="FocusSink" Width="0" Height="0" IsTabStop="True" UseSystemFocusVisuals="False" />
-
-        <!-- ⌄ is centered between the pill edge and the album (18) (measured: glyph width 7, gap 5 each side) — user feedback 09-30 -->
-        <Button
-            x:Name="ChevronButton"
-            Grid.Column="0"
-            Margin="1.5,0,0,0"
-            Style="{StaticResource IslandGlyphButton}"
-            Content="&#xE70D;"
-            FontSize="9"
-            VerticalAlignment="Center" />
 
         <Grid x:Name="LeadSlot" Grid.Column="1" Width="17" Height="17" Margin="4,0,9,0" VerticalAlignment="Center">
             <!-- Claude mode: spark extracted from claude.exe's official icon (ClaudeGlyph). If extraction fails, the glyph below -->
@@ -205,17 +201,6 @@
                 <Rectangle x:Name="Eq2" Width="3" Height="14" RadiusX="1.5" RadiusY="1.5" />
                 <Rectangle x:Name="Eq3" Width="3" Height="14" RadiusX="1.5" RadiusY="1.5" />
             </StackPanel>
-            <Grid x:Name="HoverActions" Visibility="Collapsed">
-                <StackPanel Orientation="Horizontal" Spacing="2">
-                    <Button x:Name="PrevButton" Style="{StaticResource IslandGlyphButton}" Content="&#xE892;" />
-                    <Button x:Name="PlayButton" Style="{StaticResource IslandGlyphButton}" Content="&#xE769;" />
-                    <Button x:Name="NextButton" Style="{StaticResource IslandGlyphButton}" Content="&#xE893;" />
-                    <!-- Timer: pause/resume · dismiss (like phone and Windows Clock timers). Finished alerts/transfers are also dismissed with ✕ -->
-                    <Button x:Name="PauseButton" Style="{StaticResource IslandGlyphButton}" Content="&#xE769;" />
-                    <Button x:Name="DismissButton" Style="{StaticResource IslandGlyphButton}" Content="&#xE711;" />
-                </StackPanel>
-            </Grid>
-
             <!-- Timer: circular progress on the right (like the desktop mockup). Stroke width matches the bottom progress bar (2) — the stock ProgressRing
                  can't change thickness and looked different from the bar (user feedback 09-30). Gray background ring + an arc for progress (rounded caps) -->
             <Grid x:Name="TimerRing" Width="16" Height="16" Margin="0,0,4,0" Visibility="Collapsed">
@@ -236,15 +221,20 @@
             <!-- Mic/camera in use (orange dot) — same row as the other elements, with a margin before it -->
             <Ellipse x:Name="PrivacyDot" Width="6" Height="6" Margin="5,0,3,0" VerticalAlignment="Center" Visibility="Collapsed" />
 
-            <!-- Small dot at the end when several activities are active (no extra window) -->
-            <Ellipse
-                x:Name="MoreDot"
-                Width="4"
-                Height="4"
-                Margin="4,0,4,0"
-                Visibility="Collapsed" />
-
         </StackPanel>
     </Grid>
+
+    <!-- Small pill: for now only the circle (the entry: left click = type, right click = tools). Cell 24 with 4 either side;
+         the hover background is a 24 circle (TODO 7.9 D) -->
+    <Grid x:Name="SmallPill" Grid.Column="2" Height="32">
+        <Border x:Name="SmallSurface" BorderThickness="1" CornerRadius="16" IsHitTestVisible="False" />
+        <Grid x:Name="BallCell" Width="24" Height="24" Margin="4,0,4,0" Background="Transparent">
+            <Ellipse x:Name="BallHover" Width="24" Height="24" Opacity="0" IsHitTestVisible="False" />
+            <!-- the mark at rest: an empty ring, 8.4 across, 1.2 thick -->
+            <Ellipse x:Name="BallRing" Width="8.4" Height="8.4" StrokeThickness="1.2" IsHitTestVisible="False" />
+        </Grid>
+    </Grid>
+    </Grid>
+
     </Grid>
 </Window>

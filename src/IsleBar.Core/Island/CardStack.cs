@@ -30,8 +30,8 @@ public sealed record Card(string Key, CardType Type, bool Pinned, ActivityState 
 /// <list type="bullet">
 /// <item>Order: pinned cards first — temporary, then pending, then inform; newest first within a type. Then the status cards in the
 /// order they arrived (oldest first: a new one waits at the back). A card that changes type counts as newly arrived.</item>
-/// <item>Scrolling chooses the card to show, wrapping round at both ends, and the choice stays — it never deletes anything.</item>
-/// <item>While the mouse is on the pill (= still scrolling) and for <see cref="HoldAfterLeave"/> after it leaves, the shown card
+/// <item>Clicking a task icon chooses the card to show, and the choice stays — it never deletes anything. (No scrolling: 10-07.)</item>
+/// <item>While the mouse is on either pill and for <see cref="HoldAfterLeave"/> after it leaves, the shown card
 /// doesn't change, even when a pinned card arrives. After that: a pinned card there → the top one shows; none → the chosen card
 /// (the top card if nothing was chosen or it ended).</item>
 /// <item>"Close" on a status card hides it until it ends (its key drops out of the list).</item>
@@ -61,7 +61,7 @@ public sealed class CardStack
     /// <summary>The card on the big pill, or null when there are none (only the ball shows).</summary>
     public Card? Shown => Cards.Count == 0 ? null : Cards[ShownIndex];
 
-    /// <summary>The status card last scrolled to, if it is still there.</summary>
+    /// <summary>The status card last chosen, if it is still there.</summary>
     public string? ChosenKey => _chosenKey;
 
     /// <summary>The type of an item. A timer is status until it reaches zero, then an inform "time's up".</summary>
@@ -114,15 +114,18 @@ public sealed class CardStack
         Rebuild(now);
     }
 
-    /// <summary>Wheel / touchpad: <paramref name="steps"/> &gt; 0 = further down the stack, &lt; 0 = back up. Wraps round at both ends.</summary>
-    public void Scroll(int steps, DateTimeOffset now)
+    /// <summary>
+    /// A task icon on the small pill was clicked: that card goes on the big pill (TODO 7.3, 10-07). A status card stays chosen —
+    /// after the hold it comes back whenever no pinned card is waiting.
+    /// </summary>
+    public void Choose(string key, DateTimeOffset now)
     {
-        if (Cards.Count == 0 || steps == 0)
+        var index = Cards.ToList().FindIndex(c => c.Key == key);
+        if (index < 0)
         {
             return;
         }
 
-        var index = (((ShownIndex + steps) % Cards.Count) + Cards.Count) % Cards.Count;
         var card = Cards[index];
         if (!card.Pinned)
         {
@@ -133,11 +136,11 @@ public sealed class CardStack
         ShownIndex = index;
         if (!_hovering)
         {
-            _leftAt = now;   // scrolled without a hover notice (shouldn't happen) — still hold it for a moment
+            _leftAt = now;   // chosen without a hover notice (shouldn't happen) — still hold it for a moment
         }
     }
 
-    /// <summary>The mouse entered / left the pill. Leaving starts the <see cref="HoldAfterLeave"/> countdown.</summary>
+    /// <summary>The mouse entered / left the pills (big or small). Leaving starts the <see cref="HoldAfterLeave"/> countdown.</summary>
     public void SetHover(bool hovering, DateTimeOffset now)
     {
         if (_hovering && !hovering)
@@ -231,7 +234,7 @@ public sealed class CardStack
             return 0;
         }
 
-        // still scrolling (mouse on the pill) or just left: keep what is shown, so nothing changes under the hand
+        // mouse on a pill or just left: keep what is shown, so nothing changes under the hand
         var holding = _hovering || now - _leftAt < HoldAfterLeave;
         var shown = _shownKey is null ? -1 : cards.FindIndex(c => c.Key == _shownKey);
         if (holding && shown >= 0)
@@ -246,36 +249,5 @@ public sealed class CardStack
 
         var chosen = _chosenKey is null ? -1 : cards.FindIndex(c => c.Key == _chosenKey);
         return chosen >= 0 ? chosen : 0;
-    }
-}
-
-/// <summary>
-/// Turns wheel / touchpad deltas into whole card steps. A wheel notch is 120; a touchpad sends many small deltas per swipe, so
-/// they are added up and one card is flipped per 120 (otherwise one swipe flips through every card — measured 10-05, TODO 7.9).
-/// Reversing direction drops what was collected the other way.
-/// </summary>
-public sealed class WheelSteps
-{
-    public const int Notch = 120;
-
-    private int _sum;
-
-    /// <summary>Adds one delta (WinUI: positive = wheel away from you / swipe up) and returns the steps down the stack (may be 0).</summary>
-    public int Add(int delta)
-    {
-        if (delta == 0)
-        {
-            return 0;
-        }
-
-        if (_sum != 0 && Math.Sign(delta) != Math.Sign(_sum))
-        {
-            _sum = 0;
-        }
-
-        _sum += delta;
-        var notches = _sum / Notch;   // truncates toward zero
-        _sum -= notches * Notch;
-        return -notches;   // wheel toward you (negative) = further down the stack
     }
 }

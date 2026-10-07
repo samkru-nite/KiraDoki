@@ -5,7 +5,6 @@ public static class Placeholders
 {
     public const string AskClaude = "Ask Claude";
     public const string SearchFiles = "Search files";
-    public const string SearchWeb = "Search the web";
 
     public static string For(BarMode mode) => mode == BarMode.Files ? SearchFiles : AskClaude;
 
@@ -15,7 +14,6 @@ public static class Placeholders
     /// <summary>Placeholder text for the chosen agent ("Ask Claude" for Claude, "Ask Codex" for Codex).</summary>
     public static string For(BarMode mode, string? agent)
         => mode == BarMode.Files ? SearchFiles
-            : mode == BarMode.Web ? SearchWeb
             : agent == Launch.AgentKind.Codex ? AskCodex
             : AskClaude;
 }
@@ -25,25 +23,21 @@ public enum BarMode
 {
     Claude,
     Files,
-
-    /// <summary>Web search (opens results in the default browser).</summary>
-    Web,
 }
 
 /// <summary>
-/// Mode order when pressing Tab. Default is Claude → files → web, and it <b>can be changed in settings</b>
+/// Mode order when pressing Tab. Default is Claude → files (web search removed 10-07), and it <b>can be changed in settings</b>
 /// (user feedback 09-30: wanted to set the order too). The first mode is the default — the bar goes to it when opened and after input is done.
 /// Skipped if file search is turned off.
 /// </summary>
 public static class BarModes
 {
-    public static readonly IReadOnlyList<BarMode> DefaultOrder = [BarMode.Claude, BarMode.Files, BarMode.Web];
+    public static readonly IReadOnlyList<BarMode> DefaultOrder = [BarMode.Claude, BarMode.Files];
 
     /// <summary>Name stored in settings.</summary>
     public static string Key(BarMode mode) => mode switch
     {
         BarMode.Files => "files",
-        BarMode.Web => "web",
         _ => "claude",
     };
 
@@ -51,7 +45,6 @@ public static class BarModes
     {
         "claude" => BarMode.Claude,
         "files" => BarMode.Files,
-        "web" => BarMode.Web,
         _ => null,
     };
 

@@ -1,7 +1,7 @@
 # IsleBar 二次开发 — 项目上下文（交接文件）
 
 > 新会话先读本文件和 TODO.md（进度看 TODO 每条的 [x]/[~] 和注记）。源码已通读，地图见下方。
-> **下一步（10-05）**：新交互设计已定稿，见 TODO.md 第 7 节（小球 + 胶囊、卡片类型、操作、输入框、AI 在胶囊里交互）。定位/风险/代码策略见 7.8，按 **7.9 顺序**做，第 1 步滚动诊断已完成（滚动能收到，结果见 7.9 第 1 条；统计日志用户决定不做），**10-05 路线 A–L 已定稿（见 7.9），A、B、C、D 已完成**（D = 预览 https://claude.ai/artifact/PGb2ZCPwCXFwAJnmCDPkDW 第 14 版）。**下一步做 E**：先读 TODO 7.9 的 E 条和 **D 条开头的「最终尺寸表」**（以它为准；7.1–7.5 和 D 条各轮只同步了一部分，冲突时以最终尺寸表 > D 条后面的轮次 > 前面的轮次）。E 开始前先给用户讲清楚打算怎么拆、分几步做，用户同意再动手。不做新旧切换开关，旧代码不需要就直接删。预览清单在 7.9 末尾。
+> **下一步（10-05）**：新交互设计已定稿，见 TODO.md 第 7 节（小球 + 胶囊、卡片类型、操作、输入框、AI 在胶囊里交互）。定位/风险/代码策略见 7.8，按 **7.9 顺序**做，第 1 步滚动诊断已完成（滚动能收到，结果见 7.9 第 1 条；统计日志用户决定不做），**10-05 路线 A–L 已定稿（见 7.9），A–D 和 E1 已完成**（D = 预览 https://claude.ai/artifact/PGb2ZCPwCXFwAJnmCDPkDW 第 14 版）。**E 已拆成 E1–E5（+E3½），见 TODO 7.9 E 条"10-07 拆分"；下一步 E2**（卡片排版）。尺寸以 **D 条开头的「最终尺寸表」**为准（冲突时最终尺寸表 > D 条后面的轮次 > 前面的轮次）。不做新旧切换开关，旧代码不需要就直接删。预览清单在 7.9 末尾。
 
 ## 用户与协作方式
 - 用户是 vibe coding 新手，只会一点 Python，不会 C#/C++。用户只描述想要的效果和看运行结果，代码由 Claude 写。请用中文、通俗讲解，必要时用 Python 类比。
@@ -29,7 +29,7 @@
 - 用户需求原文档：`C:\Users\Kasumi\Desktop\新建 Microsoft Word 文档.docx`（内容已整理进 TODO.md，另有 2 张截图未看，需要时从 `word/media/` 提取）。
 
 ## 基线
-- 原始源码：构建 0 警告 0 错误，测试 783 个。**截至 10-04（下载 1.1/1.3 完成后）：构建 0 警告 0 错误，测试 855 个全过；界面文案 116 条。**
+- 原始源码：构建 0 警告 0 错误，测试 783 个。**10-07 E1 后：0 警告 0 错误，测试 848 个。****截至 10-04（下载 1.1/1.3 完成后）：构建 0 警告 0 错误，测试 855 个全过；界面文案 116 条。**
 - git：`07041cf` = 原始源码；`10d87c9`/`86c50fc`/`985850d` 只改了 CLAUDE.md/TODO.md；之后每块功能一个提交。
 - 已完成（10-04）：4.6 消息卡片默认关闭+开关；4.5/3.4 文件搜索整套重做（见 TODO 4.5 注记）；开始菜单遮挡列表；2.2 启动失败报错复制；4.4 浏览器媒体开关 + 媒体选择规则重写（`9d736c1`）。2.1 不是 bug（用户没装命令行版）。
 
@@ -40,7 +40,7 @@ dotnet build src/IsleBar.App -v q -nologo
 dotnet test tests/IsleBar.Core.Tests -v q -nologo
 Start-Process "src\IsleBar.App\bin\Debug\net8.0-windows10.0.26100.0\IsleBar.App.exe"
 ```
-- 加界面文案：`LanguageStrings.cs` 加属性 + `LanguageCatalog.cs` 10 种语言都要加 + `tests/.../LocalizationTests.cs` 里的文案总数 +N（当前 116）。
+- 加界面文案：`LanguageStrings.cs` 加属性 + `LanguageCatalog.cs` 10 种语言都要加（文件里顺序：en ko ja zh zht fr de it pt es）+ `tests/.../LocalizationTests.cs` 里的文案总数 +N（10-07 当前 130）。
 - 加设置项：`IsleBarSettings`（属性 + `Clone()`）+ `SettingsCodec`（key、读、写）+ `Options/SettingsWindow.cs`。
 
 ## 项目地图（2026-10-04 读源码后补；行号是近似值，以 grep 为准）
@@ -51,13 +51,13 @@ Start-Process "src\IsleBar.App\bin\Debug\net8.0-windows10.0.26100.0\IsleBar.App.
    - Claude/Codex 钩子：Claude Code hook / Codex notify → `islebar hook` → `Core/Island/AgentHook.cs` 翻译成状态文件。钩子安装脚本 `setup/hooks.ps1`，连接逻辑 `App/Interop/HookConnector.cs`。`App/SystemWatch/AgentRecordWatcher.cs` 读会话记录补抓无钩子的情况。
    - 内存来源（不落盘）：音乐 `App/Media/MediaWatcher.cs`、下载 `App/Media/DownloadWatcher.cs`、发手机 `App/IslandUi/PhoneDrop.cs`、系统短通知 `App/SystemWatch/SystemWatchers.cs`（电源/蓝牙/网络/专注/剪贴板/负载/日历/麦克风摄像头/系统通知 ToastWatcher/更新）。
 2. **汇总**：`App/Engine/ActivityFeed.cs` 的 `Collect()` 把所有来源合成列表（同时推进番茄钟、响提示音、清除关掉/看过的 AI 状态）；`MainWindow.xaml.cs` 的 `StartIslandPolling()` 每 250ms 调一次。（10-05 路线 A：非界面逻辑都搬到 `App/Engine/`：`ActivityFeed`、`AgentLauncher`、`Chime`、`FileActions`、`FileSearchRequests`。）
-3. **挑选**：`Core/Island/IslandSelector.cs` 按 `ActivityKind` 数值排序（`Core/Island/ActivityKind.cs`：权限请求 0 > 错误 1 > 传输 2 > 短通知 3 > 计时 4 > 音乐 5 > 任务完成 6 > 工作中 7），只显示一个，其余用末尾小圆点 `MoreDot` 表示。**这是 TODO 5.1「圆圈+胶囊」要动的根本结构。**
+3. **挑选**（10-07 E1 起）：`Core/Island/CardStack.cs`（卡片类型、置顶顺序、鼠标在胶囊上不换卡、`Choose` 换卡）决定大胶囊显示哪张；MainWindow 把结果包成 `IslandSnapshot`（旧绘制代码还在用，E2 起逐步替换）。旧的 `IslandSelector` 已删。
 4. **绘制**：`RenderIsland()` → `RenderIslandState()` → 文字 `ShowIslandText()` / 计时 `ShowTimerText()`+`ShowClockDigits()` / 进度条 `UpdateProgressLine()` / 边框 `UpdateGlow()` / 前缀文案 `PrefixFor()` / 左图标 `GlyphFor()`。动画在 `App/IslandUi/IslandAnimator.cs`（进出场、呼吸、高亮边框 `UpdateGlow`）。
 
 ### 界面结构
-- `App/MainWindow.xaml`：胶囊只有 220×32，四列 Grid：⌄按钮 | 左图标槽 LeadSlot（Claude 火花/Codex 图/专辑封面/字体图标）| 中间（输入框 Entry 或 岛内容 IslandContent，文字放在 Canvas 里手动垂直居中）| 右侧（均衡器、悬停按钮、计时圆环、Tab 提示、隐私点、更多点）。底部 2px 进度条 `ProgressLine`。边框：`PillSurface`（常规细边）、`GlassEdge`（"玻璃边"设置）、`GlowRing`（绿/橙提醒粗边）。
-- `MainWindow.xaml.cs`（约 3550 行，10-05 起只剩界面，E 步整体替换）：输入 `BeginTyping/EndTyping/OnEntryKeyDown`、启动代理 `Launch()`（调 `Engine/AgentLauncher`）/`ShowLaunchFailure()`、模式切换 `ToggleMode/SetMode`（Tab 切换 Claude/文件/网页）、文件搜索 `ScheduleSearch/OnSearchResult`、右键菜单 `ShowContextMenu`。番茄钟/提示音在 `Engine/ActivityFeed.cs`、`Engine/Chime.cs`。
-- 其他窗口：搜索结果 `App/Search/ResultsWindow.cs`、长问题编辑 `ComposeWindow.cs`、消息展开卡片 `App/IslandUi/ExpandedNotice.cs`（760 行）、设置 `App/Options/SettingsWindow.cs`、快捷选项 `OptionsFlyout.cs`、系统通知横幅 `App/SystemWatch/ToastBanners.cs`。
+- `App/MainWindow.xaml`（10-07 E1）：一个窗口 = `PillRow`（大胶囊 `PillBody` 220×32 | 间距 `GapColumn` 8 | 小胶囊 `SmallPill`，左右由设置 `BallSide` 决定），上下各留 7 dip（E4 弧线）。窗口按两个胶囊的**直角矩形**裁剪（`Interop/PillRegion.cs`，布局算在 `Core/Ui/PillGeometry.cs`），圆角由 `PillSurface`/`SmallSurface` 自己画在任务栏色底（`Root.Background`）上——按圆角裁剪会有锯齿。`MainWindow.LayoutPills()` 管显示/隐藏大胶囊、排列、裁剪、定位（`TaskbarTracker.PlaceNow(宽度)`）。大胶囊内部（E2 重排）：空列 | 左图标槽 LeadSlot | 中间 Entry 或 IslandContent | 右侧（均衡器、计时圆环、Tab 提示、隐私点）。小胶囊目前只有圆圈 `BallCell`（点 = 打字开关，右键 = 工具菜单，含"设置"）。
+- `MainWindow.xaml.cs`（约 3100 行，只剩界面，E 步逐步替换）：输入 `BeginTyping/EndTyping/OnEntryKeyDown`、启动代理 `Launch()`（调 `Engine/AgentLauncher`）/`ShowLaunchFailure()`、模式切换 `ToggleMode/SetMode`（Tab 切换 Claude/文件；网页模式 E1 删了）、文件搜索 `ScheduleSearch/OnSearchResult`、右键菜单 `ShowContextMenu`。番茄钟/提示音在 `Engine/ActivityFeed.cs`、`Engine/Chime.cs`。
+- 其他窗口：搜索结果 `App/Search/ResultsWindow.cs`、长问题编辑 `ComposeWindow.cs`、消息展开卡片 `App/IslandUi/ExpandedNotice.cs`（760 行）、设置 `App/Options/SettingsWindow.cs`、弹出窗口公用摆放 `Options/PopupPlacement.cs`（⌄ 选项面板 E1 删了）、系统通知横幅 `App/SystemWatch/ToastBanners.cs`。
 - 嵌入任务栏：`App/Interop/TaskbarHost.cs`（Attach/Detach，打字时会脱离任务栏；嵌入失败 = 置顶浮动在任务栏上方，`LastError` 记错误码）、`App/Tracking/TaskbarTracker.cs`（后台线程用 UIA 读任务栏布局：开始/搜索/程序按钮 = 图标区，WidgetsButton，TrayNotifyWnd = 托盘）→ `Core/Ui/BarSlot.cs`（按设置 `Position` 最左边/正中间/托盘左边/手动 + `ManualOffset` 算位置，放不下就隐藏；有测试）、`PillRegion.cs`（裁剪成胶囊形）。10-05 起不再跟随/盖住系统搜索框（`SearchBoxTracker`、`NativeSearchBox` 已删）。设置窗口最下面有"诊断"小节（MW `Diagnostics()`）。
 - 主题色 `App/Interop/ThemeColors.cs`、`Core/Ui/ThemePalette.cs`；字体 `Core/Localization/UiFonts.cs`、`App/IslandUi/AppFonts.cs`；多语言文案 `Core/Localization/LanguageCatalog.cs`。
 - 日志：`%LOCALAPPDATA%\IsleBar\logs`（`TaskbarHost.Log`），排查启动失败先看这里。

@@ -24,9 +24,6 @@ public sealed class IsleBarSettings
     /// </summary>
     public LaunchOptions CodexValues { get; set; } = new();
 
-    /// <summary>Names of the options pinned to the quick-launch menu.</summary>
-    public List<string> Quick { get; set; } = [.. LaunchOptionDefs.DefaultQuick];
-
     /// <summary>Working folder. Empty string means home.</summary>
     public string Folder { get; set; } = "";
 
@@ -39,8 +36,6 @@ public sealed class IsleBarSettings
     /// <summary>File search (Everything) on/off.</summary>
     public bool Files { get; set; } = true;
 
-    /// <summary>Web search engine (<see cref="Search.WebSearch"/>). "auto" = per-language default.</summary>
-    public string WebEngine { get; set; } = Search.WebSearch.Auto;
 
     /// <summary>File search: how many results to list (3–50; the list scrolls) — user 10-04.</summary>
     public int FileResults { get; set; } = Search.FileSearchQuery.DefaultCount;
@@ -85,6 +80,12 @@ public sealed class IsleBarSettings
 
     /// <summary>For "manual": distance from the taskbar's left end, in dip.</summary>
     public int ManualOffset { get; set; } = 12;
+
+    /// <summary>Corners of the big and small pills: "round" (half the height, like Windows' search box — default) · "small" (8 dip). TODO 7.9 D, 10-06.</summary>
+    public string PillCorners { get; set; } = "round";
+
+    /// <summary>Side of the big pill the small pill sits on: "right" (default) · "left". TODO 7.9 D, 10-06.</summary>
+    public string BallSide { get; set; } = "right";
 
     /// <summary>Music bars follow the actual sound (speaker peak meter) instead of a canned loop. Off by default.</summary>
     public bool AudioBars { get; set; }
@@ -185,11 +186,9 @@ public sealed class IsleBarSettings
         Agent = Agent,
         Values = Values.Clone(),
         CodexValues = CodexValues.Clone(),
-        Quick = [.. Quick],
         Folder = Folder,
         RecentFolders = [.. RecentFolders],
         Files = Files,
-        WebEngine = WebEngine,
         FileResults = FileResults,
         FileSort = FileSort,
         FileExclude = FileExclude is null ? null : [.. FileExclude],
@@ -202,6 +201,8 @@ public sealed class IsleBarSettings
         QuickTimers = [.. QuickTimers],
         Position = Position,
         ManualOffset = ManualOffset,
+        PillCorners = PillCorners,
+        BallSide = BallSide,
         AudioBars = AudioBars,
         History = [.. History],
         Models = [.. Models],

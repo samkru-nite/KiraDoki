@@ -158,18 +158,13 @@ internal sealed class SettingsWindow : Window
 
         _body.Children.Add(agents);
 
-        // Launch options (pin = shown in the ⌄ menu)
+        // Launch options
         Section(_text.Options);
         foreach (var key in LaunchOptionDefs.All.Where(k => OptionControls.IsShown(_settings, k)))
         {
-            var line = new Grid { ColumnSpacing = 10, Margin = new Thickness(0, 2, 0, 2) };
-            line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            line.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            line.Children.Add(PinButton(key));
             var row = OptionControls.Row(_settings, _text, key, compact: false, _changed);
-            Grid.SetColumn(row, 1);
-            line.Children.Add(row);
-            _body.Children.Add(line);
+            row.Margin = new Thickness(0, 2, 0, 2);
+            _body.Children.Add(row);
         }
 
         // Working folder
@@ -268,7 +263,6 @@ internal sealed class SettingsWindow : Window
             _body.Children.Add(line);
         }
 
-        // Web search engine: auto (per-language default) + this language's engines. A manually chosen engine not in the list (chosen under another language) is shown too
         // File search: how many results to list (user 10-04); the order is chosen under the list itself
         TextRow(_text.FileResultsCount, $"{IsleBar.Core.Search.FileSearchQuery.MinCount}–{IsleBar.Core.Search.FileSearchQuery.MaxCount}",
             () => _settings.FileResults.ToString(System.Globalization.CultureInfo.InvariantCulture),
@@ -282,34 +276,6 @@ internal sealed class SettingsWindow : Window
 
         HiddenFoldersRow();
         DownloadFoldersRow();
-
-        Section(_text.WebEngine);
-        var engines = new ComboBox { MinWidth = 220 };
-        var fallback = WebSearch.EnginesFor(_language)[0];
-        engines.Items.Add(new ComboBoxItem { Content = $"{_text.Auto} ({fallback.DisplayName})", Tag = WebSearch.Auto });
-        var choices = WebSearch.EnginesFor(_language).ToList();
-        if (_settings.WebEngine != WebSearch.Auto && choices.All(e => e.Id != _settings.WebEngine))
-        {
-            choices.Add(WebSearch.Resolve(_settings.WebEngine, _language));
-        }
-
-        foreach (var engine in choices)
-        {
-            engines.Items.Add(new ComboBoxItem { Content = engine.DisplayName, Tag = engine.Id });
-        }
-
-        engines.SelectedItem = engines.Items.Cast<ComboBoxItem>().FirstOrDefault(i => (string)i.Tag == _settings.WebEngine)
-                               ?? engines.Items[0];
-        engines.SelectionChanged += (_, _) =>
-        {
-            if (engines.SelectedItem is ComboBoxItem { Tag: string id } && id != _settings.WebEngine)
-            {
-                _settings.WebEngine = id;
-                _changed();
-            }
-        };
-        _body.Children.Add(engines);
-
 
         // Island notices (09-30 feature): per-kind on/off + calendar (ICS URL)
         Section(_text.NotifySection);
@@ -356,7 +322,15 @@ internal sealed class SettingsWindow : Window
         ToggleRow(_text.StyleGlass, () => _settings.StyleGlass, v => _settings.StyleGlass = v);
         ToggleRow(_text.AudioBars, () => _settings.AudioBars, v => _settings.AudioBars = v);
         ToggleRow(_text.BrowserMedia, () => _settings.BrowserMedia, v => _settings.BrowserMedia = v);   // 10-04
-        PositionRow();
+        // where on the taskbar (10-05): left end · centre · left of the tray · manual
+        ChoiceRow(_text.PositionLabel,
+            [
+                (BarSlot.Key(BarPosition.Left), _text.PositionLeft),
+                (BarSlot.Key(BarPosition.Center), _text.PositionCenter),
+                (BarSlot.Key(BarPosition.BesideTray), _text.PositionTray),
+                (BarSlot.Key(BarPosition.Manual), _text.PositionManual),
+            ],
+            () => _settings.Position, v => _settings.Position = v);
         TextRow(_text.ManualOffsetLabel, "12",
             () => _settings.ManualOffset.ToString(System.Globalization.CultureInfo.InvariantCulture),
             v =>
@@ -366,6 +340,10 @@ internal sealed class SettingsWindow : Window
                     _settings.ManualOffset = Math.Clamp(n, 0, 10000);
                 }
             });
+        ChoiceRow(_text.BallSideLabel, [("right", _text.BallSideRight), ("left", _text.BallSideLeft)],
+            () => _settings.BallSide, v => _settings.BallSide = v);
+        ChoiceRow(_text.CornersLabel, [("round", _text.CornersRound), ("small", _text.CornersSmall)],
+            () => _settings.PillCorners, v => _settings.PillCorners = v);
 
         // Advanced: power options, grouped under their own heading but always visible (labelled, not hidden). The drop command runs
         // a program on dropped files (we use it for phone transfer); the toggle picks whether a drop attaches to the prompt or runs it (10-01).
@@ -417,28 +395,22 @@ internal sealed class SettingsWindow : Window
         }
     }
 
-    /// <summary>Where on the taskbar the bar sits (10-05): left end · centre · left of the tray · manual.</summary>
-    private void PositionRow()
+    /// <summary>A name above a drop-down of choices; <paramref name="choices"/> = (stored value, shown name).</summary>
+    private void ChoiceRow(string label, (string Value, string Name)[] choices, Func<string> get, Action<string> set)
     {
-        _body.Children.Add(new TextBlock { Text = _text.PositionLabel, Margin = new Thickness(0, 8, 0, 4) });
+        _body.Children.Add(new TextBlock { Text = label, Margin = new Thickness(0, 8, 0, 4) });
         var box = new ComboBox { MinWidth = 220 };
-        foreach (var (position, name) in new[]
-                 {
-                     (BarPosition.Left, _text.PositionLeft),
-                     (BarPosition.Center, _text.PositionCenter),
-                     (BarPosition.BesideTray, _text.PositionTray),
-                     (BarPosition.Manual, _text.PositionManual),
-                 })
+        foreach (var (value, name) in choices)
         {
-            box.Items.Add(new ComboBoxItem { Content = name, Tag = BarSlot.Key(position) });
+            box.Items.Add(new ComboBoxItem { Content = name, Tag = value });
         }
 
-        box.SelectedItem = box.Items.Cast<ComboBoxItem>().FirstOrDefault(i => (string)i.Tag == _settings.Position) ?? box.Items[0];
+        box.SelectedItem = box.Items.Cast<ComboBoxItem>().FirstOrDefault(i => (string)i.Tag == get()) ?? box.Items[0];
         box.SelectionChanged += (_, _) =>
         {
-            if (box.SelectedItem is ComboBoxItem { Tag: string key } && key != _settings.Position)
+            if (box.SelectedItem is ComboBoxItem { Tag: string value } && value != get())
             {
-                _settings.Position = key;
+                set(value);
                 _changed();
             }
         };
@@ -677,7 +649,6 @@ internal sealed class SettingsWindow : Window
     private string ModeName(BarMode mode) => mode switch
     {
         BarMode.Files => _text.Files,
-        BarMode.Web => _text.WebSearch,
         _ => _settings.Agent == AgentKind.Codex ? "Codex" : "Claude",
     };
 
@@ -685,47 +656,8 @@ internal sealed class SettingsWindow : Window
     private static string ModeGlyph(BarMode mode) => mode switch
     {
         BarMode.Files => "\uE8B7",   // folder
-        BarMode.Web => "\uE721",     // magnifier
         _ => "\uE8BD",               // chat
     };
-
-    private Button PinButton(string key)
-    {
-        var icon = new FontIcon { FontSize = 14 };
-        var button = new Button
-        {
-            Content = icon,
-            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
-            BorderThickness = new Thickness(0),
-            Padding = new Thickness(4),
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-
-        void Paint()
-        {
-            var on = _settings.Quick.Contains(key);
-            icon.Glyph = on ? "" : "";   // pinned / unpinned
-            icon.Foreground = on
-                ? (Brush)Application.Current.Resources["AccentFillColorDefaultBrush"]
-                : (Brush)Application.Current.Resources["TextFillColorTertiaryBrush"];
-        }
-
-        button.Click += (_, _) =>
-        {
-            if (!_settings.Quick.Remove(key))
-            {
-                _settings.Quick.Add(key);
-                // Sort in settings-screen order (same as the Python version)
-                _settings.Quick.Sort((a, b) =>
-                    LaunchOptionDefs.All.ToList().IndexOf(a).CompareTo(LaunchOptionDefs.All.ToList().IndexOf(b)));
-            }
-
-            Paint();
-            _changed();
-        };
-        Paint();
-        return button;
-    }
 
     /// <summary>The current UI language (if auto, the one determined from the Windows language).</summary>
     private string _language => _currentLanguage();

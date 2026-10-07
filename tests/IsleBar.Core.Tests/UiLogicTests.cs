@@ -84,45 +84,44 @@ public sealed class UiLogicTests
         Assert.Equal(new Rgb(0x00, 0x78, 0xD4), c);
     }
 
-    // ---------- Cutting the pill shape ----------
-
-    [Theory]
-    [InlineData(1.0, 2)]     // 1.5 → rounds to 2
-    [InlineData(1.25, 2)]    // 1.875 → 2
-    [InlineData(1.5, 2)]     // 2.25 → 2
-    [InlineData(2.0, 3)]     // 3.0 → 3
-    [InlineData(0.5, 2)]     // 0.75 → minimum 2
-    public void Inset_follows_scale_with_minimum_of_2(double scale, int expected)
-        => Assert.Equal(expected, PillGeometry.EdgeInset(scale));
+    // ---------- The two pills in the window ----------
 
     [Fact]
-    public void Normal_size_gives_a_pill()
+    public void Big_pill_then_gap_then_small_pill_at_200_percent()
     {
-        var r = PillGeometry.TryCompute(width: 300, height: 32, scale: 1.0);
-
-        Assert.NotNull(r);
-        Assert.Equal(2, r!.Value.Left);
-        Assert.Equal(2, r.Value.Top);
-        Assert.Equal(299, r.Value.Right);    // 300 - 2 + 1
-        Assert.Equal(31, r.Value.Bottom);    // 32 - 2 + 1
-        Assert.Equal(28, r.Value.Diameter);  // 32 - 4
+        var l = PillGeometry.Compute(2.0, big: true, smallLeft: false, PillGeometry.SmallWidth(1), round: true);
+        Assert.Equal(2 * (220 + 8 + 32), l.Width);
+        Assert.Equal(2 * (32 + 14), l.Height);
+        Assert.Equal(new PillRect(0, 14, 441, 79, 64), l.Big);
+        Assert.Equal(new PillRect(456, 14, 521, 79, 64), l.Small);
     }
 
-    [Theory]
-    [InlineData(300, 4)]    // height equals twice the inset → diameter 0
-    [InlineData(300, 2)]    // smaller → negative
-    [InlineData(4, 32)]     // width equals twice the inset
-    [InlineData(0, 0)]
-    [InlineData(-10, -10)]
-    public void Too_small_is_not_cut(int width, int height)
-        => Assert.Null(PillGeometry.TryCompute(width, height, scale: 1.0));
+    [Fact]
+    public void Small_pill_on_the_left_comes_first()
+    {
+        var l = PillGeometry.Compute(1.0, big: true, smallLeft: true, 32, round: false);
+        Assert.Equal(new PillRect(0, 7, 33, 40, 16), l.Small);
+        Assert.Equal(new PillRect(40, 7, 261, 40, 16), l.Big);
+    }
 
     [Fact]
-    public void Diameter_never_goes_negative_at_high_scale()
+    public void Without_a_card_only_the_small_pill_shows()
     {
-        // High scale + short window = the combination that broke the old code
-        var r = PillGeometry.TryCompute(width: 200, height: 8, scale: 3.0);
-        Assert.Null(r);   // inset 5 → diameter -2 → must not cut
+        var l = PillGeometry.Compute(1.5, big: false, smallLeft: false, 32, round: true);
+        Assert.Null(l.Big);
+        Assert.Equal(48, l.Width);
+        Assert.Equal(0, l.Small.Left);
+        Assert.Equal(48, l.Small.Diameter);
+    }
+
+    [Fact]
+    public void Odd_scales_line_the_pieces_up_with_the_total()
+    {
+        foreach (var scale in new[] { 1.0, 1.25, 1.5, 1.75, 2.25 })
+        {
+            var l = PillGeometry.Compute(scale, big: true, smallLeft: false, 32, round: true);
+            Assert.Equal(l.Width + 1, l.Small.Right);   // the small pill ends at the window's edge
+        }
     }
 
     // ---------- Deciding whether to exit on its own ----------

@@ -281,15 +281,16 @@ public static class CommandRunner
         var opts = ArgMap.Parse(args);
         var store = StoreFor(opts);
         opts.WarnUnknown(error);
-        var snapshot = IslandSelector.Select(store.Read(DateTimeOffset.UtcNow));
-        if (!snapshot.IsActive)
+        var stack = new CardStack();
+        stack.Update(store.Read(DateTimeOffset.UtcNow), DateTimeOffset.UtcNow);
+        if (stack.Shown is not { } shown)
         {
             output.WriteLine("(island is empty)");
             return ExitOk;
         }
 
-        var primary = snapshot.Primary!;
-        var more = snapshot.HasMore ? $"  (+{snapshot.ExtraCount} more)" : string.Empty;
+        var primary = shown.State;
+        var more = stack.Cards.Count > 1 ? $"  (+{stack.Cards.Count - 1} more)" : string.Empty;
         output.WriteLine($"{primary.Kind} {primary.State} {Percent(primary)} {primary.Name}{more}");
         return ExitOk;
     }

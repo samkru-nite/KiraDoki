@@ -32,15 +32,21 @@ namespace IsleBar.App;
 /// </summary>
 public sealed partial class MainWindow : Window
 {
-    /// <summary>Measured Windows 11 taskbar search box (09-29 capture, 200%): 220x32, pill, vertically centered.</summary>
+    /// <summary>Big pill 220x32 (TODO 7.9 D final sizes); the window around both pills is laid out by <see cref="PillGeometry"/>.</summary>
     private const int BaseWidth = 220;
     private const int BaseHeight = 32;
 
     private static readonly TimeSpan IslandPollInterval = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan SearchDebounce = TimeSpan.FromMilliseconds(90);
 
-    private readonly int _width = DpiSetup.Px(BaseWidth);
-    private readonly int _height = DpiSetup.Px(BaseHeight);
+    /// <summary>Where the pills sit in the window and how big it is (pixels). Replaced whole, so the tracker thread may read it.</summary>
+    private PillsLayout _layout = PillGeometry.Compute(DpiSetup.Scale, big: false, smallLeft: false, PillGeometry.SmallWidth(1), round: true);
+
+    private int _width => _layout.Width;
+    private int _height => _layout.Height;
+
+    /// <summary>The new design's card rules (TODO 7.2/7.3): which card the big pill shows.</summary>
+    private readonly CardStack _cards = new();
 
     private readonly ConfigStore _store = new(AppPaths.SettingsFile);
     private readonly ActivityFeed _feed;
@@ -60,8 +66,10 @@ public sealed partial class MainWindow : Window
     private HistoryNavigator _history;
 
     private BarMode _mode = BarMode.Claude;
-    // not "Hidden": a first placement of Hidden must still be applied (it compared equal and the window stayed where WinUI put it — review 10-03)
+    // not "Hidden": a first placement of Hidden must still be applied (it compared equal and the window stayed where WinUI put it — review 10-03).
+    // The window's top-left (the pills' spot moved up by ArcRoom), not the pills'.
     private BarPlacement _placement = new(false, int.MinValue, int.MinValue);
+    private int _placedWidth;
 
     /// <summary>While a file is dragged over the pill (blue border).</summary>
     private bool _dropHover;
@@ -70,7 +78,6 @@ public sealed partial class MainWindow : Window
     private IntPtr _previousForeground;
     private string? _historyText;
     private Microsoft.UI.Xaml.Controls.Primitives.FlyoutBase? _entryMenu;
-    private Options.OptionsFlyout? _flyout;
     private ResultsWindow? _results;
     private OpenRequest? _openWhenReady;
 
@@ -102,7 +109,7 @@ public sealed partial class MainWindow : Window
         _theme = ThemeColors.FromSystem();
         _history = new HistoryNavigator(_settings.History);
 
-        _tracker = new TaskbarTracker(_width, _height, () => (BarSlot.Parse(_settings.Position), DpiSetup.Px(_settings.ManualOffset)));
+        _tracker = new TaskbarTracker(() => _layout.Width, DpiSetup.Px(BaseHeight), () => (BarSlot.Parse(_settings.Position), DpiSetup.Px(_settings.ManualOffset)));
         _feed = new ActivityFeed(() => _settings, () => _text);
         _animator = new IslandAnimator([LeadSlot, IslandContent], IslandContent, GlowRing, PillBody);
         _fileSearch = new FileSearchRequests(OnSearchResult);
@@ -197,19 +204,7 @@ public sealed partial class MainWindow : Window
         Entry.PreviewKeyDown += OnEntryKeyDown;
         HookCompose();
         HookFileDrop();
-        foreach (var button in new UIElement[] { ChevronButton, PrevButton, PlayButton, NextButton, PauseButton, DismissButton })
-        {
-            PressFeedback.Attach(button);   // pressing makes it sink in and spring back (09-30 design M5)
-        }
-
-        // pill corner = half the height (height can vary with DPI and taskbar size)
-        Root.SizeChanged += (_, _) =>
-        {
-            var r = Math.Max(1, Root.ActualHeight / 2);
-            PillSurface.CornerRadius = new CornerRadius(r);
-            GlassBorder.CornerRadius = new CornerRadius(r);
-            GlowRing.CornerRadius = new CornerRadius(Math.Max(0, r - 0.5));
-        };
+        PressFeedback.Attach(BallCell);   // pressing makes it sink in and spring back (09-30 design M5)
         Entry.TextChanged += (_, _) =>
         {
             UpdateTabHint();
@@ -237,35 +232,38 @@ public sealed partial class MainWindow : Window
                 _rightPressAt = DateTimeOffset.UtcNow;
             }
 
-            if (!e.GetCurrentPoint(Root).Properties.IsLeftButtonPressed   // right click is the menu (RightTapped)
-                || IsInside(e.OriginalSource as DependencyObject, ChevronButton)
-                || IsInside(e.OriginalSource as DependencyObject, HoverActions))
+            if (!e.GetCurrentPoint(Root).Properties.IsLeftButtonPressed)
             {
-                return;   // ⌄ and the island buttons (⏮⏯⏭) do their own job (not the start of typing)
+                return;   // right click is the menu (RightTapped)
             }
 
-            // A second click on the empty pill while the file list is open closes it, like a switch — no hunting for an empty spot
-            // after a mistaken click. With text typed, a click only moves the caret (user 10-04).
-            if (_typing && _results is not null && Entry.Text.Length == 0)
+            var source = e.OriginalSource as DependencyObject;
+            if (IsInside(source, SmallPill))
             {
-                _closedByClickAt = DateTimeOffset.UtcNow;
-                EndTyping();
+                // the circle = the way in: click to type, click again to stop (TODO 7.3). Until the new input panel (H), typing
+                // happens in the big pill as before.
+                if (_typing)
+                {
+                    _closedByClickAt = DateTimeOffset.UtcNow;
+                    EndTyping();
+                    return;
+                }
+
+                StartMenu.CloseIfOpen();   // Start stays up over a click on the pill and would cover the results list (user 10-04)
+                _taskbar.TakeFocus();
+                BeginTyping();
+                Entry.Focus(FocusState.Programmatic);
                 return;
             }
 
-            if (!_typing && TryIslandAction())
+            if (_typing)
             {
-                return;   // clicked the island and went to that task (not the start of typing)
+                _taskbar.TakeFocus();   // a click in the big pill while typing only moves the caret
+                Entry.Focus(FocusState.Programmatic);
+                return;
             }
 
-            if (!_typing)
-            {
-                StartMenu.CloseIfOpen();   // Start stays up over a click on the pill and would cover the results list (user 10-04)
-            }
-
-            _taskbar.TakeFocus();
-            BeginTyping();
-            Entry.Focus(FocusState.Programmatic);
+            TryIslandAction();   // the big pill: go to that task (F step: lift the card)
         }), handledEventsToo: true);
         // Right click = dismiss an island item (cancel a timer, etc.) · turn off the search bar
         // The input box grabs right clicks first (its own copy/paste menu), so receive them with handledEventsToo.
@@ -284,13 +282,10 @@ public sealed partial class MainWindow : Window
         }), handledEventsToo: true);
         Root.PointerEntered += (_, _) => SetHover(true);
         Root.PointerExited += (_, _) => SetHover(false);
-
-        ChevronButton.Click += (_, _) => ShowQuickOptions();
-        PlayButton.Click += (_, _) => SendMediaCommand(MediaCommand.PlayPause);
-        PrevButton.Click += (_, _) => SendMediaCommand(MediaCommand.Previous);
-        NextButton.Click += (_, _) => SendMediaCommand(MediaCommand.Next);
-        PauseButton.Click += (_, _) => ToggleTimerPause();
-        DismissButton.Click += (_, _) => DismissPrimary();
+        PillBody.PointerEntered += (_, _) => SetBigHover(true);
+        PillBody.PointerExited += (_, _) => SetBigHover(false);
+        BallCell.PointerEntered += (_, _) => BallHover.Opacity = 1;
+        BallCell.PointerExited += (_, _) => BallHover.Opacity = 0;
 
         Closed += (_, _) => Cleanup();
 
@@ -356,6 +351,7 @@ public sealed partial class MainWindow : Window
         _typingHadFront = false;
         _switching = true;
         Entry.ContextFlyout = _entryMenu;   // copy/paste menu while typing
+        LayoutPills();   // typing happens in the big pill: it appears if no card was showing
         _taskbar.Detach(Spot.X, Spot.Y, _width, _height);
         // keep the pill shape after detaching — without it a square window covers the real search box and feels like "a separate window opened" (PC 09-29)
         ApplyRegion();
@@ -465,6 +461,7 @@ public sealed partial class MainWindow : Window
         }
 
         _typing = false;
+        LayoutPills();
         if (_pendingTimer is not null)
         {
             _pendingTimer = null;   // Esc / clicking away = keep the running timer
@@ -703,11 +700,6 @@ public sealed partial class MainWindow : Window
             return MoveResultSelection(delta);
         }
 
-        if (_mode == BarMode.Web)
-        {
-            return true;
-        }
-
         var text = _history.Move(delta, Entry.Text);
         if (text is null)
         {
@@ -740,12 +732,6 @@ public sealed partial class MainWindow : Window
         if (_mode == BarMode.Files)
         {
             OpenSelectedFile(reveal);
-            return;
-        }
-
-        if (_mode == BarMode.Web)
-        {
-            OpenWebSearch(Entry.Text);
             return;
         }
 
@@ -875,28 +861,6 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    /// <summary>Web mode Enter: open search results in the default browser (engine from settings — auto means the per-language default).</summary>
-    private void OpenWebSearch(string query)
-    {
-        if (WebSearch.UrlFor(WebSearch.Resolve(_settings.WebEngine, _language), query) is not { } url)
-        {
-            return;
-        }
-
-        try
-        {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url.AbsoluteUri) { UseShellExecute = true });
-        }
-        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
-        {
-            TaskbarHost.Log("file search: open failed — " + ex.Message);   // used to fail without a trace (10-03)
-            return;
-        }
-
-        Entry.Text = string.Empty;
-        EndTyping();
-    }
-
     // ---------------- Island ----------------
 
     private void StartIslandPolling()
@@ -919,7 +883,8 @@ public sealed partial class MainWindow : Window
             UpdatePrivacyDot();
             EndStaleHover();
 
-            var next = IslandSelector.Select(items);
+            _cards.Update(items, DateTimeOffset.UtcNow);
+            var next = _cards.Shown is { } shown ? new IslandSnapshot(shown.State, _cards.Cards.Count - 1) : IslandSnapshot.Empty;
             _snapshot = next;
             // A task finished while something else (music) holds the pill → remember it so the thick completion border still lights,
             // without taking the song off the pill (user 10-01). When the done is itself the primary, UpdateGlow handles it directly.
@@ -987,13 +952,15 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private void FollowTaskbar()
     {
-        var placement = _tracker.Current;
-        if (placement == _placement)
+        var spot = _tracker.PlaceNow(_width);
+        var placement = spot.Visible ? spot with { Y = spot.Y - DpiSetup.Px(PillGeometry.ArcRoom) } : spot;
+        if (placement == _placement && _width == _placedWidth)
         {
             return;
         }
 
         _placement = placement;
+        _placedWidth = _width;
         Interop.TaskbarHost.Log($"follow: visible={placement.Visible} {placement.X},{placement.Y} size {_width}x{_height} typing={_typing}");
         if (!placement.Visible)
         {
@@ -1008,6 +975,46 @@ public sealed partial class MainWindow : Window
         {
             _taskbar.PlaceAt(placement.X, placement.Y, _width, _height);
         }
+    }
+
+    /// <summary>The big pill shows a card, typing, a dragged file or the compose box; otherwise only the small pill (TODO 7.1).</summary>
+    private bool BigVisible => _typing || _compose is not null || _dropHover || _snapshot.IsActive;
+
+    /// <summary>
+    /// Puts the pills side by side (small one right or left, setting), hides the big pill when there is nothing for it, and when
+    /// that changes the window's size: re-clips it and moves it to its spot for the new width. Cheap when nothing changed.
+    /// </summary>
+    private void LayoutPills()
+    {
+        var big = BigVisible;
+        var left = _settings.BallSide == "left";
+        var round = _settings.PillCorners != "small";
+        PillBody.Visibility = big ? Visibility.Visible : Visibility.Collapsed;
+        GapColumn.Width = new GridLength(big ? PillGeometry.Gap : 0);
+        Microsoft.UI.Xaml.Controls.Grid.SetColumn(PillBody, left ? 2 : 0);
+        Microsoft.UI.Xaml.Controls.Grid.SetColumn(SmallPill, left ? 0 : 2);
+        ApplyCorners(round);
+
+        var layout = PillGeometry.Compute(DpiSetup.Scale, big, left, PillGeometry.SmallWidth(1), round);
+        if (layout == _layout)
+        {
+            return;
+        }
+
+        _layout = layout;
+        ApplyRegion();
+        FollowTaskbar();
+    }
+
+    /// <summary>Half the height (like Windows' search box) or 8 (setting) — the drawn edges follow the clip.</summary>
+    private void ApplyCorners(bool round)
+    {
+        var r = round ? BaseHeight / 2.0 : PillGeometry.SmallCorner;
+        PillSurface.CornerRadius = new CornerRadius(r);
+        SmallSurface.CornerRadius = new CornerRadius(r);
+        GlassBorder.CornerRadius = new CornerRadius(r);
+        GlowRing.CornerRadius = new CornerRadius(Math.Max(0, r - 0.5));
+        GlowBackdrop.CornerRadius = new CornerRadius(r + 1);
     }
 
     private DateTimeOffset _lastAttachTry = DateTimeOffset.MinValue;
@@ -1457,7 +1464,7 @@ public sealed partial class MainWindow : Window
     private static extern uint GetPixel(IntPtr dc, int x, int y);
 
     /// <summary>Clip to the pill shape (flush, with no margin, when the alert border is on).</summary>
-    private void ApplyRegion() => PillRegion.Apply(_taskbar.OuterWindow, _width, _height, flush: true);   // always flush — PillSurface draws the soft edge
+    private void ApplyRegion() => PillRegion.Apply(_taskbar.OuterWindow, _layout);
 
     /// <summary>Orange (warning) — the Windows warning color, visible on light and dark themes.</summary>
     private static Windows.UI.Color Attention()
@@ -1695,7 +1702,7 @@ public sealed partial class MainWindow : Window
     /// <summary>Turns the now-playing bars on/off. The animation is built once when turned on (the compositor runs it).</summary>
     private void SetEqualizer(bool on)
     {
-        Equalizer.Visibility = on && !_hovering ? Visibility.Visible : Visibility.Collapsed;   // step aside when ⏮⏯⏭ appear
+        Equalizer.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
         var fillKey = $"{_albumTint}|{_theme.Icon}";   // repaint only when the color changes (this is called every 250ms)
         if (on && _equalizerTint != fillKey)
         {
@@ -1847,12 +1854,12 @@ public sealed partial class MainWindow : Window
 
     private void RenderIsland()
     {
+        LayoutPills();
         _animator.Breathe(_snapshot.IsActive && !_typing && _snapshot.Primary?.Kind == ActivityKind.AgentWorking);
         ApplyStyle();
         UpdateProgressLine();
         GlowRing.Visibility = _typing ? Visibility.Collapsed : Visibility.Visible;   // the island is hidden while typing, so the border goes too
         UpdateGlow();
-        UpdateHoverButtons();
         if (RenderDropHint())
         {
             return;
@@ -1867,10 +1874,8 @@ public sealed partial class MainWindow : Window
             StopMarquee();
             IslandContent.Visibility = Visibility.Collapsed;
             Entry.Visibility = Visibility.Visible;
-            MoreDot.Visibility = Visibility.Collapsed;
-            HoverActions.Visibility = Visibility.Collapsed;
             UpdateLeadIcon();
-            UpdateChevron();   // place the "next" slot with the album off (the spark appeared in the album spot and then visibly moved — user feedback 09-30)
+            PlaceLeadSlot();
             return;
         }
 
@@ -1905,7 +1910,6 @@ public sealed partial class MainWindow : Window
     {
         Entry.Visibility = Visibility.Collapsed;
         IslandContent.Visibility = Visibility.Visible;
-        MoreDot.Visibility = _snapshot.HasMore ? Visibility.Visible : Visibility.Collapsed;
 
         UpdateLeadIcon();
         LeadIcon.Glyph = state.IsPaused ? "\uE769" : GlyphFor(state);   // paused timer = pause icon
@@ -1915,7 +1919,7 @@ public sealed partial class MainWindow : Window
         ShowAgentMark(state);
         ShowAlbumArt(state.Kind == ActivityKind.Music);
         SetEqualizer(state.Kind == ActivityKind.Music && state.Stage != "paused");
-        UpdateChevron();   // place the "next" slot with the album on — placing it first made the album appear in the icon spot and then get pushed aside (user feedback 09-30)
+        PlaceLeadSlot();
         var now = DateTimeOffset.UtcNow;
         // The done-alert hook only carries the session name (no folder name — user feedback 09-30). Without a name, just "Claude done"
         var name = state.Name;
@@ -1994,7 +1998,7 @@ public sealed partial class MainWindow : Window
         var fraction = state.Kind == ActivityKind.Timer ? TimerFraction(state, now) : state.Fraction;
 
         // timers use a circular gauge on the right of the island (as in the mockup, user feedback 09-30); when typing hides the island, the bottom bar
-        var ring = state.Kind == ActivityKind.Timer && !_typing && !_hovering && fraction is not null
+        var ring = state.Kind == ActivityKind.Timer && !_typing && fraction is not null
                    && TimerRemaining(state, now) > TimeSpan.Zero;   // when finished, a green border instead of the ring
         TimerRing.Visibility = ring ? Visibility.Visible : Visibility.Collapsed;
         if (ring)
@@ -2379,8 +2383,10 @@ public sealed partial class MainWindow : Window
         Root.Background = BrushOf(TaskbarColorBeside());   // outside the pill (the stair-steps of the clip edge sit on this color and become invisible)
         LeadIcon.Foreground = BrushOf(_theme.Icon);
         Entry.Foreground = BrushOf(_theme.Foreground);
-        MoreDot.Fill = BrushOf(_theme.Hint);
-        PaintChevron();
+        BallRing.Stroke = BrushOf(_theme.Icon);
+        BallHover.Fill = BrushOf(ThemeColors.FromSystem().Light
+            ? Windows.UI.Color.FromArgb(18, 0, 0, 0)
+            : Windows.UI.Color.FromArgb(22, 255, 255, 255));
         PaintFill();
     }
 
@@ -2422,11 +2428,12 @@ public sealed partial class MainWindow : Window
     private void PaintFill()
     {
         var rest = RealSearchBoxFill();
-        var lift = _hovering || _typing;
+        var lift = _hoverBig || _typing;
         var light = ThemeColors.FromSystem().Light;
         PillSurface.Background = BrushOf(!lift ? rest
             : light ? Blend(rest, Windows.UI.Color.FromArgb(255, 255, 255, 255), 0.55)
             : Blend(rest, Windows.UI.Color.FromArgb(255, 255, 255, 255), 0.05));
+        SmallSurface.Background = BrushOf(rest);   // the small pill lifts only its circle cell (BallHover)
         PaintEdge();
     }
 
@@ -2437,6 +2444,7 @@ public sealed partial class MainWindow : Window
         PillSurface.BorderBrush = BrushOf(light
             ? Windows.UI.Color.FromArgb(34, 0, 0, 40)
             : Windows.UI.Color.FromArgb(30, 255, 255, 255));
+        SmallSurface.BorderBrush = PillSurface.BorderBrush;
     }
 
     private static Windows.UI.Color Blend(Windows.UI.Color a, Windows.UI.Color b, double t)
@@ -2471,161 +2479,36 @@ public sealed partial class MainWindow : Window
         }
 
         _hovering = hovering;
-        PaintFill();
-        SetMarqueeFade(_marqueeRunning);
-        UpdateHoverButtons();   // show/hide the ⏮⏯⏭ buttons FIRST so the text slot's width is already correct...
-        if (!_typing)
+        _cards.SetHover(hovering, DateTimeOffset.UtcNow);   // the mouse on either pill holds the shown card (TODO 7.9 D, 10-07)
+        if (!hovering)
         {
-            Root.UpdateLayout();   // ...then re-measure and redraw the title at that width in the same pass, so it never
-            RenderIsland();        // briefly overlaps the buttons (the old order drew the title full-width, then the buttons appeared over it — user 09-30)
+            SetBigHover(false);
+            BallHover.Opacity = 0;
+        }
+
+        SetMarqueeFade(_marqueeRunning);
+    }
+
+    /// <summary>The mouse on the big pill: it lifts slightly, like the real search box.</summary>
+    private bool _hoverBig;
+
+    private void SetBigHover(bool hovering)
+    {
+        if (_hoverBig != hovering)
+        {
+            _hoverBig = hovering;
+            PaintFill();
         }
     }
 
-    /// <summary>
-    /// On hover, buttons appear <b>inside</b> the search box (no separate window).
-    /// Music = ⏮⏯⏭ · timer = ⏸/▶ + ✕ · finished alerts/transfers = ✕.
-    /// </summary>
-    /// <summary>
-    /// ⌄ is hidden while an island shows and fades in on hover — right next to the album art it looked cramped (user feedback 09-30).
-    /// Always visible normally and while typing. Its slot stays (opacity only), so hovering doesn't shift the text.
-    /// </summary>
-    private void UpdateChevron()
-    {
-        // While an island shows, drop ⌄ entirely — just hiding it left an empty gap (user feedback 09-30), and showing it on hover
-        // pushes the album art around. Launch options are reached via the ⌄ that appears when you click the search box to type.
-        // ⌄ is always visible (user feedback 09-30: with matched spacing it's fine next to the album — consistency). Clicking it opens settings even with an island.
-        var show = !_alerting;   // hide ⌄ during alerts (when the border lights up) — next to the agent mark it looks bad (user feedback 09-30)
-        ChevronButton.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-        // When ⌄ is visible, every mode uses the same "pill edge – ⌄ – icon (album)" spacing (user feedback 09-30: align everything to ⌄).
-        // Without ⌄ (music and other islands), the album sits 8 from the pill edge (user: just right as is) — measured from the slot center.
-        // The icon (17) aligns its left edge with the album (24), not its center — centering made the gap to ⌄ look loose (user feedback 09-30).
-        var slot = show ? ChevronThenArt() : new Thickness(8 + ArtOverhang, 0, LeadGap, 0);
-        // Icons (spark, folder, etc.) are about album-sized and in the same spot — when icon and text positions varied by mode
-        // it lacked consistency (user feedback 09-30: wondered whether the icons needed trimming). So the slot and text start match the album case.
+    /// <summary>The icon (or album art) 8 from the pill's left edge. E2 redoes the card layout to the final sizes.</summary>
+    private void PlaceLeadSlot() => LeadSlot.Margin = new Thickness(8 + ArtOverhang, 0, LeadGap, 0);
 
-        LeadSlot.Margin = slot;
-    }
-
-    /// <summary>
-    /// For music with ⌄ visible (while settings are open), make the "pill edge – ⌄" and "⌄ – album art" gaps equal
-    /// (user feedback 09-30: ⌄ and the album looked stuck together). The ⌄ glyph's actual position is measured via the button's padding.
-    /// </summary>
     /// <summary>How far the album art (24) overflows the left slot (17) on each side — slot center and album center coincide.</summary>
     private const double ArtOverhang = 3.5;
 
     /// <summary>From the icon's (album's) right edge to the text.</summary>
     private const double LeadGap = 9 + ArtOverhang;
-
-    /// <summary>
-    /// Album (icon) position when ⌄ is present. The album's left edge is fixed at 18 from the window edge (user feedback 09-30: that position is just right) —
-    /// ⌄ sits centered between the pill edge and the album via XAML margins (measured from capture: ⌄ glyph width 7, gap 5 on each side).
-    /// </summary>
-    private Thickness ChevronThenArt()
-    {
-        const double artLeft = 18;
-        var column0 = ChevronButton.Margin.Left + (ChevronButton.ActualWidth > 0 ? ChevronButton.ActualWidth : 17);
-        return new Thickness(Math.Max(0, artLeft + ArtOverhang - column0), 0, LeadGap, 0);
-    }
-
-    private void UpdateHoverButtons()
-    {
-        UpdateChevron();
-        var state = _snapshot.Primary;
-        var show = _hovering && !_typing && state is not null;
-        HoverActions.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-        if (!show)
-        {
-            return;
-        }
-
-        var music = state!.Kind == ActivityKind.Music;
-        if (music)
-        {
-            Equalizer.Visibility = Visibility.Collapsed;   // move the bars out of the way the instant the buttons appear (they overlapped until the next draw)
-        }
-
-        var timer = state.Kind == ActivityKind.Timer;
-        var removable = !music && state.SourcePath is { } path && File.Exists(path);
-        PrevButton.Visibility = NextButton.Visibility = PlayButton.Visibility = music ? Visibility.Visible : Visibility.Collapsed;
-        // a stopwatch has no time left (Remaining is null) but pauses too — its button never showed (review 10-03)
-        PauseButton.Visibility = timer && (TimerParser.IsStopwatch(state) || TimerParser.Remaining(state, DateTimeOffset.UtcNow) > TimeSpan.Zero)
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-        PauseButton.Content = state.IsPaused ? "\uE768" : "\uE769";   // ▶ resume / ⏸ pause
-        DismissButton.Visibility = removable ? Visibility.Visible : Visibility.Collapsed;
-        if (music)
-        {
-            PlayButton.Content = state.Stage == "paused" ? "\uE768" : "\uE769";
-        }
-    }
-
-    /// <summary>Timer pause ↔ resume on the shown timer.</summary>
-    private void ToggleTimerPause()
-    {
-        if (_snapshot.Primary is not { Kind: ActivityKind.Timer } state)
-        {
-            return;
-        }
-
-        _feed.TogglePause(state);
-        UpdateHoverButtons();
-        RenderIsland();
-    }
-
-    /// <summary>Removes the currently shown item (cancel a timer, clear a finished alert).</summary>
-    private void DismissPrimary()
-    {
-        if (_snapshot.Primary?.SourcePath is { } path)
-        {
-            ActivityFeed.DeleteState(path);
-        }
-    }
-
-    // ---------------- Not implemented yet (to fill in after phase 0) ----------------
-
-    private enum MediaCommand
-    {
-        PlayPause,
-        Previous,
-        Next,
-    }
-
-    /// <summary>TODO(phase 2): send via GlobalSystemMediaTransportControlsSessionManager.</summary>
-    private void SendMediaCommand(MediaCommand command)
-        => _ = _feed.Media.SendAsync(command switch
-        {
-            MediaCommand.PlayPause => MediaAction.PlayPause,
-            MediaCommand.Previous => MediaAction.Previous,
-            _ => MediaAction.Next,
-        });
-
-    /// <summary>⌄ quick launch options window (pinned options only). Closes it if already open.</summary>
-    private void ShowQuickOptions()
-    {
-        if (_flyout is not null)
-        {
-            _flyout.Close();
-            return;
-        }
-
-        // Pressing ⌄ while the window is open first deactivates it (it closes on click-away), so by the time this click runs it's
-        // already gone and used to open again at once — ⌄ could never close it (user 10-01). A close this instant was that click.
-        if (DateTimeOffset.UtcNow - _flyoutClosedAt < TimeSpan.FromMilliseconds(400))
-        {
-            return;
-        }
-
-        _flyout = new Options.OptionsFlyout(_settings, _text, OnSettingsChanged, ShowSettings);
-        _flyout.Closed += (_, _) =>
-        {
-            _flyout = null;
-            _flyoutClosedAt = DateTimeOffset.UtcNow;
-        };
-        AppFonts.Apply(_flyout, _language);   // before measuring size
-        _flyout.ShowAbove(PopupAnchorX, TaskbarTop());
-    }
-
-    private DateTimeOffset _flyoutClosedAt = DateTimeOffset.MinValue;
 
     /// <summary>
     /// Horizontal centre of the pill: windows that open above it (options, settings, compose, preview, file results) are centred
@@ -2694,17 +2577,6 @@ public sealed partial class MainWindow : Window
         _settingsWindow.ShowAbove(PopupAnchorX, TaskbarTop());
     }
 
-    /// <summary>Every time a value changes in the options or settings window: save and apply it to the bar.</summary>
-    /// <summary>If any launch option differs from its default, tint ⌄ with the accent color (same as the Python version's paint_chev).</summary>
-    private void PaintChevron()
-    {
-        var now = _settings.ValuesFor(_settings.Agent);
-        var plain = new LaunchOptions();
-        var changed = now.Session != plain.Session || now.Model != plain.Model || now.Effort != plain.Effort
-                      || now.Perm != plain.Perm || now.Rc != plain.Rc;
-        ChevronButton.Foreground = BrushOf(changed ? _theme.Accent : _theme.Hint);
-    }
-
     /// <summary>
     /// The model list check writes the lists to the file in the background; keep them current in memory too, or the next save
     /// (a launch, a settings change) wrote the old ones back (review 10-03).
@@ -2724,7 +2596,7 @@ public sealed partial class MainWindow : Window
         _feed.ApplySettings();
         TakeBackgroundModelLists();
         _store.Save(_settings);
-        PaintChevron();
+        LayoutPills();   // the small pill's side and the corners are settings
         if (!_typing || !UsableModes().Contains(_mode))
         {
             SetMode(HomeMode());   // if the order changed or file search was turned off, go back to the default mode
@@ -3001,7 +2873,6 @@ public sealed partial class MainWindow : Window
     private static string ModeGlyph(BarMode mode) => mode switch
     {
         BarMode.Files => "",   // folder — file search (Everything). User feedback 09-30: icons must not be confusing
-        BarMode.Web => "",     // magnifier — web search
         _ => "",               // chat (when there's no Codex icon)
     };
 
@@ -3270,6 +3141,7 @@ public sealed partial class MainWindow : Window
     private const int MenuPomodoro = 13;
     private const int MenuStopwatch = 14;
     private const int MenuUpdate = 15;
+    private const int MenuSettings = 17;
     private const int MenuNotifications = 16;   // opens the Windows notification centre   // "Download update (x.y.z)" while a newer release is out
 
     /// <summary>A new timer waiting for "Replace the running timer?" to be answered (Enter = replace, Esc = keep).</summary>
@@ -3313,9 +3185,9 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private bool TryIslandAction()
     {
-        if (_snapshot.IsActive && _snapshot.Primary is { Kind: ActivityKind.AgentDone })
+        if (_snapshot.IsActive && _snapshot.Primary is { Kind: ActivityKind.AgentDone, SourcePath: { } done })
         {
-            DismissPrimary();
+            ActivityFeed.DeleteState(done);
             return false;
         }
 
@@ -3377,6 +3249,7 @@ public sealed partial class MainWindow : Window
         }
 
         items.Add((MenuNotifications, _text.AllNotifications));
+        items.Add((MenuSettings, _text.Settings));   // ⌄ is gone (TODO 7.3): settings live in the circle's menu
         items.Add((MenuQuit, _text.Quit));
 
         // A window attached to the taskbar can't become the foreground window, so the menu couldn't receive clicks (measured on PC 09-29) →
@@ -3419,6 +3292,10 @@ public sealed partial class MainWindow : Window
         if (chosen == MenuQuit)
         {
             RequestExit(ExitCodes.UserQuit);
+        }
+        else if (chosen == MenuSettings)
+        {
+            ShowSettings();
         }
         else if (chosen == MenuNotifications)
         {
@@ -3520,7 +3397,6 @@ public sealed partial class MainWindow : Window
         _audioMeter.Dispose();
         _feed.Dispose();
         CloseResults();
-        _flyout?.Close();
         _settingsWindow?.Close();
 
         _islandTimer?.Stop();

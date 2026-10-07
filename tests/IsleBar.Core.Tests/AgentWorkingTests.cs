@@ -26,12 +26,4 @@ public sealed class AgentWorkingTests
         Assert.False(ActivityStore.IsAlive(state, now.AddHours(-7), now));
     }
 
-    [Fact]
-    public void Music_shows_over_a_working_task()
-    {
-        // A background task working shouldn't hide the song you're playing (user 10-01) — music takes the pill, the task is the dot.
-        var music = new ActivityState { RawKind = ActivityState.KindMusic, State = "run" };
-        var working = new ActivityState { RawKind = ActivityState.KindAgentWorking, State = "run" };
-        Assert.Same(music, IslandSelector.Select([music, working]).Primary);
-    }
 }

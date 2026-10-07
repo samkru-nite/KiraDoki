@@ -153,7 +153,7 @@ public sealed class CardStackTests
         Assert.False(stack.Cards[1].Pinned);
     }
 
-    // ---------------- Scrolling ----------------
+    // ---------------- Choosing ----------------
 
     private static readonly ActivityState[] Three =
         [Item(ActivityKind.Music, "m"), Item(ActivityKind.AgentWorking, "w"), Item(ActivityKind.Transfer, "download:x")];
@@ -169,17 +169,17 @@ public sealed class CardStackTests
     }
 
     [Fact]
-    public void Scrolling_moves_through_the_stack_and_wraps_round_at_both_ends()
+    public void Choosing_shows_that_card_and_removes_nothing()
     {
         var stack = ThreeStatusCards();
         stack.SetHover(true, T0);
-        stack.Scroll(1, T0);
+        stack.Choose("w", T0);
         Assert.Equal("w", stack.Shown!.Key);
-        stack.Scroll(2, T0);
-        Assert.Equal("music", stack.Shown!.Key);   // past the bottom → the top
-        stack.Scroll(-1, T0);
-        Assert.Equal("download", stack.Shown!.Key);   // past the top → the bottom
-        Assert.Equal(3, stack.Cards.Count);   // scrolling never removes anything
+        stack.Choose("download", T0);
+        Assert.Equal("download", stack.Shown!.Key);
+        stack.Choose("gone", T0);
+        Assert.Equal("download", stack.Shown!.Key);   // an unknown key changes nothing
+        Assert.Equal(3, stack.Cards.Count);
     }
 
     [Fact]
@@ -187,7 +187,7 @@ public sealed class CardStackTests
     {
         var stack = ThreeStatusCards();
         stack.SetHover(true, T0.AddSeconds(3));
-        stack.Scroll(1, T0.AddSeconds(3));
+        stack.Choose("w", T0.AddSeconds(3));
         stack.SetHover(false, T0.AddSeconds(4));
 
         stack.Update(Three, T0.AddMinutes(10));
@@ -200,11 +200,11 @@ public sealed class CardStackTests
     {
         var stack = ThreeStatusCards();
         stack.SetHover(true, T0.AddSeconds(3));
-        stack.Scroll(1, T0.AddSeconds(3));
+        stack.Choose("w", T0.AddSeconds(3));
         ActivityState[] withAsk = [.. Three, Item(ActivityKind.AgentPermission, "ask", 5)];
 
         stack.Update(withAsk, T0.AddSeconds(5));
-        Assert.Equal("w", stack.Shown!.Key);   // still scrolling: the pill doesn't change under the hand
+        Assert.Equal("w", stack.Shown!.Key);   // mouse on the pill: it doesn't change under the hand
         Assert.Equal("ask", stack.Cards[0].Key);   // but it is already first in the stack
 
         var left = T0.AddMinutes(1);
@@ -228,13 +228,13 @@ public sealed class CardStackTests
     }
 
     [Fact]
-    public void Scrolling_onto_a_pinned_card_doesnt_change_the_chosen_status_card()
+    public void Choosing_a_pinned_card_doesnt_change_the_chosen_status_card()
     {
         var stack = ThreeStatusCards();
         stack.SetHover(true, T0.AddSeconds(3));
-        stack.Scroll(2, T0.AddSeconds(3));   // download
+        stack.Choose("download", T0.AddSeconds(3));
         stack.Update([.. Three, Item(ActivityKind.AgentDone, "d", 4, "done")], T0.AddSeconds(4));   // d is on top now; download still shown
-        stack.Scroll(1, T0.AddSeconds(5));   // past the bottom → d (pinned)
+        stack.Choose("d", T0.AddSeconds(5));
         Assert.Equal("d", stack.Shown!.Key);
         Assert.Equal("download", stack.ChosenKey);
     }
@@ -244,7 +244,7 @@ public sealed class CardStackTests
     {
         var stack = ThreeStatusCards();
         stack.SetHover(true, T0.AddSeconds(3));
-        stack.Scroll(2, T0.AddSeconds(3));   // download
+        stack.Choose("download", T0.AddSeconds(3));
         stack.SetHover(false, T0.AddSeconds(4));
 
         stack.Update(Three[..2], T0.AddMinutes(1));   // the download finished and went away
@@ -257,7 +257,7 @@ public sealed class CardStackTests
     {
         var stack = ThreeStatusCards();
         stack.SetHover(true, T0.AddSeconds(3));
-        stack.Scroll(2, T0.AddSeconds(3));   // download, place 2
+        stack.Choose("download", T0.AddSeconds(3));   // place 2
 
         stack.Update(Three[1..], T0.AddSeconds(5));   // the music stopped
         Assert.Equal("download", stack.Shown!.Key);
@@ -279,39 +279,5 @@ public sealed class CardStackTests
         stack.Update(Three[1..], T0.AddSeconds(5));   // music stopped
         stack.Update(Three, T0.AddSeconds(6));
         Assert.Equal(["w", "download", "music"], Keys(stack));
-    }
-
-    // ---------------- Wheel ----------------
-
-    [Fact]
-    public void One_wheel_notch_is_one_card()
-    {
-        var wheel = new WheelSteps();
-        Assert.Equal(1, wheel.Add(-120));
-        Assert.Equal(-1, wheel.Add(120));
-        Assert.Equal(2, wheel.Add(-240));
-    }
-
-    [Fact]
-    public void Touchpad_deltas_add_up_to_a_notch()
-    {
-        var wheel = new WheelSteps();
-        var steps = 0;
-        for (var i = 0; i < 9; i++)
-        {
-            steps += wheel.Add(-13);   // 117: not yet
-        }
-
-        Assert.Equal(0, steps);
-        Assert.Equal(1, wheel.Add(-13));
-    }
-
-    [Fact]
-    public void Reversing_direction_drops_what_was_collected()
-    {
-        var wheel = new WheelSteps();
-        wheel.Add(-100);
-        Assert.Equal(0, wheel.Add(30));
-        Assert.Equal(-1, wheel.Add(90));
     }
 }
