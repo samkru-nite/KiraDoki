@@ -9,8 +9,7 @@ namespace IsleBar.App.SystemWatch;
 
 /// <summary>
 /// Microphone/camera in-use indicator. <b>Not a regular notice</b> — exposes <see cref="MicInUse"/>, <see cref="CameraInUse"/>, <see cref="AppName"/>
-/// so the island can keep drawing e.g. a small dot, and adds a brief notice (2 s) "Microphone in use · Zoom" only at the moment use starts.
-/// Anything already in use at startup isn't a "start", so it isn't notified.
+/// so the island shows a status card while it lasts (ActivityFeed.AddPrivacy); it is noticed by that card's debut on the big pill.
 /// <para>
 /// Source: <c>HKCU\…\CapabilityAccessManager\ConsentStore\{microphone,webcam}</c> — the same values as the taskbar's microphone icon.
 /// Store apps are keys directly below, regular apps are keys under <c>NonPackaged</c>, and in use if <c>LastUsedTimeStop</c> is 0
@@ -25,8 +24,6 @@ internal sealed class PrivacyWatcher : NoticeWatcher
     private const string Microphone = "microphone";
     private const string Webcam = "webcam";
     private const string NonPackaged = "NonPackaged";
-    private const string PrivacyUri = "ms-settings:privacy";
-    private static readonly TimeSpan Show = TimeSpan.FromSeconds(2);
     private const int PollMs = 2000;
 
     private const uint RegNotifyChangeName = 0x1;
@@ -37,7 +34,6 @@ internal sealed class PrivacyWatcher : NoticeWatcher
     private readonly ManualResetEvent _stop = new(false);
     private readonly string? _ownExe = Environment.ProcessPath;
     private Thread? _thread;
-    private bool _first = true;
     private volatile State _state = new(null, null);
 
     public PrivacyWatcher(Func<Core.Localization.LanguageStrings> strings)
@@ -130,24 +126,8 @@ internal sealed class PrivacyWatcher : NoticeWatcher
         var camera = FindUser(Webcam);
         var before = _state;
         _state = new State(mic, camera);
-
-        if (_first)
-        {
-            _first = false;   // don't notify what was already in use at startup
-            return;
-        }
-
-        var now = DateTimeOffset.UtcNow;
-        var s = Text;
-        if (camera is not null && before.Camera is null)
-        {
-            Board.Flash(Webcam, SystemNotice.Make(NoticeText.InUse(s, camera: true, camera), NoticeGlyphs.Camera, now, open: PrivacyUri + "-webcam"), Show, now);
-        }
-
-        if (mic is not null && before.Mic is null)
-        {
-            Board.Flash(Microphone, SystemNotice.Make(NoticeText.InUse(s, camera: false, mic), NoticeGlyphs.Microphone, now, open: PrivacyUri + "-microphone"), Show, now);
-        }
+        // no notice of its own when use starts any more: the status card's debut on the big pill shows it (user 10-07 — the
+        // extra 2 s notice came first and the card then showed a second time)
     }
 
     /// <summary>Name of the app that most recently started using that device. Null if none.</summary>

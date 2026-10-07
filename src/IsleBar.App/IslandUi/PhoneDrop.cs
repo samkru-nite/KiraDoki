@@ -11,7 +11,7 @@ namespace IsleBar.App.IslandUi;
 /// </summary>
 internal sealed class PhoneDrop
 {
-    private static readonly TimeSpan ShowDone = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan ShowDone = Core.SystemWatch.NoticeLengths.Read;
     private readonly object _gate = new();
     private readonly List<(ActivityState State, DateTimeOffset? EndedAt)> _sends = [];
 
@@ -22,8 +22,18 @@ internal sealed class PhoneDrop
         var otherNames = others.Where(o => o.Kind == ActivityKind.Transfer).Select(o => o.Name).ToHashSet();
         lock (_gate)
         {
-            _sends.RemoveAll(s => s.EndedAt is { } end && now - end > ShowDone);
+            // sent: a few seconds; failed: until closed (user 10-07: an error is yours to deal with), 12 h at most
+            _sends.RemoveAll(s => s.EndedAt is { } end && now - end > (s.State.RunState == ActivityRunState.Error ? ActivityStore.AgentDoneLinger : ShowDone));
             return _sends.Select(s => s.State).Where(s => !otherNames.Contains(s.Name)).ToList();
+        }
+    }
+
+    /// <summary>"Close" on a finished send's card: it goes.</summary>
+    public void Forget(string source)
+    {
+        lock (_gate)
+        {
+            _sends.RemoveAll(s => s.State.SourcePath == source && s.EndedAt is not null);
         }
     }
 

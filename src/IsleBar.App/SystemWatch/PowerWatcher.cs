@@ -15,8 +15,8 @@ internal sealed class PowerWatcher : NoticeWatcher
     private const string PluggedKey = "power";
     private const string LowKey = "power-low";
     private const string SettingsUri = "ms-settings:batterysaver";
-    private static readonly TimeSpan PluggedShow = TimeSpan.FromSeconds(2.5);
-    private static readonly TimeSpan UnpluggedShow = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan PluggedShow = NoticeLengths.Glance;
+    private static readonly TimeSpan UnpluggedShow = NoticeLengths.Glance;
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(30);
 
     private readonly object _gate = new();

@@ -22,7 +22,7 @@ namespace IsleBar.App.SystemWatch;
 internal sealed class AgentRecordWatcher : NoticeWatcher
 {
     private static readonly TimeSpan Interval = TimeSpan.FromSeconds(3);
-    private static readonly TimeSpan HeadsUpFor = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan HeadsUpFor = Core.SystemWatch.NoticeLengths.Attention;
     private const int FirstReadBytes = 256 * 1024;   // when a session is first seen: enough of the end to find the latest usage
 
     private readonly object _gate = new();

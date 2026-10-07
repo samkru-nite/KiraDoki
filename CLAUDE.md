@@ -1,7 +1,7 @@
 # IsleBar 二次开发 — 项目上下文（交接文件）
 
 > 新会话先读本文件和 TODO.md（进度看 TODO 每条的 [x]/[~] 和注记）。源码已通读，地图见下方。
-> **下一步（10-05）**：新交互设计已定稿，见 TODO.md 第 7 节（小球 + 胶囊、卡片类型、操作、输入框、AI 在胶囊里交互）。定位/风险/代码策略见 7.8，按 **7.9 顺序**做，第 1 步滚动诊断已完成（滚动能收到，结果见 7.9 第 1 条；统计日志用户决定不做），**10-05 路线 A–L 已定稿（见 7.9），A–D、E1、E2 已完成**（D = 预览 https://claude.ai/artifact/PGb2ZCPwCXFwAJnmCDPkDW 第 14 版）。**E1–E5（+E3½）10-07 全部完成，用户看过两轮已按反馈修**（注记见 TODO 7.9 E 条"E3–E5""第一轮""第二轮"）。**10-07 晚又按用户反馈修了三轮（第三~五轮，见 TODO 7.9 E 条），已提交**。**下个会话先做**：用户继续试用，有问题按反馈修（排查动画看日志 "transition old-card … end …"；AI 卡片看日志 "agent: …"；连拍脚本 `%TEMP%\burst.ps1`，用法见 TODO 第二轮注记；**用户在用电脑时少推测试卡片**，推了要马上删 `%LOCALAPPDATA%\IsleBar\state\demo*.json` / `timer_*.json`）；没问题就进 **F**（掀起卡片 + "⋯"列表）。尺寸以 **D 条开头的「最终尺寸表」**为准（冲突时最终尺寸表 > D 条后面的轮次 > 前面的轮次）。不做新旧切换开关，旧代码不需要就直接删。预览清单在 7.9 末尾。
+> **下一步（10-05）**：新交互设计已定稿，见 TODO.md 第 7 节（小球 + 胶囊、卡片类型、操作、输入框、AI 在胶囊里交互）。定位/风险/代码策略见 7.8，按 **7.9 顺序**做，第 1 步滚动诊断已完成（滚动能收到，结果见 7.9 第 1 条；统计日志用户决定不做），**10-05 路线 A–L 已定稿（见 7.9），A–D、E1、E2 已完成**（D = 预览 https://claude.ai/artifact/PGb2ZCPwCXFwAJnmCDPkDW 第 14 版）。**E1–E5（+E3½）10-07 全部完成，用户看过两轮已按反馈修**（注记见 TODO 7.9 E 条"E3–E5""第一轮""第二轮"）。**10-07 晚又按用户反馈修了五轮（第三~七轮，见 TODO 7.9 E 条），已提交**；第六、七轮定了"亮相"规则和任务规则总表（见下方项目地图第 3 条）。**下个会话先做**：用户继续试用，有问题按反馈修（排查动画看日志 "transition old-card … end …"；AI 卡片看日志 "agent: …"；连拍脚本 `%TEMP%\burst.ps1`，用法见 TODO 第二轮注记；**用户在用电脑时少推测试卡片**，推了要马上删 `%LOCALAPPDATA%\IsleBar\state\demo*.json` / `timer_*.json`）；没问题就进 **F**（掀起卡片 + "⋯"列表）。尺寸以 **D 条开头的「最终尺寸表」**为准（冲突时最终尺寸表 > D 条后面的轮次 > 前面的轮次）。不做新旧切换开关，旧代码不需要就直接删。预览清单在 7.9 末尾。
 
 ## 用户与协作方式
 - 用户是 vibe coding 新手，只会一点 Python，不会 C#/C++。用户只描述想要的效果和看运行结果，代码由 Claude 写。请用中文、通俗讲解，必要时用 Python 类比。
@@ -29,7 +29,7 @@
 - 用户需求原文档：`C:\Users\Kasumi\Desktop\新建 Microsoft Word 文档.docx`（内容已整理进 TODO.md，另有 2 张截图未看，需要时从 `word/media/` 提取）。
 
 ## 基线
-- 原始源码：构建 0 警告 0 错误，测试 783 个。**10-07 第五轮后：0 警告 0 错误，测试 874 个；界面文案 140。****截至 10-04（下载 1.1/1.3 完成后）：构建 0 警告 0 错误，测试 855 个全过；界面文案 116 条。**
+- 原始源码：构建 0 警告 0 错误，测试 783 个。**10-07 第七轮后：0 警告 0 错误，测试 880 个；界面文案 140。****截至 10-04（下载 1.1/1.3 完成后）：构建 0 警告 0 错误，测试 855 个全过；界面文案 116 条。**
 - git：`07041cf` = 原始源码；`10d87c9`/`86c50fc`/`985850d` 只改了 CLAUDE.md/TODO.md；之后每块功能一个提交。
 - 已完成（10-04）：4.6 消息卡片默认关闭+开关；4.5/3.4 文件搜索整套重做（见 TODO 4.5 注记）；开始菜单遮挡列表；2.2 启动失败报错复制；4.4 浏览器媒体开关 + 媒体选择规则重写（`9d736c1`）。2.1 不是 bug（用户没装命令行版）。
 
@@ -52,6 +52,8 @@ Start-Process "src\IsleBar.App\bin\Debug\net8.0-windows10.0.26100.0\IsleBar.App.
    - 内存来源（不落盘）：音乐 `App/Media/MediaWatcher.cs`、下载 `App/Media/DownloadWatcher.cs`、发手机 `App/IslandUi/PhoneDrop.cs`、系统短通知 `App/SystemWatch/SystemWatchers.cs`（电源/蓝牙/网络/专注/剪贴板/负载/日历/麦克风摄像头/系统通知 ToastWatcher/更新）。
 2. **汇总**：`App/Engine/ActivityFeed.cs` 的 `Collect()` 把所有来源合成列表（同时推进番茄钟、响提示音、清除关掉/看过的 AI 状态）；`MainWindow.xaml.cs` 的 `StartIslandPolling()` 每 250ms 调一次。（10-05 路线 A：非界面逻辑都搬到 `App/Engine/`：`ActivityFeed`、`AgentLauncher`、`Chime`、`FileActions`、`FileSearchRequests`。）
 3. **挑选**（10-07 E1 起）：`Core/Island/CardStack.cs`（卡片类型、置顶顺序、鼠标在胶囊上不换卡、`Choose` 换卡）决定大胶囊显示哪张；MainWindow 把结果包成 `IslandSnapshot`。小胶囊的格子 `Core/Island/TaskSlots.cs`（顺序、互换、放不下进"⋯"），小图标总表 `Core/Ui/TaskIcons.cs`。媒体卡片规则 `Core/Island/MediaCards.cs`。
+   - **亮相**（10-07 第六/七轮）：卡片变成状态卡片时先在大胶囊停 2 秒（有排队 1.5 秒）再收进格子，按到达顺序排队；等你/完成/出错的卡片上也亮相，临时卡片在时排队，鼠标在胶囊上（含离开后 2 秒）不亮相，启动 2 秒内已有的不亮相（`CardStack.UpdateDebut`）。**每种任务开头/结尾怎么做看总表 `Core/Island/TaskRules.cs`**（结尾 = 卡片下一个类型：告知=留着、临时=亮一下、删掉=不提醒，由各来源写）。**一件事只用一张卡片**（同一个键从开始到结束；不要"状态卡片 + 另发临时卡片"，动画接不上——麦克风、下载、复制都踩过）。临时卡片时长三档 `Core/SystemWatch/NoticeLengths.cs`（2 / 6 / 10 秒）。
+   - 同一聊天换了会话编号（桌面版暂停后继续）：`Core/Island/ChatRoot.cs` 认第一条消息 uuid，`ActivityFeed.DropFinishedSameChat` 删旧的完成/中断卡片；日志 "agent: …"。
 4. **绘制**：`RenderIsland()` → `RenderIslandState()` → 文字 `ShowIslandText()` / 计时 `ShowTimerText()`+`ShowClockDigits()` / 进度条 `UpdateProgressLine()` / 边框 `UpdateGlow()` / 前缀文案 `PrefixFor()` / 左图标 `GlyphFor()`。动画在 `App/IslandUi/IslandAnimator.cs`（进出场、呼吸、高亮边框 `UpdateGlow`）。
 
 ### 界面结构
@@ -68,10 +70,10 @@ Start-Process "src\IsleBar.App\bin\Debug\net8.0-windows10.0.26100.0\IsleBar.App.
 | 下载 | `App/Media/DownloadWatcher.cs`（每秒扫"下载"文件夹里的 .crdownload/.part）→ `Core/Island/DownloadTracker.cs`（速度、暂停、多个合成一条 +N）；**拿不到浏览器下载的总大小**（1.2 做过又撤销，见 TODO）；百度网盘按进程写盘量估算；下载文件夹可在设置里改（`DownloadFolders`）；资源管理器复制/解压/压缩 `App/Media/FileOperationWatcher.cs` |
 | 音乐 | `App/Media/MediaWatcher.cs`（Windows 媒体控制 SMTC；浏览器默认排除，设置 `BrowserMedia` 可开，`Core/Island/MediaSources.cs`；进度来自 app 上报的 Timeline，**网易云不报**（实测 00:00/00:00）。规则（10-07 用户定）在 `Core/Island/MediaCards.cs`：一个播放器一张卡，新标题等 0.5 秒，暂停满 5 分钟或关掉播放器就删，再播是新卡。封面按卡片加载（MW `_covers`）。Edge 全浏览器只有一个 SMTC 会话，切视频时会先报别的标签页的旧标题） |
 | Claude/Codex 启动 | `App/Engine/AgentLauncher.cs`；路径查找 `Core/Launch/ClaudeExecutable.cs`、`ClaudeProfile.cs`、`CodexProfile.cs`、`NpmShim.cs`、参数 `ClaudeArguments.cs` |
-| Claude/Codex 图标 | **AI 所有阶段都用厂商 logo（10-07 用户定）**。Claude：`App/Interop/ClaudeGlyph.cs` 从命令行 claude.exe 或 Claude 应用（MSIX，`Interop/AgentApps.cs` 读注册表找安装位置）的图标抠火花（`Core/Ui/GlyphMask.cs`，橙色铺满=底板时取浅色火花），涂 Claude 橙；Codex：`Core/Ui/CodexMark.cs`（VS Code 扩展 SVG）或 Codex 应用自带 logo。都找不到才退回字体图标。MW `LoadAgentMarks`，日志 "agent marks: claude ok, codex ok" |
+| Claude/Codex 图标 | **AI 所有阶段都用厂商 logo（10-07 用户定）**。Claude：`App/Interop/ClaudeGlyph.cs` 从命令行 claude.exe 或 Claude 应用（MSIX，`Interop/AgentApps.cs` 读注册表找安装位置）的图标抠火花（`Core/Ui/GlyphMask.cs`，橙色铺满=底板时取浅色火花），涂 Claude 橙；Codex：`Core/Ui/CodexMark.cs`（VS Code 扩展 SVG）或 Codex 应用自带 logo。都找不到才退回字体图标。MW `LoadAgentMarks`，日志 "agent marks: claude ok, codex ok"。**大胶囊用官方原色，小胶囊单色 + 橙/绿/红**（`AgentLogo(agent, ToneColor)`，10-07） |
 | 文件搜索 | `App/Search/EverythingSdk.cs`（分页取回+本地过滤隐藏目录）、`FileSearchWorker.cs`（空输入=最近文件）、`ResultsWindow.cs`（ListView、表头排序、右键菜单、间距常量）、`ShellIcons.cs`（后台取系统图标）、`RecentFiles.cs`（Windows 最近打开）；Core：`Search/FileSearchQuery.cs`、`FileExcludes.cs`（隐藏规则）、`FileListText.cs`（大小格式、中间省略）。焦点/关闭：`Interop/ForegroundEvents.cs` + MainWindow `CheckForeground()`；开始菜单 `Interop/StartMenu.cs`；常亮亚克力 `Interop/ActiveAcrylic.cs` |
 | 网页搜索 | `Core/Search/WebSearch.cs` |
-| 计时/番茄钟 | `Core/Island/TimerParser.cs`；界面 `ShowTimerText/ShowClockDigits/RollIn/DrawTimerArc` |
+| 计时/番茄钟 | `Core/Island/TimerParser.cs`；界面 `ShowTimerText/ShowClockDigits/RollIn/DrawTimerArc`；图标指针实时转 `Core/Ui/TimerDial.cs` + MW `DialContent`（小胶囊 `CellContent`、大胶囊 `ShowLeadDial`） |
 | 系统通知 | `App/SystemWatch/ToastWatcher.cs`（读 Windows 通知数据库）→ `ExpandedNotice.cs` 展开卡片 |
 | 复制提示 | `App/SystemWatch/ClipboardWatcher.cs` + `Core/SystemWatch/ClipboardRules.cs` |
 

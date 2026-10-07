@@ -58,7 +58,7 @@ internal sealed class UpdateWatcher(Func<LanguageStrings> strings) : NoticeWatch
         var notice = SystemNotice.Make($"IsleBar {version}", NoticeGlyphs.Download, now, msg: Text.UpdateAvailable, open: open);
         notice.Stage = "expand";   // the card that grows out of the pill
         notice.Name = "IsleBar";
-        Board.Flash("update", notice, TimeSpan.FromSeconds(15), now);
+        Board.Flash("update", notice, NoticeLengths.Attention, now);
     }
 
     private static string? ReadNotified()

@@ -17,7 +17,7 @@ namespace IsleBar.App.SystemWatch;
 internal sealed class ToastWatcher(Func<LanguageStrings> strings) : NoticeWatcher(strings)
 {
     private static readonly TimeSpan Poll = TimeSpan.FromMilliseconds(400);   // check often for low latency; the DB is only opened when its file actually changed
-    private static readonly TimeSpan Show = TimeSpan.FromSeconds(6);   // 4 s was over before a long notice had scrolled to its text
+    private static readonly TimeSpan Show = NoticeLengths.Read;   // 4 s was over before a long notice had scrolled to its text
     private readonly CancellationTokenSource _stop = new();
     private readonly Dictionary<string, string> _names = [];
     private long _lastId = -1;

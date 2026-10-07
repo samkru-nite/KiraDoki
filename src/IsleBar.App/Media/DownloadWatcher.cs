@@ -25,6 +25,8 @@ internal sealed partial class DownloadWatcher : IDisposable
     private readonly DownloadTracker _tracker = new();
     private readonly FileOperationWatcher _fileOps = new();
     private readonly List<ActivityState> _finished = [];
+    /// <summary>Files finished since the merged card started; told together when the last one is through.</summary>
+    private readonly List<string> _batch = [];
     private HashSet<string> _lastPartials = [];
     private readonly Dictionary<string, HashSet<string>> _lastListing = new(StringComparer.OrdinalIgnoreCase);
 
@@ -142,31 +144,43 @@ internal sealed partial class DownloadWatcher : IDisposable
         }).ToList();
 
         // all downloads under way become one item: summed speed · earliest name · "+N"
-        if (_tracker.Update(now, partials) is { } summary)
+        var summary = _tracker.Update(now, partials);
+        if (summary is not null)
         {
             result.Add(summary);
         }
 
         var tracked = new HashSet<string>(_tracker.Tracked, StringComparer.OrdinalIgnoreCase);
 
-        // The partial file from last time is gone and the finished file is there → done (shown briefly)
+        // The partial file from last time is gone and the finished file is there → finished. One finishing while others go on says
+        // nothing; when the last one is through, the batch is told once, on the same card (it rises from its cell) — user 10-07.
         foreach (var gone in _lastPartials.Where(p => !tracked.Contains(p)))
         {
-            if (File.Exists(gone) || Finished(gone, listings) is not { } final)
+            if (!File.Exists(gone) && Finished(gone, listings) is { } final)
             {
-                continue;
+                _batch.Add(final);
             }
+        }
 
+        if (summary is null && _batch.Count > 0)
+        {
+            _finished.Clear();
             _finished.Add(new ActivityState
             {
                 RawKind = ActivityState.KindTransfer,
                 Title = "Download → PC",
-                Name = Path.GetFileName(final),
+                Name = Path.GetFileName(_batch[0]),
+                MoreCount = _batch.Count - 1,
                 State = "done",
-                Open = final,
-                SourcePath = "download-done:" + final,
+                Open = _batch.Count == 1 ? _batch[0] : Path.GetDirectoryName(_batch[0]),
+                SourcePath = "download:" + _batch[0],   // the merged card's key ("download")
                 UpdatedAt = now,
             });
+            _batch.Clear();
+        }
+        else if (summary is not null)
+        {
+            _finished.Clear();   // a new download took the card
         }
 
         _lastPartials = tracked;

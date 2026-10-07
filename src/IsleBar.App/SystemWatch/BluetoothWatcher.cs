@@ -29,8 +29,8 @@ internal sealed class BluetoothWatcher : NoticeWatcher
     /// <summary>Major Bluetooth Class of Device 4 = audio/video (earbuds, headphones, speakers).</summary>
     private const uint MajorAudioVideo = 4;
 
-    private static readonly TimeSpan ConnectedShow = TimeSpan.FromSeconds(3);
-    private static readonly TimeSpan DisconnectedShow = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan ConnectedShow = NoticeLengths.Glance;
+    private static readonly TimeSpan DisconnectedShow = NoticeLengths.Glance;
 
     /// <summary>Right after connecting the battery value often isn't there yet, so wait a bit before reading.</summary>
     private static readonly TimeSpan BatteryDelay = TimeSpan.FromSeconds(1.5);

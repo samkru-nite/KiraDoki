@@ -15,11 +15,11 @@ public sealed class ActivityStore
     /// <summary>Files unchanged for longer than this are treated as disconnected.</summary>
     public static readonly TimeSpan StaleAfter = TimeSpan.FromMinutes(2);
 
-    /// <summary>How long finished (done) items are shown. 6 seconds, same as the Python version.</summary>
-    public static readonly TimeSpan DoneLinger = TimeSpan.FromSeconds(6);
+    /// <summary>How long finished (done) items are shown (<see cref="SystemWatch.NoticeLengths.Read"/>).</summary>
+    public static readonly TimeSpan DoneLinger = SystemWatch.NoticeLengths.Read;
 
-    /// <summary>How long failed items are shown. 12 seconds, same as the Python version.</summary>
-    public static readonly TimeSpan ErrorLinger = TimeSpan.FromSeconds(12);
+    /// <summary>How long a failed item that isn't an inform card (a pushed notice) is shown; inform ones stay.</summary>
+    public static readonly TimeSpan ErrorLinger = SystemWatch.NoticeLengths.Attention;
 
     /// <summary>
     /// How long an agent task-done notice stays up. Kept long so it is still there when you come back from being away —

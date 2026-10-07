@@ -103,8 +103,6 @@ public sealed class SystemWatchTests
         Assert.Equal("메모리 93%", NoticeText.Memory(Ko, 93));
         Assert.Equal("10분 후 · 팀 회의", NoticeText.EventSoon(Ko, 10, "팀 회의"));
         Assert.Equal("팀 회의 · 지금", NoticeText.EventNow(Ko, "팀 회의"));
-        Assert.Equal("마이크 사용 중 · Zoom", NoticeText.InUse(Ko, camera: false, "Zoom"));
-        Assert.Equal("카메라 사용 중", NoticeText.InUse(Ko, camera: true, null));
     }
 
     [Theory]

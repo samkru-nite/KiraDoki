@@ -69,10 +69,6 @@ public static class NoticeText
     /// <summary>"Team meeting · Now".</summary>
     public static string EventNow(LanguageStrings s, string summary) => Join(summary, s.NoticeEventNow);
 
-    /// <summary>"Microphone in use · Zoom".</summary>
-    public static string InUse(LanguageStrings s, bool camera, string? app)
-        => Join(camera ? s.NoticeCameraInUse : s.NoticeMicInUse, app);
-
     private static string Percent(string template, int percent) => Fill(template, "{p}", Math.Clamp(percent, 0, 100));
 
     private static string Name(string template, string name)

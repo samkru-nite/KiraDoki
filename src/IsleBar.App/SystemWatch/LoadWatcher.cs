@@ -35,7 +35,7 @@ internal sealed class LoadWatcher : NoticeWatcher
     /// How long an overload notice stays once it starts (user 10-01: it sat on the pill with an orange border for as long as a
     /// render ran). Shown again only after the load has dropped and come back. Not urgent: orange means "you need to answer".
     /// </summary>
-    private static readonly TimeSpan ShowFor = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan ShowFor = NoticeLengths.Attention;
 
     public LoadWatcher(Func<Core.Localization.LanguageStrings> strings)
         : base(strings)

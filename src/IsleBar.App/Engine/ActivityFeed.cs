@@ -93,14 +93,12 @@ internal sealed class ActivityFeed : IDisposable
         return items;
     }
 
-    /// <summary>How long the "camera / mic turned on" temporary card shows before only the status card is left.</summary>
-    private static readonly TimeSpan PrivacyStartFor = TimeSpan.FromSeconds(4);
-
     private DateTimeOffset? _privacySince;
 
     /// <summary>
     /// Mic / camera in use (TODO 7.9 D, 10-06): a status card while it lasts (its icon waits on the small pill, uncoloured — it is
-    /// your own doing), plus a temporary card for a few seconds when it starts, so it is noticed. Gone by itself when it stops.
+    /// your own doing). It is noticed by its debut on the big pill (CardStack, user 10-07 — it used to send a separate temporary card,
+    /// whose icon then popped up apart from it). Gone by itself when it stops.
     /// </summary>
     private void AddPrivacy(List<ActivityState> items, DateTimeOffset now)
     {
@@ -125,11 +123,7 @@ internal sealed class ActivityFeed : IDisposable
             UpdatedAt = since,
         };
 
-        items.Add(Card("privacy", "privacy"));
-        if (now - since < PrivacyStartFor)
-        {
-            items.Add(Card("privacy-start", null));
-        }
+        items.Add(Card("privacy", "privacy"));   // a status card: it shows on the big pill when it starts (debut, CardStack) and goes down
     }
 
     // ---------------- Timers ----------------

@@ -1080,6 +1080,11 @@ public sealed partial class MainWindow : Window
         }
 
         _cellsSig = sig;
+        if (!_cellCards.Any(c => c.State.Stage == "privacy"))
+        {
+            _privacyLanded = null;
+        }
+
         _renderedCells.Clear();
         _renderedCells.AddRange(_cellCards);
         TaskCells.Children.Clear();
@@ -1088,7 +1093,9 @@ public sealed partial class MainWindow : Window
             var content = CellContent(card, icon, now);
             if (_cellCards.FirstOrDefault(c => c.Key == key)?.State.Stage == "privacy")
             {
-                Breathe(content);   // mic / camera in use: plainly breathing, so it isn't forgotten (user 10-07)
+                // mic / camera in use: plainly breathing, so it isn't forgotten; solid for a moment after it lands (user 10-07)
+                _privacyLanded ??= now;
+                Breathe(content, _privacyLanded.Value + TimeSpan.FromSeconds(1.5) - now);
             }
 
             TaskCells.Children.Add(MakeCell(key, content));
@@ -1196,18 +1203,26 @@ public sealed partial class MainWindow : Window
 
     private string? _leadDialKey;
 
-    /// <summary>A slow, clear breath on the compositor: full → 30% → full every 2 s, for as long as the element lives.</summary>
-    private static void Breathe(UIElement element)
+    /// <summary>A slow, clear breath on the compositor: full → 30% → full every 2.5 s, after <paramref name="delay"/>, for as long as the element lives.</summary>
+    private static void Breathe(UIElement element, TimeSpan delay)
     {
         var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(element);
         var breath = visual.Compositor.CreateScalarKeyFrameAnimation();
         breath.InsertKeyFrame(0f, 1f);
         breath.InsertKeyFrame(0.5f, 0.3f);
         breath.InsertKeyFrame(1f, 1f);
-        breath.Duration = TimeSpan.FromSeconds(2);
+        breath.Duration = TimeSpan.FromSeconds(2.5);
+        if (delay > TimeSpan.Zero)
+        {
+            breath.DelayTime = delay;
+        }
+
         breath.IterationBehavior = Microsoft.UI.Composition.AnimationIterationBehavior.Forever;
         visual.StartAnimation("Opacity", breath);
     }
+
+    /// <summary>When the mic / camera icon first sat in its cell this time (its breath starts a moment later); null while there is none.</summary>
+    private DateTimeOffset? _privacyLanded;
 
     /// <summary>Tag of the ⋯ cell (task cells carry their card's key).</summary>
     private const string DotsTag = "\u0001dots";
@@ -2462,8 +2477,10 @@ public sealed partial class MainWindow : Window
         LeadIcon.Glyph = state.IsPaused ? "\uE769" : GlyphFor(state);   // paused timer = pause icon
         LeadIcon.Foreground = BrushOf(_dropHover ? _theme.Icon : IconColorFor(_shownCard));
         ShowLeadDial(_dropHover ? null : state, IconColorFor(_shownCard));
-        // music: 8 before the now-playing bars, else 12 to the pill's edge (TODO 7.9 D)
-        IslandContent.Margin = new Thickness(0, 0, state.Kind == ActivityKind.Music && state.Stage != "paused" ? 8 : 12, 0);
+                // music: the text ends as far from the now-playing bars as it starts from the cover (5 each side, user 10-07; 8 looked
+        // lopsided), 8 with the plain note glyph (its gap on the left is 8 too); else 12 to the pill's edge (TODO 7.9 D)
+        var playing = state.Kind == ActivityKind.Music && state.Stage != "paused";
+        IslandContent.Margin = new Thickness(0, 0, !playing ? 12 : CoverOf(_shownCard) is not null ? 5 : 8, 0);
         // compressing: the document outline gets zipper teeth (the drop hint uses the same outline without them)
         ZipTeeth.Opacity = state.Stage == "copy" && state.RunState == ActivityRunState.Running
                            && state.Glyph == Media.FileOperationWatcher.CompressGlyph ? 1 : 0;
@@ -3785,6 +3802,10 @@ public sealed partial class MainWindow : Window
         if (card.State.SourcePath is { } path && File.Exists(path))
         {
             ActivityFeed.DeleteState(path);
+        }
+        else if (card.State.SourcePath is { } drop && drop.StartsWith("drop:", StringComparison.Ordinal))
+        {
+            _feed.PhoneDrop.Forget(drop);   // a failed send stays until closed
         }
         else
         {

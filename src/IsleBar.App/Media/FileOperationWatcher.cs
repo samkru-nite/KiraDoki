@@ -60,6 +60,7 @@ internal sealed partial class FileOperationWatcher : IDisposable
             _archive = null;
             var percent = Percent(window.Title);
             var (name, unzip) = ReadWindow(window.Handle);
+            (_lastName, _lastGlyph) = (name, unzip ? UnzipGlyph : CopyGlyph);
             result.Add(new ActivityState
             {
                 RawKind = ActivityState.KindTransfer,
@@ -79,7 +80,7 @@ internal sealed partial class FileOperationWatcher : IDisposable
         {
             if (_opSince is not null)
             {
-                _finished = Done(null, null, now);   // the window closed: done (or cancelled — the window doesn't say)
+                _finished = Done(_lastName, null, now, _lastGlyph);   // the window closed: done (or cancelled — the window doesn't say)
                 _opSince = null;
             }
 
@@ -149,17 +150,25 @@ internal sealed partial class FileOperationWatcher : IDisposable
         };
     }
 
-    private static ActivityState Done(string? name, string? open, DateTimeOffset now) => new()
+    /// <summary>
+    /// Finished: the same card as the one in progress (same key), so it rises from its cell and shows a few seconds (user 10-07 —
+    /// a separate "done" card dropped in while the icon vanished).
+    /// </summary>
+    private static ActivityState Done(string? name, string? open, DateTimeOffset now, string? glyph = null) => new()
     {
         RawKind = ActivityState.KindTransfer,
         Title = "Files",
         Name = name,
+        Glyph = glyph,
         Stage = "copy",
         State = "done",
         Open = open,
-        SourcePath = "fileop-done:" + (open ?? "window"),
+        SourcePath = "fileop:" + (open ?? "window"),
         UpdatedAt = now,
     };
+
+    private string? _lastName;
+    private string? _lastGlyph;
 
     private EverythingSdk? Everything()
     {

@@ -35,13 +35,37 @@ public sealed record Card(string Key, CardType Type, bool Pinned, ActivityState 
 /// doesn't change, even when a pinned card arrives. After that: a pinned card there → the top one shows; none → the chosen card
 /// (the top card if nothing was chosen or it ended).</item>
 /// <item>"Close" on a status card hides it until it ends (its key drops out of the list).</item>
+/// <item><b>Debut</b> (user 10-07, replacing 10-06 "status cards never go on top first; send a separate temporary card"): a card
+/// that becomes a status card — new, or another type before (permission answered, a new turn after "done") — shows on the big pill
+/// for <see cref="DebutLength"/>, then goes down into its cell. Not pinning: no border. It shows over a pending / inform card too —
+/// those stay and come back a few seconds later (user 10-07) — but waits while a temporary card shows (that one is gone in seconds
+/// and would be missed). Not while the mouse is on the pills, not for what is there when the bar starts. Every new card gets its turn, in the order they came; while others
+/// wait, each shows for <see cref="DebutAtLeast"/> only.
+/// How a card <i>ends</i> is its next type: inform (stays), temporary (a few seconds), or gone.</item>
 /// </list>
 /// Deterministic: the same items and the same actions always give the same result (user: "the computer must not be a black box").
 /// </summary>
 public sealed class CardStack
 {
-    /// <summary>How long the shown card is held after the mouse leaves the pill before a pinned card takes over (user 10-05: 3 s).</summary>
-    public static readonly TimeSpan HoldAfterLeave = TimeSpan.FromSeconds(3);
+    /// <summary>How long the shown card is held after the mouse leaves the pill before a pinned card takes over (user 10-05: 3 s; 10-07: 2 s).</summary>
+    public static readonly TimeSpan HoldAfterLeave = TimeSpan.FromSeconds(2);   // 3 → 2 (user 10-07)
+
+    /// <summary>How long a new status card shows on the big pill before going down into its cell.</summary>
+    public static readonly TimeSpan DebutLength = TimeSpan.FromSeconds(2);
+
+    /// <summary>A debut's length while other new cards wait their turn (user 10-07).</summary>
+    public static readonly TimeSpan DebutAtLeast = TimeSpan.FromSeconds(1.5);
+
+    /// <summary>No debuts this soon after the first update: what is there when the bar starts doesn't parade.</summary>
+    public static readonly TimeSpan StartQuiet = TimeSpan.FromSeconds(2);
+
+    private string? _debutKey;
+    private DateTimeOffset _debutSince;
+    private readonly List<string> _debutQueue = [];
+    private DateTimeOffset? _firstUpdate;
+
+    /// <summary>The card on its debut now (null = none).</summary>
+    public string? DebutKey => _debutKey;
 
     private readonly Dictionary<string, (CardType Type, DateTimeOffset Since)> _arrived = new(StringComparer.Ordinal);
     private readonly HashSet<string> _hidden = new(StringComparer.Ordinal);
@@ -125,6 +149,8 @@ public sealed class CardStack
         }
 
         var card = Cards[index];
+        _debutKey = null;   // a clicked card replaces any debut
+        _debutQueue.Clear();
         if (!card.Pinned)
         {
             _chosenKey = card.Key;   // a pinned card shows by itself anyway — the choice to come back to is the status card
@@ -158,6 +184,8 @@ public sealed class CardStack
 
     private void Rebuild(DateTimeOffset now)
     {
+        _firstUpdate ??= now;
+        var fresh = new List<(string Key, DateTimeOffset Updated)>();   // became a status card this time
         var cards = new List<(Card Card, DateTimeOffset Since, DateTimeOffset Updated)>();
         var present = new HashSet<string>(StringComparer.Ordinal);
         foreach (var state in _items)
@@ -176,6 +204,10 @@ public sealed class CardStack
             {
                 seen = (type, now);
                 _arrived[key] = seen;
+                if (type == CardType.Status && TaskRules.Debuts(state) && !_hidden.Contains(key))
+                {
+                    fresh.Add((key, state.UpdatedAt));
+                }
             }
 
             if (!_hidden.Contains(key))
@@ -221,8 +253,47 @@ public sealed class CardStack
             _chosenKey = null;
         }
 
+        UpdateDebut(ordered, fresh, now);
         ShownIndex = PickShown(ordered, now);
         _shownKey = ordered.Count == 0 ? null : ordered[ShownIndex].Key;
+    }
+
+    /// <summary>Starts, queues, hands over and ends debuts (see the class notes).</summary>
+    private void UpdateDebut(List<Card> cards, List<(string Key, DateTimeOffset Updated)> fresh, DateTimeOffset now)
+    {
+        bool Present(string? key) => key is not null && cards.Any(c => c.Key == key && c.Type == CardType.Status);
+        if (_hovering || now - _leftAt < HoldAfterLeave)
+        {
+            _debutKey = null;   // the mouse is there: new cards go straight to their cells
+            _debutQueue.Clear();
+            return;
+        }
+
+        var temporary = cards.Count > 0 && cards[0] is { Pinned: true, Type: CardType.Temporary };
+
+        if (!Present(_debutKey))
+        {
+            _debutKey = null;
+        }
+
+        _debutQueue.RemoveAll(k => !Present(k));
+        if (now - _firstUpdate!.Value >= StartQuiet)
+        {
+            _debutQueue.AddRange(fresh.OrderBy(f => f.Updated).ThenBy(f => f.Key, StringComparer.Ordinal).Select(f => f.Key)
+                .Where(k => k != _debutKey && !_debutQueue.Contains(k)));
+        }
+
+        if (_debutKey is not null && (temporary || now - _debutSince >= (_debutQueue.Count > 0 ? DebutAtLeast : DebutLength)))
+        {
+            _debutKey = null;   // its turn is over, or a temporary card came: that one goes first
+        }
+
+        if (_debutKey is null && _debutQueue.Count > 0 && !temporary)
+        {
+            _debutKey = _debutQueue[0];
+            _debutQueue.RemoveAt(0);
+            _debutSince = now;
+        }
     }
 
     private int PickShown(List<Card> cards, DateTimeOffset now)
@@ -238,6 +309,12 @@ public sealed class CardStack
         if (holding && shown >= 0)
         {
             return shown;
+        }
+
+        var debut = _debutKey is null ? -1 : cards.FindIndex(c => c.Key == _debutKey);
+        if (debut >= 0)
+        {
+            return debut;   // a few seconds, even over a pinned card (a temporary one stops it: UpdateDebut)
         }
 
         if (cards[0].Pinned)

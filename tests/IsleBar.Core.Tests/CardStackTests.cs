@@ -77,7 +77,8 @@ public sealed class CardStackTests
     {
         Assert.NotEqual(CardStack.KeyOf(Item(ActivityKind.Music, "media:spotify")), CardStack.KeyOf(Item(ActivityKind.Music, "media:cloudmusic")));
         Assert.Equal(CardStack.KeyOf(Item(ActivityKind.Transfer, "download:a.zip")), CardStack.KeyOf(Item(ActivityKind.Transfer, "download:b.zip")));
-        Assert.NotEqual(CardStack.KeyOf(Item(ActivityKind.Transfer, "download:a.zip")), CardStack.KeyOf(Item(ActivityKind.Transfer, "download-done:a.zip")));
+        // finished downloads are told on the same card (user 10-07)
+        Assert.Equal(CardStack.KeyOf(Item(ActivityKind.Transfer, "download:a.zip")), CardStack.KeyOf(Item(ActivityKind.Transfer, "download:b.zip", 0, "done")));
     }
 
     // ---------------- Order ----------------
@@ -196,7 +197,7 @@ public sealed class CardStackTests
     }
 
     [Fact]
-    public void While_the_mouse_is_on_the_pill_a_new_pinned_card_waits_until_three_seconds_after_it_leaves()
+    public void While_the_mouse_is_on_the_pill_a_new_pinned_card_waits_until_two_seconds_after_it_leaves()
     {
         var stack = ThreeStatusCards();
         stack.SetHover(true, T0.AddSeconds(3));
@@ -209,9 +210,9 @@ public sealed class CardStackTests
 
         var left = T0.AddMinutes(1);
         stack.SetHover(false, left);
-        stack.Update(withAsk, left.AddSeconds(2.9));
+        stack.Update(withAsk, left.AddSeconds(1.9));
         Assert.Equal("w", stack.Shown!.Key);
-        stack.Update(withAsk, left.AddSeconds(3));
+        stack.Update(withAsk, left.AddSeconds(2));
         Assert.Equal("ask", stack.Shown!.Key);
         Assert.Equal(["ask", "m", "w", "download"], Keys(stack));   // the order is unchanged
 
@@ -284,4 +285,105 @@ public sealed class CardStackTests
     [Fact]
     public void Mic_or_camera_in_use_waits_as_a_status_card()
         => Assert.Equal(CardType.Status, CardStack.TypeOf(new ActivityState { RawKind = ActivityState.KindNotice, Stage = "privacy", State = "run" }, T0));
+
+    // ---- debut (user 10-07): a new status card shows on the big pill, then goes down into its cell ----
+
+    private static CardStack Started(params ActivityState[] items)
+    {
+        var stack = new CardStack();
+        stack.Update(items, T0);
+        stack.Update(items, T0.AddSeconds(5));   // past the start's quiet seconds
+        return stack;
+    }
+
+    private static string? ShownKey(CardStack stack) => stack.Shown?.Key;
+
+    [Fact]
+    public void A_new_status_card_shows_for_two_seconds_then_goes_back()
+    {
+        var music = Item(ActivityKind.Music, "m");
+        var stack = Started(music);
+        var work = Item(ActivityKind.AgentWorking, "w", 6);
+        stack.Update([music, work], T0.AddSeconds(6));
+        Assert.Equal("w", ShownKey(stack));
+        stack.Update([music, work], T0.AddSeconds(7.9));
+        Assert.Equal("w", ShownKey(stack));
+        stack.Update([music, work], T0.AddSeconds(8));
+        Assert.Equal("m", ShownKey(stack));
+    }
+
+    [Fact]
+    public void Cards_there_at_start_do_not_debut()
+    {
+        var stack = new CardStack();
+        stack.Update([Item(ActivityKind.Music, "m")], T0);
+        stack.Update([Item(ActivityKind.Music, "m"), Item(ActivityKind.AgentWorking, "w", 1)], T0.AddSeconds(1));
+        Assert.Equal("m", ShownKey(stack));
+    }
+
+    [Fact]
+    public void Crowded_debuts_take_turns_of_one_and_a_half_seconds()
+    {
+        var music = Item(ActivityKind.Music, "m");
+        var stack = Started(music);
+        var a = Item(ActivityKind.Transfer, "a", 6);
+        var b = Item(ActivityKind.Transfer, "b", 6);
+        stack.Update([music, a, b], T0.AddSeconds(6));
+        Assert.Equal("a", ShownKey(stack));
+        stack.Update([music, a, b], T0.AddSeconds(7.5));
+        Assert.Equal("b", ShownKey(stack));   // a had 1.5 s while b waited
+        stack.Update([music, a, b], T0.AddSeconds(9.4));
+        Assert.Equal("b", ShownKey(stack));   // nobody waits: b gets its 2 s
+        stack.Update([music, a, b], T0.AddSeconds(9.5));
+        Assert.Equal("m", ShownKey(stack));
+    }
+
+    [Fact]
+    public void Debut_over_a_done_card_then_back_but_not_under_the_mouse()
+    {
+        var done = Item(ActivityKind.AgentDone, "d", 0, "done");
+        var stack = Started(done);
+        stack.Update([done, Item(ActivityKind.Music, "m", 6)], T0.AddSeconds(6));
+        Assert.Equal("m", ShownKey(stack));
+        stack.Update([done, Item(ActivityKind.Music, "m", 6)], T0.AddSeconds(9));
+        Assert.Equal("d", ShownKey(stack));
+
+        var music = Item(ActivityKind.Music, "m");
+        var other = Started(music);
+        other.SetHover(true, T0.AddSeconds(6));
+        other.Update([music, Item(ActivityKind.AgentWorking, "w", 6)], T0.AddSeconds(6));
+        other.SetHover(false, T0.AddSeconds(7));
+        other.Update([music, Item(ActivityKind.AgentWorking, "w", 6)], T0.AddSeconds(11));
+        Assert.Equal("m", ShownKey(other));
+    }
+
+    [Fact]
+    public void Back_to_work_after_a_question_debuts_again()
+    {
+        var music = Item(ActivityKind.Music, "m");
+        var ask = Item(ActivityKind.AgentPermission, "s", 6);
+        var stack = Started(music);
+        stack.Update([music, ask], T0.AddSeconds(6));
+        Assert.Equal("s", ShownKey(stack));
+        var work = Item(ActivityKind.AgentWorking, "s", 7);
+        stack.Update([music, work], T0.AddSeconds(7));
+        Assert.Equal("s", ShownKey(stack));
+        stack.Update([music, work], T0.AddSeconds(10));
+        Assert.Equal("m", ShownKey(stack));
+    }
+
+    [Fact]
+    public void A_temporary_card_goes_first_and_the_debut_waits()
+    {
+        var music = Item(ActivityKind.Music, "m");
+        var stack = Started(music);
+        var copied = Item(ActivityKind.Notice, "copied", 6);
+        var work = Item(ActivityKind.AgentWorking, "w", 6);
+        stack.Update([music, copied, work], T0.AddSeconds(6));
+        Assert.Equal("copied", ShownKey(stack));
+        stack.Update([music, work], T0.AddSeconds(8));
+        Assert.Equal("w", ShownKey(stack));
+        stack.Update([music, work], T0.AddSeconds(11));
+        Assert.Equal("m", ShownKey(stack));
+    }
 }

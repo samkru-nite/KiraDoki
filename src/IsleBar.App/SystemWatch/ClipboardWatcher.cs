@@ -22,7 +22,7 @@ namespace IsleBar.App.SystemWatch;
 internal sealed class ClipboardWatcher : NoticeWatcher
 {
     private const string Key = "clipboard";
-    private static readonly TimeSpan Show = TimeSpan.FromSeconds(1.5);
+    private static readonly TimeSpan Show = NoticeLengths.Glance;
     private const uint CoalesceMs = 150;
     private const int MaxTextChars = 4096;
 

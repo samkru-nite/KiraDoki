@@ -16,7 +16,7 @@ internal sealed class NetworkWatcher : NoticeWatcher
     private const string LostKey = "net";
     private const string RestoredKey = "net-ok";
     private const string SettingsUri = "ms-settings:network-status";
-    private static readonly TimeSpan RestoredShow = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan RestoredShow = NoticeLengths.Glance;
     private static readonly TimeSpan TickInterval = TimeSpan.FromSeconds(1);
     private const int ReadEveryTicks = 10;
 
@@ -87,7 +87,7 @@ internal sealed class NetworkWatcher : NoticeWatcher
                 Board.Clear(RestoredKey);
                 // a short heads-up, not an orange border for the whole outage — orange means "you need to answer", and an outage
                 // (a plane, the provider) usually isn't something the person can fix (user 10-01, same as the CPU notice)
-                Board.Flash(LostKey, SystemNotice.Make(s.NoticeOffline, NoticeGlyphs.NoInternet, now, open: SettingsUri), TimeSpan.FromSeconds(10), now);
+                Board.Flash(LostKey, SystemNotice.Make(s.NoticeOffline, NoticeGlyphs.NoInternet, now, open: SettingsUri), NoticeLengths.Attention, now);
                 break;
             case ConnectivityChange.Restored:
                 Board.Clear(LostKey);
