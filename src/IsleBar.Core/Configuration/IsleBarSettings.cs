@@ -87,6 +87,10 @@ public sealed class IsleBarSettings
     /// <summary>Side of the big pill the small pill sits on: "right" (default) · "left". TODO 7.9 D, 10-06.</summary>
     public string BallSide { get; set; } = "right";
 
+    /// <summary>Card text on the big pill (user 10-07): "left" (default) · "group" = icon and text centred together · "text" = only the
+    /// text centred, the icon stays. Centred only when it fits; text that has to scroll is left-aligned.</summary>
+    public string CardTextAlign { get; set; } = "left";
+
     /// <summary>Music bars follow the actual sound (speaker peak meter) instead of a canned loop. Off by default.</summary>
     public bool AudioBars { get; set; }
 
@@ -203,6 +207,7 @@ public sealed class IsleBarSettings
         ManualOffset = ManualOffset,
         PillCorners = PillCorners,
         BallSide = BallSide,
+        CardTextAlign = CardTextAlign,
         AudioBars = AudioBars,
         History = [.. History],
         Models = [.. Models],

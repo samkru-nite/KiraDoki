@@ -1,7 +1,7 @@
 # IsleBar 二次开发 — 项目上下文（交接文件）
 
 > 新会话先读本文件和 TODO.md（进度看 TODO 每条的 [x]/[~] 和注记）。源码已通读，地图见下方。
-> **下一步（10-05）**：新交互设计已定稿，见 TODO.md 第 7 节（小球 + 胶囊、卡片类型、操作、输入框、AI 在胶囊里交互）。定位/风险/代码策略见 7.8，按 **7.9 顺序**做，第 1 步滚动诊断已完成（滚动能收到，结果见 7.9 第 1 条；统计日志用户决定不做），**10-05 路线 A–L 已定稿（见 7.9），A–D 和 E1 已完成**（D = 预览 https://claude.ai/artifact/PGb2ZCPwCXFwAJnmCDPkDW 第 14 版）。**E 已拆成 E1–E5（+E3½），见 TODO 7.9 E 条"10-07 拆分"；下一步 E2**（卡片排版）。尺寸以 **D 条开头的「最终尺寸表」**为准（冲突时最终尺寸表 > D 条后面的轮次 > 前面的轮次）。不做新旧切换开关，旧代码不需要就直接删。预览清单在 7.9 末尾。
+> **下一步（10-05）**：新交互设计已定稿，见 TODO.md 第 7 节（小球 + 胶囊、卡片类型、操作、输入框、AI 在胶囊里交互）。定位/风险/代码策略见 7.8，按 **7.9 顺序**做，第 1 步滚动诊断已完成（滚动能收到，结果见 7.9 第 1 条；统计日志用户决定不做），**10-05 路线 A–L 已定稿（见 7.9），A–D、E1、E2 已完成**（D = 预览 https://claude.ai/artifact/PGb2ZCPwCXFwAJnmCDPkDW 第 14 版）。**E 已拆成 E1–E5（+E3½），见 TODO 7.9 E 条"10-07 拆分"；下一步 E3**（小胶囊任务图标；先读 E 条"10-07 拆分"和 E1/E2 注记）。尺寸以 **D 条开头的「最终尺寸表」**为准（冲突时最终尺寸表 > D 条后面的轮次 > 前面的轮次）。不做新旧切换开关，旧代码不需要就直接删。预览清单在 7.9 末尾。
 
 ## 用户与协作方式
 - 用户是 vibe coding 新手，只会一点 Python，不会 C#/C++。用户只描述想要的效果和看运行结果，代码由 Claude 写。请用中文、通俗讲解，必要时用 Python 类比。
@@ -40,7 +40,7 @@ dotnet build src/IsleBar.App -v q -nologo
 dotnet test tests/IsleBar.Core.Tests -v q -nologo
 Start-Process "src\IsleBar.App\bin\Debug\net8.0-windows10.0.26100.0\IsleBar.App.exe"
 ```
-- 加界面文案：`LanguageStrings.cs` 加属性 + `LanguageCatalog.cs` 10 种语言都要加（文件里顺序：en ko ja zh zht fr de it pt es）+ `tests/.../LocalizationTests.cs` 里的文案总数 +N（10-07 当前 130）。
+- 加界面文案：`LanguageStrings.cs` 加属性 + `LanguageCatalog.cs` 10 种语言都要加（文件里顺序：en ko ja zh zht fr de it pt es）+ `tests/.../LocalizationTests.cs` 里的文案总数 +N（10-07 当前 135）。
 - 加设置项：`IsleBarSettings`（属性 + `Clone()`）+ `SettingsCodec`（key、读、写）+ `Options/SettingsWindow.cs`。
 
 ## 项目地图（2026-10-04 读源码后补；行号是近似值，以 grep 为准）
@@ -55,7 +55,7 @@ Start-Process "src\IsleBar.App\bin\Debug\net8.0-windows10.0.26100.0\IsleBar.App.
 4. **绘制**：`RenderIsland()` → `RenderIslandState()` → 文字 `ShowIslandText()` / 计时 `ShowTimerText()`+`ShowClockDigits()` / 进度条 `UpdateProgressLine()` / 边框 `UpdateGlow()` / 前缀文案 `PrefixFor()` / 左图标 `GlyphFor()`。动画在 `App/IslandUi/IslandAnimator.cs`（进出场、呼吸、高亮边框 `UpdateGlow`）。
 
 ### 界面结构
-- `App/MainWindow.xaml`（10-07 E1）：一个窗口 = `PillRow`（大胶囊 `PillBody` 220×32 | 间距 `GapColumn` 8 | 小胶囊 `SmallPill`，左右由设置 `BallSide` 决定），上下各留 7 dip（E4 弧线）。窗口按两个胶囊的**直角矩形**裁剪（`Interop/PillRegion.cs`，布局算在 `Core/Ui/PillGeometry.cs`），圆角由 `PillSurface`/`SmallSurface` 自己画在任务栏色底（`Root.Background`）上——按圆角裁剪会有锯齿。`MainWindow.LayoutPills()` 管显示/隐藏大胶囊、排列、裁剪、定位（`TaskbarTracker.PlaceNow(宽度)`）。大胶囊内部（E2 重排）：空列 | 左图标槽 LeadSlot | 中间 Entry 或 IslandContent | 右侧（均衡器、计时圆环、Tab 提示、隐私点）。小胶囊目前只有圆圈 `BallCell`（点 = 打字开关，右键 = 工具菜单，含"设置"）。
+- `App/MainWindow.xaml`（10-07 E1）：一个窗口 = `PillRow`（大胶囊 `PillBody` 220×32 | 间距 `GapColumn` 8 | 小胶囊 `SmallPill`，左右由设置 `BallSide` 决定），上下各留 7 dip（E4 弧线）。窗口按两个胶囊的**直角矩形**裁剪（`Interop/PillRegion.cs`，布局算在 `Core/Ui/PillGeometry.cs`），圆角由 `PillSurface`/`SmallSurface` 自己画在任务栏色底（`Root.Background`）上——按圆角裁剪会有锯齿。`MainWindow.LayoutPills()` 管显示/隐藏大胶囊、排列、裁剪、定位（`TaskbarTracker.PlaceNow(宽度)`）。大胶囊内部（E2）：`CardRow` 四列 = 关闭区 `CloseZone`（告知卡片）| 图标 `LeadSlot` 16 | Entry 或 IslandContent（文字，竖直按墨迹居中 `PlaceText`/`MeasureInkAsync`，水平按设置 `CardTextAlign`）| 右侧（均衡器、Tab 提示、隐私点）；底部进度轨道 `ProgressTrackBar` + `ProgressLine`；边框 `GlowRing` 2 宽按卡片类型（`UpdateGlow`）。小胶囊目前只有圆圈 `BallCell`（点 = 打字开关，右键 = 工具菜单，含"设置"）。
 - `MainWindow.xaml.cs`（约 3100 行，只剩界面，E 步逐步替换）：输入 `BeginTyping/EndTyping/OnEntryKeyDown`、启动代理 `Launch()`（调 `Engine/AgentLauncher`）/`ShowLaunchFailure()`、模式切换 `ToggleMode/SetMode`（Tab 切换 Claude/文件；网页模式 E1 删了）、文件搜索 `ScheduleSearch/OnSearchResult`、右键菜单 `ShowContextMenu`。番茄钟/提示音在 `Engine/ActivityFeed.cs`、`Engine/Chime.cs`。
 - 其他窗口：搜索结果 `App/Search/ResultsWindow.cs`、长问题编辑 `ComposeWindow.cs`、消息展开卡片 `App/IslandUi/ExpandedNotice.cs`（760 行）、设置 `App/Options/SettingsWindow.cs`、弹出窗口公用摆放 `Options/PopupPlacement.cs`（⌄ 选项面板 E1 删了）、系统通知横幅 `App/SystemWatch/ToastBanners.cs`。
 - 嵌入任务栏：`App/Interop/TaskbarHost.cs`（Attach/Detach，打字时会脱离任务栏；嵌入失败 = 置顶浮动在任务栏上方，`LastError` 记错误码）、`App/Tracking/TaskbarTracker.cs`（后台线程用 UIA 读任务栏布局：开始/搜索/程序按钮 = 图标区，WidgetsButton，TrayNotifyWnd = 托盘）→ `Core/Ui/BarSlot.cs`（按设置 `Position` 最左边/正中间/托盘左边/手动 + `ManualOffset` 算位置，放不下就隐藏；有测试）、`PillRegion.cs`（裁剪成胶囊形）。10-05 起不再跟随/盖住系统搜索框（`SearchBoxTracker`、`NativeSearchBox` 已删）。设置窗口最下面有"诊断"小节（MW `Diagnostics()`）。

@@ -344,6 +344,8 @@ internal sealed class SettingsWindow : Window
             () => _settings.BallSide, v => _settings.BallSide = v);
         ChoiceRow(_text.CornersLabel, [("round", _text.CornersRound), ("small", _text.CornersSmall)],
             () => _settings.PillCorners, v => _settings.PillCorners = v);
+        ChoiceRow(_text.CardTextLabel, [("left", _text.CardTextLeft), ("group", _text.CardTextCenterGroup), ("text", _text.CardTextCenterText)],
+            () => _settings.CardTextAlign, v => _settings.CardTextAlign = v);
 
         // Advanced: power options, grouped under their own heading but always visible (labelled, not hidden). The drop command runs
         // a program on dropped files (we use it for phone transfer); the toggle picks whether a drop attaches to the prompt or runs it (10-01).

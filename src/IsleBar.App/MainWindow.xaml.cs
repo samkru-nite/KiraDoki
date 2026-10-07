@@ -48,6 +48,9 @@ public sealed partial class MainWindow : Window
     /// <summary>The new design's card rules (TODO 7.2/7.3): which card the big pill shows.</summary>
     private readonly CardStack _cards = new();
 
+    /// <summary>The card on the big pill (its type decides the border, the icon colour and the close zone).</summary>
+    private Card? _shownCard;
+
     private readonly ConfigStore _store = new(AppPaths.SettingsFile);
     private readonly ActivityFeed _feed;
     private readonly DispatcherQueue _ui;
@@ -204,7 +207,8 @@ public sealed partial class MainWindow : Window
         Entry.PreviewKeyDown += OnEntryKeyDown;
         HookCompose();
         HookFileDrop();
-        PressFeedback.Attach(BallCell);   // pressing makes it sink in and spring back (09-30 design M5)
+        PressFeedback.Attach(BallCell);
+        Root.Loaded += (_, _) => MeasureInkAsync();   // where the card font's glyphs sit (TODO 7.9 D: centre the ink, not the line box)   // pressing makes it sink in and spring back (09-30 design M5)
         Entry.TextChanged += (_, _) =>
         {
             UpdateTabHint();
@@ -263,7 +267,12 @@ public sealed partial class MainWindow : Window
                 return;
             }
 
-            TryIslandAction();   // the big pill: go to that task (F step: lift the card)
+            if (IsInside(source, CloseZone))
+            {
+                CloseShownCard();   // an inform card is closed only here or from its menu (TODO 7.2)
+            }
+
+            // the rest of the big pill lifts the card (step F)
         }), handledEventsToo: true);
         // Right click = dismiss an island item (cancel a timer, etc.) · turn off the search bar
         // The input box grabs right clicks first (its own copy/paste menu), so receive them with handledEventsToo.
@@ -282,6 +291,8 @@ public sealed partial class MainWindow : Window
         }), handledEventsToo: true);
         Root.PointerEntered += (_, _) => SetHover(true);
         Root.PointerExited += (_, _) => SetHover(false);
+        CloseZone.PointerEntered += (_, _) => CloseHover.Opacity = 1;
+        CloseZone.PointerExited += (_, _) => CloseHover.Opacity = 0;
         PillBody.PointerEntered += (_, _) => SetBigHover(true);
         PillBody.PointerExited += (_, _) => SetBigHover(false);
         BallCell.PointerEntered += (_, _) => BallHover.Opacity = 1;
@@ -884,12 +895,9 @@ public sealed partial class MainWindow : Window
             EndStaleHover();
 
             _cards.Update(items, DateTimeOffset.UtcNow);
-            var next = _cards.Shown is { } shown ? new IslandSnapshot(shown.State, _cards.Cards.Count - 1) : IslandSnapshot.Empty;
+            _shownCard = _cards.Shown;
+            var next = _shownCard is { } shown ? new IslandSnapshot(shown.State, _cards.Cards.Count - 1) : IslandSnapshot.Empty;
             _snapshot = next;
-            // A task finished while something else (music) holds the pill → remember it so the thick completion border still lights,
-            // without taking the song off the pill (user 10-01). When the done is itself the primary, UpdateGlow handles it directly.
-            _backgroundDone = items.FirstOrDefault(i => i.Kind == ActivityKind.AgentDone && i.SourcePath is not null);
-            _backgroundDoneKey = _backgroundDone is { SourcePath: { } donePath } ? "done|" + donePath : null;
             ExpandIfMessage(items);   // feed EVERY new message notice to the expanded card, not just the primary one (bursts dropped middles — user 09-30)
             var change = _animator.Classify(next);   // the animator decides whether it's a new item (kind/source/track)
             if (_swapping)
@@ -1013,8 +1021,8 @@ public sealed partial class MainWindow : Window
         PillSurface.CornerRadius = new CornerRadius(r);
         SmallSurface.CornerRadius = new CornerRadius(r);
         GlassBorder.CornerRadius = new CornerRadius(r);
-        GlowRing.CornerRadius = new CornerRadius(Math.Max(0, r - 0.5));
-        GlowBackdrop.CornerRadius = new CornerRadius(r + 1);
+        GlowRing.CornerRadius = new CornerRadius(r);
+        CloseHover.CornerRadius = new CornerRadius(r, 0, 0, r);   // the close zone's hover follows the pill's round left end (user 10-07)
     }
 
     private DateTimeOffset _lastAttachTry = DateTimeOffset.MinValue;
@@ -1121,9 +1129,108 @@ public sealed partial class MainWindow : Window
 
         IslandTextCopy.Foreground = IslandText.Foreground;
 
-        // inside a canvas, so center vertically by hand
-        MarqueePanel.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
-        Microsoft.UI.Xaml.Controls.Canvas.SetTop(MarqueePanel, Math.Max(0, (MarqueeHost.ActualHeight - MarqueePanel.DesiredSize.Height) / 2));
+        PlaceText();
+    }
+
+    /// <summary>
+    /// Up and down: the 20 line box centred in the 32 pill (6 above), moved by <see cref="_inkOffset"/> so the glyphs themselves sit
+    /// in the middle — centring the line box left the text looking low (user 10-06, TODO 7.9 D).
+    /// <para>Left and right (setting, user 10-07): "left" = icon at 8, text from 32. "group" = icon + 8 + text centred together on the
+    /// card (the icon moves with the text). "text" = the icon stays, the text's middle on the card's middle. The card's middle is the
+    /// pill's (110), or the middle of what is right of an inform card's close zone. Centring inside the text area alone (first try)
+    /// put the text 10 right of the pill's middle and left the icon stranded — it didn't look centred. Text too long to fit stays
+    /// left-aligned and scrolls.</para>
+    /// </summary>
+    private void PlaceText()
+    {
+        Microsoft.UI.Xaml.Controls.Canvas.SetTop(MarqueePanel, ((BaseHeight - IslandText.LineHeight) / 2) + _inkOffset);
+        double text = 0, icon = 0;
+        var mode = _settings.CardTextAlign;
+        if (mode is "group" or "text" && _marqueeText is null)
+        {
+            MarqueePanel.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+            var width = MarqueePanel.DesiredSize.Width;
+            var area = AvailableTextWidth();
+            var areaLeft = (CloseZone.Visibility == Visibility.Visible ? CloseZone.Width : 0) + TextStart;
+            var middle = ((areaLeft - TextStart) + BaseWidth) / 2;
+            var start = mode == "group"
+                ? middle - ((TextStart - IconStart + width) / 2) + (TextStart - IconStart)   // where the text starts when the group is centred
+                : middle - (width / 2);
+            text = Math.Clamp(Math.Round((start - areaLeft) * 2) / 2, 0, Math.Max(0, area - width));   // half DIPs; never past the text area
+            icon = mode == "group" ? text : 0;
+        }
+
+        Microsoft.UI.Xaml.Controls.Canvas.SetLeft(MarqueePanel, text);
+        ShiftIcon(icon);
+    }
+
+    /// <summary>Left edge of the card icon and of the card text on a plain card (TODO 7.9 D).</summary>
+    private const double IconStart = 8;
+    private const double TextStart = 32;
+
+    private void ShiftIcon(double x)
+    {
+        if (LeadSlot.RenderTransform is not TranslateTransform move)
+        {
+            LeadSlot.RenderTransform = move = new TranslateTransform();
+        }
+
+        move.X = x;
+    }
+
+    /// <summary>How far to move the text so its glyphs are centred (DIP, measured by <see cref="MeasureInkAsync"/>).</summary>
+    private double _inkOffset;
+
+    /// <summary>
+    /// Renders a sample ("晴工Cl": a full-height CJK character, a capital, an ascender) in the card font into a bitmap and finds its
+    /// first and last inked rows — where this font really draws inside the 20 line box. Then the offset that puts the ink's middle
+    /// at the line box's middle, rounded to 0.5 like the preview. Descenders (g, y) are left out on purpose: they hang below the
+    /// line in every font, and centring on them would push the text up. Run at start and when the font changes.
+    /// </summary>
+    private async void MeasureInkAsync()
+    {
+        try
+        {
+            InkProbe.FontFamily = IslandText.FontFamily;
+            InkProbe.CharacterSpacing = IslandText.CharacterSpacing;
+            InkProbe.Visibility = Visibility.Visible;
+            InkProbe.UpdateLayout();
+            var bitmap = new Microsoft.UI.Xaml.Media.Imaging.RenderTargetBitmap();
+            await bitmap.RenderAsync(InkProbe);
+            var pixels = System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBufferExtensions.ToArray(await bitmap.GetPixelsAsync());
+            InkProbe.Visibility = Visibility.Collapsed;
+            int width = bitmap.PixelWidth, height = bitmap.PixelHeight;
+            int top = -1, bottom = -1;
+            for (var y = 0; y < height; y++)
+            {
+                for (var x = 0; x < width; x++)
+                {
+                    if (pixels[(((y * width) + x) * 4) + 3] > 64)   // BGRA: alpha of a clearly inked pixel
+                    {
+                        top = top < 0 ? y : top;
+                        bottom = y;
+                        break;
+                    }
+                }
+            }
+
+            if (top < 0 || height == 0)
+            {
+                return;
+            }
+
+            var scale = height / InkProbe.ActualHeight;   // pixels per DIP in the bitmap
+            var inkTop = top / scale;
+            var inkBottom = (bottom + 1) / scale;
+            _inkOffset = Math.Round((IslandText.LineHeight / 2 - ((inkTop + inkBottom) / 2)) * 2) / 2;
+            TaskbarHost.Log($"ink: {InkProbe.FontFamily.Source} glyphs {inkTop:0.##}–{inkBottom:0.##} of {InkProbe.ActualHeight:0.##} → offset {_inkOffset}");
+            PlaceText();
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)   // async void: nothing may escape
+        {
+            InkProbe.Visibility = Visibility.Collapsed;
+            TaskbarHost.Log("ink: measure failed — " + ex.Message);
+        }
     }
 
     private string _marqueePrefix = string.Empty;
@@ -1194,6 +1301,7 @@ public sealed partial class MainWindow : Window
         var (head, rest) = TextFit.FitParts(_marqueePrefix, _marqueeName, AvailableTextWidth(), measure);
         SetStyledText(IslandText, head, rest);
         IslandTextCopy.Visibility = Visibility.Collapsed;
+        PlaceText();
     }
 
     /// <summary>One lap: place two copies of the full title side by side and scroll; when done, go back to the "…" look.</summary>
@@ -1217,8 +1325,7 @@ public sealed partial class MainWindow : Window
         }
         ShowClockDigits(running ? FormatClock(left!.Value) : null);
         IslandText.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
-        MarqueePanel.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
-        Microsoft.UI.Xaml.Controls.Canvas.SetTop(MarqueePanel, Math.Max(0, (MarqueeHost.ActualHeight - MarqueePanel.DesiredSize.Height) / 2));
+        PlaceText();
     }
 
     private string _clockShown = string.Empty;
@@ -1329,40 +1436,30 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private void UpdateGlow()
     {
-        var state = _snapshot.IsActive ? _snapshot.Primary : null;
-        var now = DateTimeOffset.UtcNow;
-        var (key, color) = state switch
+        var card = _typing ? null : _shownCard;
+        var (key, color) = card switch
         {
             _ when _dropHover => ("drop", _theme.Accent),   // dragging over — "drop here to send"
-            { Kind: ActivityKind.AgentDone } => ($"done|{state.SourcePath}", _theme.Ok),
-            { Kind: ActivityKind.Timer } when !state.IsPaused && TimerRemaining(state, now) <= TimeSpan.Zero
-                => ($"timer|{state.SourcePath}", _theme.Ok),
-            { Kind: ActivityKind.AgentPermission } => ($"ask|{state.SourcePath}", Attention()),
-            // a system warning you must act on (low battery) is red — orange belongs to "an agent needs your answer" (user 10-01)
-            { Kind: ActivityKind.Notice, RunState: ActivityRunState.Error } => ($"notice|{state.SourcePath}", Alarm()),
-            // Music (or another non-alert item) holds the pill but a task finished → light the same thick green border so it's
-            // noticeable next to the song, without hiding it (user 10-01). The subtle 1px "glow border" style stays for looks.
-            _ when _backgroundDoneKey is { } background => (background, _theme.Ok),
+            null or { Pinned: false } => ((string?)null, _theme.Ok),
+            { Type: CardType.Pending } => ($"ask|{card.Key}", Attention()),
+            { Type: CardType.Inform } => ($"inform|{card.Key}", _theme.Ok),
+            { Type: CardType.Temporary } when card.State.RunState == ActivityRunState.Error => ($"warn|{card.Key}", Alarm()),
             _ => ((string?)null, _theme.Ok),
         };
         _animator.UpdateGlow(key, color);
-        _glowKey = key;
-        _alerting = key is not null && !_typing;
     }
 
-    /// <summary>The border lit now (its key) — a click acknowledges a background completion only when that is what shows.</summary>
-    private string? _glowKey;
-
+    /// <summary>The colour of a pinned card's icon: the same as its border (TODO 7.9 D).</summary>
+    private Windows.UI.Color IconColorFor(Card? card) => card switch
+    {
+        { Pinned: true, Type: CardType.Pending } => Attention(),
+        { Pinned: true, Type: CardType.Inform } => _theme.Ok,
+        { Pinned: true, Type: CardType.Temporary } when card.State.RunState == ActivityRunState.Error => Alarm(),
+        _ => _theme.Icon,
+    };
 
     /// <summary>Previous island content is still leaving (no redraw meanwhile).</summary>
     private bool _swapping;
-    private bool _alerting;
-
-    /// <summary>Glow key of a finished task that isn't the pill's primary (e.g. music is playing) — lights the completion border without hiding the song.</summary>
-    private string? _backgroundDoneKey;
-
-    /// <summary>The finished task behind <see cref="_backgroundDoneKey"/> (what a click on the pill acknowledges while music holds it).</summary>
-    private ActivityState? _backgroundDone;
 
     private string? _lastMusicSig;
 
@@ -1373,8 +1470,7 @@ public sealed partial class MainWindow : Window
     private string MusicRenderSig(IsleBar.Core.Island.ActivityState m)
         => string.Concat(m.SourcePath, "|", m.Name, "|", m.Msg, "|", m.Stage, "|", m.Done?.ToString(), "|", m.Total?.ToString(),
             "|", Math.Round(AvailableTextWidth()).ToString(System.Globalization.CultureInfo.InvariantCulture),
-            // a task finishing behind paused music changes nothing above — its green border and the more-dot never showed (review 10-03)
-            "|", _backgroundDoneKey, "|", _snapshot.ExtraCount.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            "|", _snapshot.ExtraCount.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
     /// <summary>
     /// Taskbar color just left of the pill. The band outside the alert border is painted this color so the pill clip edge (can't be anti-aliased)
@@ -1856,6 +1952,7 @@ public sealed partial class MainWindow : Window
     {
         LayoutPills();
         _animator.Breathe(_snapshot.IsActive && !_typing && _snapshot.Primary?.Kind == ActivityKind.AgentWorking);
+        ShowCloseZone();
         ApplyStyle();
         UpdateProgressLine();
         GlowRing.Visibility = _typing ? Visibility.Collapsed : Visibility.Visible;   // the island is hidden while typing, so the border goes too
@@ -1875,7 +1972,7 @@ public sealed partial class MainWindow : Window
             IslandContent.Visibility = Visibility.Collapsed;
             Entry.Visibility = Visibility.Visible;
             UpdateLeadIcon();
-            PlaceLeadSlot();
+            ShiftIcon(0);   // typing: the icon is the agent's mark, back at its place
             return;
         }
 
@@ -1913,13 +2010,15 @@ public sealed partial class MainWindow : Window
 
         UpdateLeadIcon();
         LeadIcon.Glyph = state.IsPaused ? "\uE769" : GlyphFor(state);   // paused timer = pause icon
+        LeadIcon.Foreground = BrushOf(_dropHover ? _theme.Icon : IconColorFor(_shownCard));
+        // music: 8 before the now-playing bars, else 12 to the pill's edge (TODO 7.9 D)
+        IslandContent.Margin = new Thickness(0, 0, state.Kind == ActivityKind.Music && state.Stage != "paused" ? 8 : 12, 0);
         // compressing: the document outline gets zipper teeth (the drop hint uses the same outline without them)
         ZipTeeth.Opacity = state.Stage == "copy" && state.RunState == ActivityRunState.Running
                            && state.Glyph == Media.FileOperationWatcher.CompressGlyph ? 1 : 0;
         ShowAgentMark(state);
         ShowAlbumArt(state.Kind == ActivityKind.Music);
         SetEqualizer(state.Kind == ActivityKind.Music && state.Stage != "paused");
-        PlaceLeadSlot();
         var now = DateTimeOffset.UtcNow;
         // The done-alert hook only carries the session name (no folder name — user feedback 09-30). Without a name, just "Claude done"
         var name = state.Name;
@@ -1944,95 +2043,48 @@ public sealed partial class MainWindow : Window
             name ??= state.Kind != ActivityKind.Transfer ? null : state.Stage == "copy" ? _text.FileTransfer : _text.Downloading;
             ShowIslandText(state, PrefixFor(state, now), name ?? string.Empty, state.MoreCount > 0 ? $"  +{state.MoreCount}" : string.Empty);
         }
-        IslandText.Foreground = BrushOf(ForegroundFor(state, now));
+        IslandText.Foreground = BrushOf(ForegroundFor(state));
 
     }
 
     /// <summary>
-    /// Progress bar. Separate from the island text — keeps showing the most urgent item's progress even while typing.
-    /// Collapsed for items without progress (music, notices) or when the island is empty.
+    /// Progress: a 2 high track on the bottom edge, the done part filled (TODO 7.9 D). Timers use it too (the ring on the right
+    /// is gone: the text area runs to 208). Unknown size: a short piece flows along the track.
     /// </summary>
-    /// <summary>Timer ring: an arc of <paramref name="fraction"/> clockwise from 12 o'clock (stroke 2, inside a 16×16 box).</summary>
-    private void DrawTimerArc(double fraction)
-    {
-        const double center = 8, radius = 7;   // the middle of a 2-thick stroke sits 1 in from the outside
-        fraction = Math.Clamp(fraction, 0, 1);
-        if (fraction <= 0.001)
-        {
-            TimerArc.Data = null;
-            return;
-        }
-
-        if (fraction >= 0.999)
-        {
-            TimerArc.Data = new EllipseGeometry { Center = new Windows.Foundation.Point(center, center), RadiusX = radius, RadiusY = radius };
-            return;
-        }
-
-        var angle = fraction * 2 * Math.PI;
-        var end = new Windows.Foundation.Point(center + (radius * Math.Sin(angle)), center - (radius * Math.Cos(angle)));
-        var figure = new PathFigure { StartPoint = new Windows.Foundation.Point(center, center - radius), IsClosed = false };
-        figure.Segments.Add(new ArcSegment
-        {
-            Point = end,
-            Size = new Windows.Foundation.Size(radius, radius),
-            IsLargeArc = fraction > 0.5,
-            SweepDirection = SweepDirection.Clockwise,
-        });
-        var geometry = new PathGeometry();
-        geometry.Figures.Add(figure);
-        TimerArc.Data = geometry;
-    }
-
     private void UpdateProgressLine()
     {
-        if (_snapshot.Primary is not { } state)
-        {
-            ProgressLine.Width = 0;
-            StopFlow();
-            TimerRing.Visibility = Visibility.Collapsed;
-            return;
-        }
-
+        var state = _snapshot.Primary;
         var now = DateTimeOffset.UtcNow;
-        var fraction = state.Kind == ActivityKind.Timer ? TimerFraction(state, now) : state.Fraction;
-
-        // timers use a circular gauge on the right of the island (as in the mockup, user feedback 09-30); when typing hides the island, the bottom bar
-        var ring = state.Kind == ActivityKind.Timer && !_typing && fraction is not null
-                   && TimerRemaining(state, now) > TimeSpan.Zero;   // when finished, a green border instead of the ring
-        TimerRing.Visibility = ring ? Visibility.Visible : Visibility.Collapsed;
-        if (ring)
+        double? fraction = state is null ? null
+            : state.Kind == ActivityKind.Timer ? (TimerRemaining(state, now) > TimeSpan.Zero ? TimerFraction(state, now) : null)
+            : state.Fraction;
+        var flowing = state is { Kind: ActivityKind.Transfer, RunState: ActivityRunState.Running }
+                      && (state.IsIndeterminate || (state.Stage is "download" or "copy" && state.Fraction is null));
+        ProgressTrackBar.Visibility = fraction is not null || flowing ? Visibility.Visible : Visibility.Collapsed;
+        if (state is null || (fraction is null && !flowing))
         {
-            DrawTimerArc(fraction!.Value);
-            TimerArc.Stroke = BrushOf(state.IsPaused ? _theme.Hint : _theme.Accent);
-            // gray background ring (so the remaining part is visible, as in the mockup)
-            TimerTrack.Stroke = BrushOf(Windows.UI.Color.FromArgb(0x40, _theme.Hint.R, _theme.Hint.G, _theme.Hint.B));
             ProgressLine.Width = 0;
             StopFlow();
             return;
         }
+
+        var light = ThemeColors.FromSystem().Light;
+        ProgressTrackBar.Fill = BrushOf(light ? Windows.UI.Color.FromArgb(255, 0xD6, 0xD6, 0xD6) : Windows.UI.Color.FromArgb(255, 0x46, 0x46, 0x46));
+        var fg = ForegroundFor(state);
         ProgressLine.Background = BrushOf(state.RunState switch
         {
-            ActivityRunState.Done => _theme.Ok,
             ActivityRunState.Error => _theme.Bad,
-            _ when state.Kind == ActivityKind.Music && _albumTint is { } tint => tint,   // music uses the album color (09-30 design G2)
-            _ when state.Kind == ActivityKind.Timer && TimerRemaining(state, DateTimeOffset.UtcNow) <= TimeSpan.Zero => _theme.Ok,   // a finished timer is green, like the border
-            _ => _theme.Accent,
+            _ => Windows.UI.Color.FromArgb(217, fg.R, fg.G, fg.B),   // the text colour at 85%
         });
-        var track = ProgressTrackWidth();
-        if (state.Kind == ActivityKind.Transfer && state.RunState == ActivityRunState.Running
-            && (state.IsIndeterminate || (state.Stage is "download" or "copy" && state.Fraction is null)))
+        if (flowing)
         {
-            // if the fraction is unknown (preparing/finishing), a quarter-length segment flows left to right (same as the Python version)
             ProgressLine.Width = 0;
-            StartFlow(ProgressLine.Background, ProgressTrackLeft(), track);
+            StartFlow(ProgressLine.Background, ProgressInset, ProgressLength);
             return;
         }
 
         StopFlow();
-        ProgressLine.Margin = new Thickness(ProgressTrackLeft(), 0, 0, 3);
-        // progress is based on the amount actually transferred
-        ProgressLine.Width = fraction is { } f ? Math.Max(1, track * f) : 0;
+        ProgressLine.Width = Math.Max(1, ProgressLength * fraction!.Value);
     }
 
     private const double FlowSeconds = 1.6;   // one pass of the flowing piece across the track
@@ -2045,7 +2097,7 @@ public sealed partial class MainWindow : Window
     private void StartFlow(Brush brush, double left, double track)
     {
         FlowPiece.Background = brush;
-        FlowTrack.Margin = new Thickness(left, 0, 0, 3);
+        FlowTrack.Margin = new Thickness(left, 0, 0, 0);
         FlowTrack.Visibility = Visibility.Visible;
         if (Math.Abs(track - _flowWidth) < 0.5)
         {
@@ -2194,56 +2246,20 @@ public sealed partial class MainWindow : Window
         _ => "\uE721",
     };
 
-    private Windows.UI.Color ForegroundFor(ActivityState state, DateTimeOffset now)
-        => state.IsPaused || state.IsPausedTransfer || (state.Kind == ActivityKind.Music && state.Stage == "paused") ? _theme.Hint
-            : state.Kind == ActivityKind.Timer && TimerRemaining(state, now) <= TimeSpan.Zero ? _theme.Ok
-            : state.Kind == ActivityKind.AgentDone ? _theme.Ok
-            : state.Kind == ActivityKind.Notice ? _theme.Foreground
-            : ForegroundFor(state);
+    /// <summary>Card text: the normal colour, dimmed when paused — the card's type shows in its icon and border (TODO 7.9 D).</summary>
+    private Windows.UI.Color ForegroundFor(ActivityState state)
+        => state.IsPaused || state.IsPausedTransfer || (state.Kind == ActivityKind.Music && state.Stage == "paused") ? _theme.Hint : _theme.Foreground;
 
-    private Windows.UI.Color ForegroundFor(ActivityState state) => state.RunState switch
-    {
-        ActivityRunState.Done => _theme.Ok,
-        ActivityRunState.Error => _theme.Bad,
-        _ => _theme.Foreground,
-    };
+    /// <summary>Width of the card text (DIP): the text column, 176 on a plain card (108 beside the close zone).</summary>
+    private double AvailableTextWidth()
+        => IslandContent.ActualWidth > 0 ? IslandContent.ActualWidth : CardTextWidth;
 
-    /// <summary>
-    /// Width available for island text and bar (<b>DIP</b> — WinUI units). Physical pixels (_width) used to be passed as-is,
-    /// so on a 200% display the bar filled over twice as fast and was already full with 10s left (user feedback 09-29).
-    /// Before layout (first show), the default width minus the left ⌄/icon and the right margin.
-    /// </summary>
-    private double IslandTrackWidth()
-        => PillBody.ColumnDefinitions[2].ActualWidth > 0 ? PillBody.ColumnDefinitions[2].ActualWidth : BaseWidth - 70;   // middle column (same width while typing)
+    /// <summary>Text from x 32 to 208 on a plain card (TODO 7.9 D).</summary>
+    private const double CardTextWidth = 176;
 
-    private double AvailableTextWidth() => IslandTrackWidth() - 4;
-
-    /// <summary>
-    /// Progress bar position (start and length relative to the whole pill). <b>Remembered while showing the island and reused while typing</b> —
-    /// typing mode has a different left column width, so the bar's start and length appeared to shift (user feedback 09-30: fine if it goes under the icon, just make it consistent).
-    /// </summary>
-    private (double Left, double Width) ProgressTrack()
-    {
-        // Remember the track only in the plain music view — NOT while hovering (the ⏮⏯⏭ buttons appear and shrink the columns)
-        // and NOT while typing, AND only once the middle column width has been the same for two ticks. During the switch between
-        // the search box and the island the columns animate, so a mid-animation width was captured and the bar's length jumped
-        // around as you switched back and forth (user 09-30: "the play bar shrinks then grows"). Capturing a settled width fixes it.
-        var mid = PillBody.ColumnDefinitions[2].ActualWidth;
-        if (!_typing && !_hovering && mid > 0 && Math.Abs(mid - _lastMidWidth) < 0.5)
-        {
-            _progressTrack = (PillBody.ColumnDefinitions[0].ActualWidth + PillBody.ColumnDefinitions[1].ActualWidth, IslandTrackWidth());
-        }
-
-        _lastMidWidth = mid;
-        return _progressTrack ?? (PillBody.ColumnDefinitions[0].ActualWidth + PillBody.ColumnDefinitions[1].ActualWidth, IslandTrackWidth());
-    }
-
-    private (double Left, double Width)? _progressTrack;
-    private double _lastMidWidth = -1;
-
-    private double ProgressTrackWidth() => ProgressTrack().Width;
-
-    private double ProgressTrackLeft() => ProgressTrack().Left;
+    /// <summary>The progress track: 16 in from each end of the big pill, 188 long (TODO 7.9 D).</summary>
+    private const double ProgressInset = 16;
+    private const double ProgressLength = BaseWidth - (2 * ProgressInset);
 
     // ---------------- Appearance ----------------
 
@@ -2331,6 +2347,10 @@ public sealed partial class MainWindow : Window
         }
 
         Entry.PlaceholderText = Placeholders.For(_mode, _settings.Agent);
+        if (Root.IsLoaded)
+        {
+            MeasureInkAsync();   // another language, another font: its glyphs sit differently
+        }
     }
 
     /// <summary>
@@ -2384,9 +2404,11 @@ public sealed partial class MainWindow : Window
         LeadIcon.Foreground = BrushOf(_theme.Icon);
         Entry.Foreground = BrushOf(_theme.Foreground);
         BallRing.Stroke = BrushOf(_theme.Icon);
-        BallHover.Fill = BrushOf(ThemeColors.FromSystem().Light
-            ? Windows.UI.Color.FromArgb(18, 0, 0, 0)
-            : Windows.UI.Color.FromArgb(22, 255, 255, 255));
+        CloseLabel.Text = _text.CloseCard;
+        CloseLabel.Foreground = BrushOf(_theme.Foreground);
+        CloseRule.Fill = BrushOf(ThemeColors.FromSystem().Light ? Windows.UI.Color.FromArgb(255, 0xD6, 0xD6, 0xD6) : Windows.UI.Color.FromArgb(255, 0x46, 0x46, 0x46));
+        BallHover.Fill = BrushOf(HoverColor());
+        CloseHover.Background = BrushOf(HoverColor());
         PaintFill();
     }
 
@@ -2434,6 +2456,11 @@ public sealed partial class MainWindow : Window
             : light ? Blend(rest, Windows.UI.Color.FromArgb(255, 255, 255, 255), 0.55)
             : Blend(rest, Windows.UI.Color.FromArgb(255, 255, 255, 255), 0.05));
         SmallSurface.Background = BrushOf(rest);   // the small pill lifts only its circle cell (BallHover)
+        if (_marqueeRunning)
+        {
+            SetMarqueeFade(true);   // the scrolling text's end fades are the pill colour: repaint them when it lifts (hover) — they showed as dark blocks (user 10-07)
+        }
+
         PaintEdge();
     }
 
@@ -2446,6 +2473,11 @@ public sealed partial class MainWindow : Window
             : Windows.UI.Color.FromArgb(30, 255, 255, 255));
         SmallSurface.BorderBrush = PillSurface.BorderBrush;
     }
+
+    /// <summary>The faint darkening / lightening under the pointer (the circle's cell, the close zone).</summary>
+    private static Windows.UI.Color HoverColor() => ThemeColors.FromSystem().Light
+        ? Windows.UI.Color.FromArgb(18, 0, 0, 0)
+        : Windows.UI.Color.FromArgb(22, 255, 255, 255);
 
     private static Windows.UI.Color Blend(Windows.UI.Color a, Windows.UI.Color b, double t)
         => Windows.UI.Color.FromArgb(255,
@@ -2489,6 +2521,17 @@ public sealed partial class MainWindow : Window
         SetMarqueeFade(_marqueeRunning);
     }
 
+    /// <summary>An inform card shows its close zone on the left (TODO 7.3, A4); every other card and typing don't.</summary>
+    private void ShowCloseZone()
+    {
+        var show = !_typing && !_dropHover && _compose is null && _shownCard is { Type: CardType.Inform };
+        CloseZone.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        if (!show)
+        {
+            CloseHover.Opacity = 0;
+        }
+    }
+
     /// <summary>The mouse on the big pill: it lifts slightly, like the real search box.</summary>
     private bool _hoverBig;
 
@@ -2500,15 +2543,6 @@ public sealed partial class MainWindow : Window
             PaintFill();
         }
     }
-
-    /// <summary>The icon (or album art) 8 from the pill's left edge. E2 redoes the card layout to the final sizes.</summary>
-    private void PlaceLeadSlot() => LeadSlot.Margin = new Thickness(8 + ArtOverhang, 0, LeadGap, 0);
-
-    /// <summary>How far the album art (24) overflows the left slot (17) on each side — slot center and album center coincide.</summary>
-    private const double ArtOverhang = 3.5;
-
-    /// <summary>From the icon's (album's) right edge to the text.</summary>
-    private const double LeadGap = 9 + ArtOverhang;
 
     /// <summary>
     /// Horizontal centre of the pill: windows that open above it (options, settings, compose, preview, file results) are centred
@@ -2597,6 +2631,7 @@ public sealed partial class MainWindow : Window
         TakeBackgroundModelLists();
         _store.Save(_settings);
         LayoutPills();   // the small pill's side and the corners are settings
+        RenderIsland();  // ...and so is centring the card text
         if (!_typing || !UsableModes().Contains(_mode))
         {
             SetMode(HomeMode());   // if the order changed or file search was turned off, go back to the default mode
@@ -3178,40 +3213,28 @@ public sealed partial class MainWindow : Window
     /// and "Turn off search bar" at the bottom. Music is controlled by the player app and can't be dismissed, so it's left out.
     /// </summary>
     /// <summary>
-    /// A click on the bar always starts typing, whatever the island shows (user 10-01: "Claude working" swallowed the click by jumping to
-    /// a terminal that was already in front, so it took ✕ and a second click to get a cursor). When typing ends, the island comes back
-    /// as it was. A finished task counts as seen on that click and clears (✕ still dismisses without typing).
-    /// Opening a message's app stays on the expanded message card. Always returns false (the click goes on to start typing).
+    /// "Close" on the shown card: a state file goes away (a finished task, a timer that rang, a failure); a card with no file (a
+    /// download that failed) is hidden until it ends.
     /// </summary>
-    private bool TryIslandAction()
+    private void CloseShownCard()
     {
-        if (_snapshot.IsActive && _snapshot.Primary is { Kind: ActivityKind.AgentDone, SourcePath: { } done })
+        if (_shownCard is not { } card)
         {
-            ActivityFeed.DeleteState(done);
-            return false;
+            return;
         }
 
-        return TryAcknowledgeBackgroundDone();
-    }
-
-    /// <summary>
-    /// Music (or another item) holds the pill while a task finished behind it (only the green border shows) — a click on the bar
-    /// counts as having seen it: the completion (border) clears and typing starts in the same click, like the primary case (user 10-01).
-    /// Always returns false so the click goes on to start typing.
-    /// </summary>
-    private bool TryAcknowledgeBackgroundDone()
-    {
-        // only when its green border is what shows: under an orange "needs an answer" or a red notice (a usage limit holds the
-        // pill for hours) the completion was never seen — a click there deleted it unseen (review 10-03)
-        if (_backgroundDone is { SourcePath: { } path } && _backgroundDoneKey is not null && _glowKey == _backgroundDoneKey)
+        if (card.State.SourcePath is { } path && File.Exists(path))
         {
             ActivityFeed.DeleteState(path);
-            _backgroundDone = null;
-            _backgroundDoneKey = null;
-            UpdateGlow();
+        }
+        else
+        {
+            _cards.Hide(card.Key, DateTimeOffset.UtcNow);
         }
 
-        return false;
+        _shownCard = _cards.Shown;
+        _snapshot = _shownCard is { } shown ? new IslandSnapshot(shown.State, _cards.Cards.Count - 1) : IslandSnapshot.Empty;
+        RenderIsland();
     }
 
     /// <summary>While the right-click menu is open (blocks starting to type).</summary>

@@ -304,6 +304,21 @@ public sealed class LanguageStrings
     /// <summary>Small pill side: left of the big pill.</summary>
     public required string BallSideLeft { get; init; }
 
+    /// <summary>The close zone on an inform card (TODO 7.3): closes the card ("I've seen it").</summary>
+    public required string CloseCard { get; init; }
+
+    /// <summary>Setting: card text left-aligned or centred on the big pill (user 10-07).</summary>
+    public required string CardTextLabel { get; init; }
+
+    /// <summary>Card text choice: left-aligned.</summary>
+    public required string CardTextLeft { get; init; }
+
+    /// <summary>Card text choice: icon and text centred together, when it fits (long text stays left-aligned and scrolls).</summary>
+    public required string CardTextCenterGroup { get; init; }
+
+    /// <summary>Card text choice: only the text centred, the icon stays at the left.</summary>
+    public required string CardTextCenterText { get; init; }
+
     /// <summary>Settings: diagnostics section heading.</summary>
     public required string DiagSection { get; init; }
 
