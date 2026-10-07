@@ -192,14 +192,27 @@
         <Border x:Name="GlowRing" BorderThickness="2" CornerRadius="16" IsHitTestVisible="False" />
     </Grid>
 
-    <!-- Small pill: for now only the circle (the entry: left click = type, right click = tools). Cell 24 with 4 either side;
-         the hover background is a 24 circle (TODO 7.9 D) -->
+    <!-- Small pill (TODO 7.9 D): task icons + ⋯ │ circle (or circle │ ⋯ + task icons when it sits left — code swaps the columns).
+         Task cells are 24 (icon 16) after a 4 margin, the line is 1×16, the circle's box is 32 (cell 24 with 4 either side). The
+         hover background of every cell is a 24 circle. No task cells → only the circle, and no line -->
     <Grid x:Name="SmallPill" Grid.Column="2" Height="32">
         <Border x:Name="SmallSurface" BorderThickness="1" CornerRadius="16" IsHitTestVisible="False" />
-        <Grid x:Name="BallCell" Width="24" Height="24" Margin="4,0,4,0" Background="Transparent">
-            <Ellipse x:Name="BallHover" Width="24" Height="24" Opacity="0" IsHitTestVisible="False" />
-            <!-- the mark at rest: an empty ring, 8.4 across, 1.2 thick -->
-            <Ellipse x:Name="BallRing" Width="8.4" Height="8.4" StrokeThickness="1.2" IsHitTestVisible="False" />
+        <Grid x:Name="SmallRow">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <!-- the cells are built in code (one per card behind the big pill, then ⋯) -->
+            <StackPanel x:Name="TaskCells" Orientation="Horizontal" Margin="4,0,0,0" />
+            <Rectangle x:Name="SmallRule" Grid.Column="1" Width="1" Height="16" VerticalAlignment="Center" IsHitTestVisible="False" />
+            <Grid x:Name="BallBox" Grid.Column="2" Width="32" Height="32">
+                <Grid x:Name="BallCell" Width="24" Height="24" Background="Transparent">
+                    <Ellipse x:Name="BallHover" Width="24" Height="24" Opacity="0" IsHitTestVisible="False" />
+                    <!-- the mark at rest: an empty ring, 8.4 across, 1.2 thick -->
+                    <Ellipse x:Name="BallRing" Width="8.4" Height="8.4" StrokeThickness="1.2" IsHitTestVisible="False" />
+                </Grid>
+            </Grid>
         </Grid>
     </Grid>
     </Grid>

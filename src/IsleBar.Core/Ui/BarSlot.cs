@@ -36,9 +36,11 @@ public static class BarSlot
 {
     /// <param name="topEdge">The light line along the taskbar's top (1 dip on Windows 11). It reads as a border, so the bar is centred
     /// in the taskbar below it — centred over the whole height, the gap above looked 2 px short at 200% (user screenshot 10-05).</param>
-    public static BarSpot Place(BarPosition position, TaskbarLayout bar, int width, int height, int gap, int manualOffset, int topEdge = 0)
+    /// <param name="iconGap">Room kept from the app icons (TODO 7.9 D: 8); negative = <paramref name="gap"/>.</param>
+    public static BarSpot Place(BarPosition position, TaskbarLayout bar, int width, int height, int gap, int manualOffset, int topEdge = 0, int iconGap = -1)
     {
         ArgumentNullException.ThrowIfNull(bar);
+        var near = iconGap < 0 ? gap : iconGap;
         var y = bar.Top + topEdge + ((bar.Bottom - bar.Top - topEdge - height) / 2);
         var trayLeft = bar.TrayLeft ?? bar.Right;
         switch (position)
@@ -53,15 +55,15 @@ public static class BarSlot
             case BarPosition.BesideTray:
             {
                 var x = trayLeft - gap - width;
-                return new BarSpot(x >= bar.Left && (bar.IconsRight is not { } icons || x >= icons + gap), x, y);
+                return new BarSpot(x >= bar.Left && (bar.IconsRight is not { } icons || x >= icons + near), x, y);
             }
 
             case BarPosition.Center:
             {
                 var x = bar.Left + ((bar.Right - bar.Left - width) / 2);
-                if (bar.IconsLeft is { } from && bar.IconsRight is { } to && x < to + gap && x + width > from - gap)
+                if (bar.IconsLeft is { } from && bar.IconsRight is { } to && x < to + near && x + width > from - near)
                 {
-                    x = to + gap;   // the icons reach the middle: step aside to their right
+                    x = to + near;   // the icons reach the middle: step aside to their right
                 }
 
                 return new BarSpot(x + width <= trayLeft - gap, x, y);

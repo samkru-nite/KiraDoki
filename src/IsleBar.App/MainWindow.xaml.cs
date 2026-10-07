@@ -40,7 +40,7 @@ public sealed partial class MainWindow : Window
     private static readonly TimeSpan SearchDebounce = TimeSpan.FromMilliseconds(90);
 
     /// <summary>Where the pills sit in the window and how big it is (pixels). Replaced whole, so the tracker thread may read it.</summary>
-    private PillsLayout _layout = PillGeometry.Compute(DpiSetup.Scale, big: false, smallLeft: false, PillGeometry.SmallWidth(1), round: true);
+    private PillsLayout _layout = PillGeometry.Compute(DpiSetup.Scale, big: false, smallLeft: false, PillGeometry.SmallWidth(0), round: true);
 
     private int _width => _layout.Width;
     private int _height => _layout.Height;
@@ -242,7 +242,17 @@ public sealed partial class MainWindow : Window
             }
 
             var source = e.OriginalSource as DependencyObject;
-            if (IsInside(source, SmallPill))
+            if (IsInside(source, SmallPill) && !IsInside(source, BallBox))
+            {
+                if (!_typing && CellTagAt(source) is { } tag && tag != DotsTag)
+                {
+                    OnTaskCellClicked(tag);   // that card and the big pill's swap places (TODO 7.3, 10-07)
+                }
+
+                return;   // ⋯ opens the list in step F; the line and the margins do nothing
+            }
+
+            if (IsInside(source, BallBox))
             {
                 // the circle = the way in: click to type, click again to stop (TODO 7.3). Until the new input panel (H), typing
                 // happens in the big pill as before.
@@ -898,6 +908,8 @@ public sealed partial class MainWindow : Window
             _shownCard = _cards.Shown;
             var next = _shownCard is { } shown ? new IslandSnapshot(shown.State, _cards.Cards.Count - 1) : IslandSnapshot.Empty;
             _snapshot = next;
+            LoadAlbumArt();
+            UpdateTaskCells();
             ExpandIfMessage(items);   // feed EVERY new message notice to the expanded card, not just the primary one (bursts dropped middles — user 09-30)
             var change = _animator.Classify(next);   // the animator decides whether it's a new item (kind/source/track)
             if (_swapping)
@@ -985,8 +997,201 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    /// <summary>The big pill shows a card, typing, a dragged file or the compose box; otherwise only the small pill (TODO 7.1).</summary>
-    private bool BigVisible => _typing || _compose is not null || _dropHover || _snapshot.IsActive;
+    /// <summary>The big pill shows a card, typing, a dragged file or the compose box; otherwise only the small pill (TODO 7.1).
+    /// While the last card is fading out (<see cref="_swapping"/>) it stays until the fade is done.</summary>
+    private bool BigVisible => _typing || _compose is not null || _dropHover || _snapshot.IsActive || _swapping;
+
+    // ---------------- Small pill: task icons (E3) ----------------
+
+    /// <summary>The order of the task icons (kept tick to tick, swapped on a click).</summary>
+    private readonly TaskSlots _slots = new();
+
+    /// <summary>Cells on the small pill now: task icons, then whether ⋯ shows. Their keys, left to right in <see cref="_slots"/> order.</summary>
+    private readonly List<Card> _cellCards = [];
+    private bool _dotsOn;
+
+    /// <summary>What the cells were last built from; rebuilt only when it changes (null = rebuild).</summary>
+    private string? _cellsSig;
+
+    /// <summary>Task cells + ⋯, for the window width.</summary>
+    private int TaskCellCount => _cellCards.Count + (_dotsOn ? 1 : 0);
+
+    /// <summary>
+    /// Every card the big pill isn't showing gets an icon on the small pill (temporary ones excepted), as many as fit before the
+    /// taskbar's app icons (8 from them); the rest wait behind ⋯, which shows whenever any card is behind the big pill (TODO 7.9 D).
+    /// Frozen while typing or a menu is open (the window doesn't change size under them).
+    /// </summary>
+    private void UpdateTaskCells()
+    {
+        if (_typing || _menuOpen)
+        {
+            return;
+        }
+
+        _slots.Update(_cards.Cards, _shownCard?.Key, _hovering);
+        var cells = _slots.Cells;
+        var behind = Math.Max(0, _cards.Cards.Count - 1);
+        var (icons, dots) = TaskSlots.Fit(cells.Count, behind, RoomForCells(cells.Count + (behind > 0 ? 1 : 0)));
+        _cellCards.Clear();
+        _cellCards.AddRange(cells.Take(icons));
+        _dotsOn = dots;
+        RenderTaskCells();
+        LayoutPills();
+    }
+
+    /// <summary>The most cells (⋯ included) that fit on the taskbar at the bar's position, up to <paramref name="wanted"/>.</summary>
+    private int RoomForCells(int wanted)
+    {
+        if (_tracker.Layout is null)
+        {
+            return wanted;   // the taskbar isn't read yet: nothing to measure against
+        }
+
+        var big = BigVisible;
+        for (var n = wanted; n > 0; n--)
+        {
+            var width = PillGeometry.Compute(DpiSetup.Scale, big, false, PillGeometry.SmallWidth(n), true).Width;
+            if (_tracker.PlaceNow(width).Visible)
+            {
+                return n;
+            }
+        }
+
+        return 0;
+    }
+
+    /// <summary>Builds the cells when what they show changed: icon or cover, colour, pause bars; ⋯ last (first when the pill sits left).</summary>
+    private void RenderTaskCells()
+    {
+        var left = _settings.BallSide == "left";
+        var now = DateTimeOffset.UtcNow;
+        var cover = _albumImage is not null && _feed.Media.CurrentArt is not null;
+        var icons = _cellCards.Select(c => (c.Key, Icon: TaskIcons.For(c, cover, now))).ToList();
+        var sig = string.Join("|", icons.Select(i => $"{i.Key}:{i.Icon}")) + $"|{_dotsOn}|{left}|{_theme.Icon}|{RealSearchBoxFill()}";
+        SmallRule.Visibility = TaskCellCount > 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (sig == _cellsSig)
+        {
+            return;
+        }
+
+        _cellsSig = sig;
+        TaskCells.Children.Clear();
+        foreach (var (key, icon) in icons)
+        {
+            TaskCells.Children.Add(MakeCell(key, IconContent(icon)));
+        }
+
+        var more = MakeCell(DotsTag, new Microsoft.UI.Xaml.Controls.FontIcon
+        {
+            FontFamily = new FontFamily("Segoe Fluent Icons"), FontSize = 16, Glyph = "", Foreground = BrushOf(_theme.Icon),
+        });
+        if (_dotsOn)
+        {
+            TaskCells.Children.Insert(left ? 0 : TaskCells.Children.Count, more);
+        }
+    }
+
+    /// <summary>Tag of the ⋯ cell (task cells carry their card's key).</summary>
+    private const string DotsTag = "\u0001dots";
+
+    /// <summary>A 24 cell with a 24-circle hover background (TODO 7.9 D), tagged with its card's key.</summary>
+    private Microsoft.UI.Xaml.Controls.Grid MakeCell(string tag, UIElement content)
+    {
+        var hover = new Microsoft.UI.Xaml.Shapes.Ellipse { Width = 24, Height = 24, Fill = BrushOf(HoverColor()), Opacity = 0, IsHitTestVisible = false };
+        var cell = new Microsoft.UI.Xaml.Controls.Grid { Width = PillGeometry.Cell, Height = 32, Background = BrushOf(Windows.UI.Color.FromArgb(0, 0, 0, 0)), Tag = tag };
+        cell.Children.Add(hover);
+        cell.Children.Add(content);
+        cell.PointerEntered += (_, _) => hover.Opacity = 1;
+        cell.PointerExited += (_, _) => hover.Opacity = 0;
+        return cell;
+    }
+
+    /// <summary>
+    /// A small icon from the table (<see cref="TaskIcons"/>): the glyph in its tone's colour, or the cover; paused = two bars — on the cover
+    /// over a 58% wash of the pill colour in the text colour (follows light/dark, user 10-07), on a glyph at its lower right.
+    /// </summary>
+    private UIElement IconContent(TaskIcon icon)
+    {
+        var box = new Microsoft.UI.Xaml.Controls.Grid { Width = 16, Height = 16, IsHitTestVisible = false };
+        var pill = RealSearchBoxFill();
+        if (icon.Cover && _albumImage is { } image)
+        {
+            box.Children.Add(new Microsoft.UI.Xaml.Shapes.Ellipse { Fill = new ImageBrush { ImageSource = image, Stretch = Stretch.UniformToFill } });
+            if (icon.Paused)
+            {
+                box.Children.Add(new Microsoft.UI.Xaml.Shapes.Ellipse { Fill = BrushOf(Windows.UI.Color.FromArgb(148, pill.R, pill.G, pill.B)) });
+                box.Children.Add(PauseBars(16, 1.8, 6, 5.4, 8.8));
+            }
+
+            return box;
+        }
+
+        var color = icon.Tone switch
+        {
+            IconTone.Waiting => Attention(),
+            IconTone.Done => _theme.Ok,
+            IconTone.Error => Alarm(),
+            _ => _theme.Icon,
+        };
+        box.Children.Add(new Microsoft.UI.Xaml.Controls.FontIcon
+        {
+            FontFamily = new FontFamily("Segoe Fluent Icons"), FontSize = 16, Glyph = icon.Glyph, Foreground = BrushOf(color),
+        });
+        if (icon.Paused)
+        {
+            // a pill-coloured disc cuts the glyph's corner, the bars sit in it
+            box.Children.Add(new Microsoft.UI.Xaml.Shapes.Ellipse
+            {
+                Width = 9, Height = 9, Fill = BrushOf(pill), HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, -2, -2),
+            });
+            var bars = PauseBars(9, 1.5, 5, 2.2, 5.3);
+            bars.HorizontalAlignment = HorizontalAlignment.Right;
+            bars.VerticalAlignment = VerticalAlignment.Bottom;
+            bars.Margin = new Thickness(0, 0, -2, -2);
+            box.Children.Add(bars);
+        }
+
+        return box;
+    }
+
+    /// <summary>Two rounded bars in a <paramref name="size"/> square, at x <paramref name="x1"/> and <paramref name="x2"/>, centred vertically.</summary>
+    private FrameworkElement PauseBars(double size, double width, double height, double x1, double x2)
+    {
+        var canvas = new Microsoft.UI.Xaml.Controls.Canvas { Width = size, Height = size, IsHitTestVisible = false };
+        foreach (var x in new[] { x1, x2 })
+        {
+            var bar = new Microsoft.UI.Xaml.Shapes.Rectangle { Width = width, Height = height, RadiusX = width / 2, RadiusY = width / 2, Fill = BrushOf(_theme.Foreground) };
+            Microsoft.UI.Xaml.Controls.Canvas.SetLeft(bar, x);
+            Microsoft.UI.Xaml.Controls.Canvas.SetTop(bar, (size - height) / 2);
+            canvas.Children.Add(bar);
+        }
+
+        return canvas;
+    }
+
+    /// <summary>A task icon was clicked: its card goes on the big pill and the card there takes the clicked cell (TODO 7.3, 10-07).</summary>
+    private void OnTaskCellClicked(string key)
+    {
+        _slots.Swap(key, _shownCard?.Key, _shownCard?.Type == CardType.Temporary);
+        _cards.Choose(key, DateTimeOffset.UtcNow);
+        _shownCard = _cards.Shown;
+        UpdateTaskCells();   // the next tick draws the card on the big pill
+    }
+
+    /// <summary>The task cell (or ⋯) under <paramref name="source"/>, by its tag; null = not on a cell.</summary>
+    private string? CellTagAt(DependencyObject? source)
+    {
+        for (var node = source; node is not null && node != TaskCells; node = VisualTreeHelper.GetParent(node))
+        {
+            if (node is FrameworkElement { Tag: string tag } && VisualTreeHelper.GetParent(node) == TaskCells)
+            {
+                return tag;
+            }
+        }
+
+        return null;
+    }
 
     /// <summary>
     /// Puts the pills side by side (small one right or left, setting), hides the big pill when there is nothing for it, and when
@@ -1001,9 +1206,13 @@ public sealed partial class MainWindow : Window
         GapColumn.Width = new GridLength(big ? PillGeometry.Gap : 0);
         Microsoft.UI.Xaml.Controls.Grid.SetColumn(PillBody, left ? 2 : 0);
         Microsoft.UI.Xaml.Controls.Grid.SetColumn(SmallPill, left ? 0 : 2);
+        // the small pill's own order: task cells │ circle, or circle │ task cells when it sits left (the 4 margin stays on the outer end)
+        Microsoft.UI.Xaml.Controls.Grid.SetColumn(TaskCells, left ? 2 : 0);
+        Microsoft.UI.Xaml.Controls.Grid.SetColumn(BallBox, left ? 0 : 2);
+        TaskCells.Margin = TaskCellCount == 0 ? new Thickness(0) : left ? new Thickness(0, 0, PillGeometry.CellMargin, 0) : new Thickness(PillGeometry.CellMargin, 0, 0, 0);
         ApplyCorners(round);
 
-        var layout = PillGeometry.Compute(DpiSetup.Scale, big, left, PillGeometry.SmallWidth(1), round);
+        var layout = PillGeometry.Compute(DpiSetup.Scale, big, left, PillGeometry.SmallWidth(TaskCellCount), round);
         if (layout == _layout)
         {
             return;
@@ -1693,19 +1902,29 @@ public sealed partial class MainWindow : Window
     /// Album art for music in the left slot (as in the mockup). If the player provides no art, keep the note icon.
     /// Only re-read when the track changes (reading art is async).
     /// </summary>
-    private async void ShowAlbumArt(bool on)
+    /// <summary>Album art on the big pill (22) when the shown card is music and its cover is loaded.</summary>
+    private void ShowAlbumArt(bool on)
     {
-        var art = on ? _feed.Media.CurrentArt : null;
-        if (art is null)
+        var show = on && _albumImage is not null && _feed.Media.CurrentArt is not null;
+        AlbumArt.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        if (show)
         {
-            AlbumArt.Visibility = Visibility.Collapsed;
-            return;
+            LeadIcon.Visibility = Visibility.Collapsed;
         }
+    }
 
-        LeadIcon.Visibility = Visibility.Collapsed;
-        AlbumArt.Visibility = Visibility.Visible;
+    /// <summary>The current cover as a decoded image, shared by the big pill and the small pill's music cell. Null = none / not loaded.</summary>
+    private Microsoft.UI.Xaml.Media.Imaging.BitmapImage? _albumImage;
+
+    /// <summary>
+    /// Loads the player's cover when it changes (every tick; cheap when unchanged) — not only when music is on the big pill, since the
+    /// small pill shows it too (TODO 7.9 D: music cell = cover 16).
+    /// </summary>
+    private async void LoadAlbumArt()
+    {
+        var art = _feed.Media.CurrentArt;
         var key = _feed.Media.CurrentArtKey;
-        if (key == _albumArtKey)
+        if (art is null || key == _albumArtKey)
         {
             return;
         }
@@ -1730,15 +1949,15 @@ public sealed partial class MainWindow : Window
             if (_albumArtKey == key)
             {
                 AlbumArtBrush.ImageSource = image;
+                _albumImage = image;
                 _albumArtStream = owned;   // the previous one is left to the GC: an image still on its way out may be reading it
                 _albumTint = tint;
+                _cellsSig = null;   // the small pill's music cell picks the new cover up
             }
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)   // async void: anything escaping here ends the app (a player's cover file gone — review 10-03)
         {
-            _albumArtKey = null;
-            AlbumArt.Visibility = Visibility.Collapsed;
-            LeadIcon.Visibility = Visibility.Visible;
+            _albumImage = null;   // the key stays: a broken cover isn't retried every tick, the note shows instead
         }
     }
 
@@ -2407,6 +2626,7 @@ public sealed partial class MainWindow : Window
         CloseLabel.Text = _text.CloseCard;
         CloseLabel.Foreground = BrushOf(_theme.Foreground);
         CloseRule.Fill = BrushOf(ThemeColors.FromSystem().Light ? Windows.UI.Color.FromArgb(255, 0xD6, 0xD6, 0xD6) : Windows.UI.Color.FromArgb(255, 0x46, 0x46, 0x46));
+        SmallRule.Fill = CloseRule.Fill;
         BallHover.Fill = BrushOf(HoverColor());
         CloseHover.Background = BrushOf(HoverColor());
         PaintFill();
@@ -2516,6 +2736,10 @@ public sealed partial class MainWindow : Window
         {
             SetBigHover(false);
             BallHover.Opacity = 0;
+            foreach (var cell in TaskCells.Children.OfType<Microsoft.UI.Xaml.Controls.Grid>())
+            {
+                cell.Children[0].Opacity = 0;   // a missed "pointer left" must not leave a cell lit
+            }
         }
 
         SetMarqueeFade(_marqueeRunning);

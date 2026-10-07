@@ -89,7 +89,7 @@ public sealed class UiLogicTests
     [Fact]
     public void Big_pill_then_gap_then_small_pill_at_200_percent()
     {
-        var l = PillGeometry.Compute(2.0, big: true, smallLeft: false, PillGeometry.SmallWidth(1), round: true);
+        var l = PillGeometry.Compute(2.0, big: true, smallLeft: false, PillGeometry.SmallWidth(0), round: true);
         Assert.Equal(2 * (220 + 8 + 32), l.Width);
         Assert.Equal(2 * (32 + 14), l.Height);
         Assert.Equal(new PillRect(0, 14, 441, 79, 64), l.Big);
@@ -122,6 +122,14 @@ public sealed class UiLogicTests
             var l = PillGeometry.Compute(scale, big: true, smallLeft: false, 32, round: true);
             Assert.Equal(l.Width + 1, l.Small.Right);   // the small pill ends at the window's edge
         }
+    }
+
+    [Fact]
+    public void Small_pill_is_the_circle_alone_or_cells_line_and_circle()
+    {
+        Assert.Equal(32, PillGeometry.SmallWidth(0));
+        Assert.Equal(4 + 24 + 1 + 32, PillGeometry.SmallWidth(1));
+        Assert.Equal(4 + (24 * 4) + 1 + 32, PillGeometry.SmallWidth(4));
     }
 
     // ---------- Deciding whether to exit on its own ----------

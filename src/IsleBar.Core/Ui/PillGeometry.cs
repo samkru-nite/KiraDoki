@@ -30,8 +30,17 @@ public static class PillGeometry
     /// <summary>The "small" corner choice (setting): 8, like Windows' cards. "round" = half the height.</summary>
     public const double SmallCorner = 8;
 
-    /// <summary>Width of the small pill holding <paramref name="cells"/> cells (the circle counts as one).</summary>
-    public static double SmallWidth(int cells) => (2 * CellMargin) + (Math.Max(1, cells) * Cell);
+    /// <summary>The circle's box: its cell with <see cref="CellMargin"/> either side.</summary>
+    public const double BallBox = Cell + (2 * CellMargin);
+
+    /// <summary>The line between the task cells and the circle.</summary>
+    public const double Rule = 1;
+
+    /// <summary>
+    /// Width of the small pill with <paramref name="taskCells"/> task cells (⋯ counts as one): the circle alone is 32; with tasks,
+    /// 4 + 24 per cell + the 1 line + the circle's 32 (TODO 7.9 D).
+    /// </summary>
+    public static double SmallWidth(int taskCells) => BallBox + (taskCells > 0 ? CellMargin + (taskCells * Cell) + Rule : 0);
 
     /// <summary>Dip → pixels, rounded the way XAML's layout rounding places elements.</summary>
     public static int Px(double dip, double scale) => (int)Math.Round(dip * scale);

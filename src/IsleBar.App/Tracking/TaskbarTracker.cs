@@ -68,7 +68,7 @@ internal sealed class TaskbarTracker : IDisposable
         }
 
         var (position, manualOffset) = _settings();
-        var spot = BarSlot.Place(position, layout, width, _barHeight, DpiSetup.Px(12), manualOffset, topEdge: DpiSetup.Px(1));
+        var spot = BarSlot.Place(position, layout, width, _barHeight, DpiSetup.Px(12), manualOffset, topEdge: DpiSetup.Px(1), iconGap: DpiSetup.Px(8));
         return spot.Fits ? new BarPlacement(true, spot.X, spot.Y) : BarPlacement.Hidden;
     }
 
@@ -146,7 +146,7 @@ internal sealed class TaskbarTracker : IDisposable
 
                     var layout = Read(elements, tray, bar);
                     Layout = layout;
-                    var spot = BarSlot.Place(position, layout, _barWidth(), _barHeight, DpiSetup.Px(12), manualOffset, topEdge: DpiSetup.Px(1));
+                    var spot = BarSlot.Place(position, layout, _barWidth(), _barHeight, DpiSetup.Px(12), manualOffset, topEdge: DpiSetup.Px(1), iconGap: DpiSetup.Px(8));
                     SetCurrent(spot.Fits ? new BarPlacement(true, spot.X, spot.Y) : BarPlacement.Hidden);
                     if (spot.Fits != _loggedVisible || position != _loggedPosition)
                     {
