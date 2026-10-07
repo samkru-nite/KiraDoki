@@ -1,7 +1,7 @@
 # IsleBar 二次开发 — 项目上下文（交接文件）
 
 > 新会话先读本文件和 TODO.md（进度看 TODO 每条的 [x]/[~] 和注记）。源码已通读，地图见下方。
-> **下一步（10-05）**：新交互设计已定稿，见 TODO.md 第 7 节（小球 + 胶囊、卡片类型、操作、输入框、AI 在胶囊里交互）。定位/风险/代码策略见 7.8，按 **7.9 顺序**做，第 1 步滚动诊断已完成（滚动能收到，结果见 7.9 第 1 条；统计日志用户决定不做），**10-05 路线 A–L 已定稿（见 7.9），A–D、E1、E2 已完成**（D = 预览 https://claude.ai/artifact/PGb2ZCPwCXFwAJnmCDPkDW 第 14 版）。**E1–E5（+E3½）10-07 全部完成**（每步一个提交，注记见 TODO 7.9 E 条"E3–E5"）。**下一步：用户一起看 E3–E5 效果**（互换动画做的时候屏幕锁着，没在屏幕上看过，最可能要调；图标是 Fluent 字形占位，用户看完再挑），按反馈修完再进 **F**（掀起卡片 + "⋯"列表）。尺寸以 **D 条开头的「最终尺寸表」**为准（冲突时最终尺寸表 > D 条后面的轮次 > 前面的轮次）。不做新旧切换开关，旧代码不需要就直接删。预览清单在 7.9 末尾。
+> **下一步（10-05）**：新交互设计已定稿，见 TODO.md 第 7 节（小球 + 胶囊、卡片类型、操作、输入框、AI 在胶囊里交互）。定位/风险/代码策略见 7.8，按 **7.9 顺序**做，第 1 步滚动诊断已完成（滚动能收到，结果见 7.9 第 1 条；统计日志用户决定不做），**10-05 路线 A–L 已定稿（见 7.9），A–D、E1、E2 已完成**（D = 预览 https://claude.ai/artifact/PGb2ZCPwCXFwAJnmCDPkDW 第 14 版）。**E1–E5（+E3½）10-07 全部完成，用户看过两轮已按反馈修**（注记见 TODO 7.9 E 条"E3–E5""第一轮""第二轮"）。**下个会话先做**：①问用户要不要给小胶囊里的 AI logo 加阶段小色点（改成 logo 后看不出 等你/完成/出错，用户还没答）；②用户继续试动画，有问题按反馈修（排查动画先看日志 "transition old-card … end …" 和连拍：scratchpad 外 `%TEMP%urst.ps1` 是连拍脚本，用法见 TODO 第二轮注记；**用户在用电脑时少推测试卡片**，推了要马上删 `%LOCALAPPDATA%\IsleBar\state\demo*.json`）；③没问题就进 **F**（掀起卡片 + "⋯"列表）。尺寸以 **D 条开头的「最终尺寸表」**为准（冲突时最终尺寸表 > D 条后面的轮次 > 前面的轮次）。不做新旧切换开关，旧代码不需要就直接删。预览清单在 7.9 末尾。
 
 ## 用户与协作方式
 - 用户是 vibe coding 新手，只会一点 Python，不会 C#/C++。用户只描述想要的效果和看运行结果，代码由 Claude 写。请用中文、通俗讲解，必要时用 Python 类比。
@@ -29,7 +29,7 @@
 - 用户需求原文档：`C:\Users\Kasumi\Desktop\新建 Microsoft Word 文档.docx`（内容已整理进 TODO.md，另有 2 张截图未看，需要时从 `word/media/` 提取）。
 
 ## 基线
-- 原始源码：构建 0 警告 0 错误，测试 783 个。**10-07 E5 后：0 警告 0 错误，测试 864 个；界面文案 140。****截至 10-04（下载 1.1/1.3 完成后）：构建 0 警告 0 错误，测试 855 个全过；界面文案 116 条。**
+- 原始源码：构建 0 警告 0 错误，测试 783 个。**10-07 E 收尾后：0 警告 0 错误，测试 866 个；界面文案 140。****截至 10-04（下载 1.1/1.3 完成后）：构建 0 警告 0 错误，测试 855 个全过；界面文案 116 条。**
 - git：`07041cf` = 原始源码；`10d87c9`/`86c50fc`/`985850d` 只改了 CLAUDE.md/TODO.md；之后每块功能一个提交。
 - 已完成（10-04）：4.6 消息卡片默认关闭+开关；4.5/3.4 文件搜索整套重做（见 TODO 4.5 注记）；开始菜单遮挡列表；2.2 启动失败报错复制；4.4 浏览器媒体开关 + 媒体选择规则重写（`9d736c1`）。2.1 不是 bug（用户没装命令行版）。
 
@@ -68,7 +68,7 @@ Start-Process "src\IsleBar.App\bin\Debug\net8.0-windows10.0.26100.0\IsleBar.App.
 | 下载 | `App/Media/DownloadWatcher.cs`（每秒扫"下载"文件夹里的 .crdownload/.part）→ `Core/Island/DownloadTracker.cs`（速度、暂停、多个合成一条 +N）；**拿不到浏览器下载的总大小**（1.2 做过又撤销，见 TODO）；百度网盘按进程写盘量估算；下载文件夹可在设置里改（`DownloadFolders`）；资源管理器复制/解压/压缩 `App/Media/FileOperationWatcher.cs` |
 | 音乐 | `App/Media/MediaWatcher.cs`（Windows 媒体控制 SMTC；浏览器默认排除，设置 `BrowserMedia` 可开，`Core/Island/MediaSources.cs`；进度来自 app 上报的 Timeline，**网易云不报**（实测 00:00/00:00）。规则（10-07 用户定）在 `Core/Island/MediaCards.cs`：一个播放器一张卡，新标题等 0.5 秒，暂停满 5 分钟或关掉播放器就删，再播是新卡。封面按卡片加载（MW `_covers`）。Edge 全浏览器只有一个 SMTC 会话，切视频时会先报别的标签页的旧标题） |
 | Claude/Codex 启动 | `App/Engine/AgentLauncher.cs`；路径查找 `Core/Launch/ClaudeExecutable.cs`、`ClaudeProfile.cs`、`CodexProfile.cs`、`NpmShim.cs`、参数 `ClaudeArguments.cs` |
-| Claude/Codex 图标 | `App/Interop/ClaudeGlyph.cs`（从本机 claude.exe 图标里抠火花）、`Core/Ui/CodexMark.cs`（从 VS Code 的 Codex 扩展里找 SVG）；都找不到就退回字体图标（就是"聊天图标"） |
+| Claude/Codex 图标 | **AI 所有阶段都用厂商 logo（10-07 用户定）**。Claude：`App/Interop/ClaudeGlyph.cs` 从命令行 claude.exe 或 Claude 应用（MSIX，`Interop/AgentApps.cs` 读注册表找安装位置）的图标抠火花（`Core/Ui/GlyphMask.cs`，橙色铺满=底板时取浅色火花），涂 Claude 橙；Codex：`Core/Ui/CodexMark.cs`（VS Code 扩展 SVG）或 Codex 应用自带 logo。都找不到才退回字体图标。MW `LoadAgentMarks`，日志 "agent marks: claude ok, codex ok" |
 | 文件搜索 | `App/Search/EverythingSdk.cs`（分页取回+本地过滤隐藏目录）、`FileSearchWorker.cs`（空输入=最近文件）、`ResultsWindow.cs`（ListView、表头排序、右键菜单、间距常量）、`ShellIcons.cs`（后台取系统图标）、`RecentFiles.cs`（Windows 最近打开）；Core：`Search/FileSearchQuery.cs`、`FileExcludes.cs`（隐藏规则）、`FileListText.cs`（大小格式、中间省略）。焦点/关闭：`Interop/ForegroundEvents.cs` + MainWindow `CheckForeground()`；开始菜单 `Interop/StartMenu.cs`；常亮亚克力 `Interop/ActiveAcrylic.cs` |
 | 网页搜索 | `Core/Search/WebSearch.cs` |
 | 计时/番茄钟 | `Core/Island/TimerParser.cs`；界面 `ShowTimerText/ShowClockDigits/RollIn/DrawTimerArc` |
