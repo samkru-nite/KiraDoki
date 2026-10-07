@@ -90,4 +90,18 @@ public sealed class TaskSlotsTests
         var download = new Card("d", CardType.Status, false, new ActivityState { RawKind = ActivityState.KindTransfer, State = "run", Stage = "paused" });
         Assert.True(TaskIcons.For(download, false, T0).Paused);
     }
+
+    [Fact]
+    public void Every_agent_stage_asks_for_the_makers_logo()
+    {
+        static string? Logo(ActivityKind kind, string? agent = null)
+            => TaskIcons.For(new Card("k", CardType.Status, false, new ActivityState { RawKind = ActivityState.KindToString(kind), State = "run", Agent = agent }), false, T0).Logo;
+
+        Assert.Equal("claude", Logo(ActivityKind.AgentWorking));
+        Assert.Equal("claude", Logo(ActivityKind.AgentPermission));
+        Assert.Equal("codex", Logo(ActivityKind.AgentDone, "codex"));
+        Assert.Equal("claude", Logo(ActivityKind.Notice, "claude"));   // interrupted / stopped
+        Assert.Null(Logo(ActivityKind.Notice));                        // a system notice
+        Assert.Null(Logo(ActivityKind.Transfer));
+    }
 }

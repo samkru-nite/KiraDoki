@@ -46,7 +46,10 @@ public static class SwapMotion
     /// <summary>The circle a cell stands for.</summary>
     public const double Circle = 24;
 
-    /// <summary>The share of the way over which the circle's background turns from the cell's look into the pill colour.</summary>
+    /// <summary>
+    /// The share of the way over which the circle's hover tint (the cell's lit look) gives way to the plain pill colour. The flying
+    /// box itself stays opaque: where it was see-through, the window showed its flat taskbar colour over a gradient taskbar (10-07).
+    /// </summary>
     public const double BackgroundTurn = 0.4;
 
     /// <summary>Flip: the old content drops this far while fading; the new comes down from as far above.</summary>

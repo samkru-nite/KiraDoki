@@ -18,9 +18,10 @@ public enum IconTone
     Error,
 }
 
-/// <summary>A small icon: a Segoe Fluent Icons glyph (or the album cover), its colour, and the pause bars.</summary>
+/// <summary>A small icon: a Segoe Fluent Icons glyph (or the album cover / an agent's logo), its colour, and the pause bars.</summary>
 /// <param name="Cover">Music with album art: draw the cover instead of <paramref name="Glyph"/> (the glyph is the fallback).</param>
-public sealed record TaskIcon(string Glyph, IconTone Tone, bool Paused, bool Cover);
+/// <param name="Logo">An agent's card: draw that agent's logo ("claude" / "codex") when this PC has it; the glyph is the fallback.</param>
+public sealed record TaskIcon(string Glyph, IconTone Tone, bool Paused, bool Cover, string? Logo = null);
 
 /// <summary>
 /// <b>The one table of small icons</b> (TODO 7.9 E "small-icon principles", user 10-07). A small icon answers only "what is it" and
@@ -29,8 +30,9 @@ public sealed record TaskIcon(string Glyph, IconTone Tone, bool Paused, bool Cov
 /// <item>Shape = what it is + its stage. A stage change swaps the glyph, nothing is layered on top.</item>
 /// <item>Colour = do you need to act: <see cref="IconTone"/>, only three colours.</item>
 /// <item>The only extra mark: two pause bars (music, a paused download or timer).</item>
-/// <item>No breathing, no fading, no progress rings. Agents get one-colour line glyphs here (Claude's own spark is orange and would
-/// read as "waiting"); the big pill keeps the coloured official marks.</item>
+/// <item>No breathing, no fading, no progress rings.</item>
+/// <item>Agents: every stage shows the maker's logo (user 10-07, replacing "one-colour line glyphs"); the glyphs below are only
+/// the fallback when the logo can't be found on this PC.</item>
 /// </list>
 /// Glyphs are stand-ins from Segoe Fluent Icons until the user picks the final set (10-07): change them here only.
 /// </summary>
@@ -53,7 +55,7 @@ public static class TaskIcons
     {
         ArgumentNullException.ThrowIfNull(card);
         var s = card.State;
-        return s.Kind switch
+        TaskIcon icon = s.Kind switch
         {
             ActivityKind.AgentWorking => new(Chat, IconTone.Plain, false, false),
             ActivityKind.AgentPermission => new(Bell, IconTone.Waiting, false, false),
@@ -78,5 +80,8 @@ public static class TaskIcons
                 : new(s.Glyph ?? Info, IconTone.Plain, false, false),
             _ => new(s.Glyph ?? Info, IconTone.Plain, false, false),
         };
+        var agent = s.Kind is ActivityKind.AgentWorking or ActivityKind.AgentPermission or ActivityKind.AgentDone
+                    || (s.Kind == ActivityKind.Notice && s.Agent is not null);
+        return agent ? icon with { Logo = s.AgentLabel == "Codex" ? "codex" : "claude" } : icon;
     }
 }

@@ -109,7 +109,10 @@ public sealed partial class MainWindow
             var spanRightPx = Math.Max(oldWinPx + _layout.Width, spot.X + next.Width) + DpiSetup.Px(SwapMotion.Overshoot);
             var oldShift = (oldWinPx - spanLeftPx) / DpiSetup.Scale;
             var newShift = (spot.X - spanLeftPx) / DpiSetup.Scale;
-            PillRegion.Clear(_taskbar.OuterWindow);
+            var oldLayout = _layout;
+            var dx = oldWinPx - spanLeftPx;
+            PillRegion.ApplyRects(_taskbar.OuterWindow, new[] { oldLayout.Big, (PillRect?)oldLayout.Small }
+                .OfType<PillRect>().Select(r => (r.Left + dx, r.Top, r.Right + dx, r.Bottom)).ToList());
             PillRow.Margin = new Thickness(oldShift, PillGeometry.ArcRoom, 0, 0);
             _taskbar.PlaceAt(spanLeftPx, winY, spanRightPx - spanLeftPx, _layout.Height);
             var spanWidth = (spanRightPx - spanLeftPx) / DpiSetup.Scale;
@@ -157,6 +160,8 @@ public sealed partial class MainWindow
                 {
                     frame(t, p);
                 }
+
+                ClipToFlying();
             });
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
@@ -248,7 +253,7 @@ public sealed partial class MainWindow
         var surface = new Border
         {
             Height = PillGeometry.Height, CornerRadius = new CornerRadius(radius), BorderThickness = new Thickness(1),
-            Background = BrushOf(RealSearchBoxFill()), BorderBrush = SmallSurface.BorderBrush,
+            Background = BrushOf(RealSearchBoxFill()), BorderBrush = SmallSurface.BorderBrush, Tag = radius,
         };
         Put(surface, a.SmallX, row);
         var rule = new Rectangle { Width = 1, Height = 16, Fill = SmallRule.Fill };
@@ -311,11 +316,17 @@ public sealed partial class MainWindow
             {
                 var circle = SwapMotion.CircleAt(down.CentreX, row);
                 var lit = down.Key == hoverKey;
+                // the card's text fades as it closes and its small icon fades in at the cell — text cut by the closing circle
+                // looked like being sliced (user 10-07)
+                var icon = CellGhost(down.Key, ac);
+                Put(icon, down.CentreX - (PillGeometry.Cell / 2), row);
                 frames.Add((t, p) =>
                 {
                     var back = 1 - Math.Clamp((p - (1 - turn)) / turn, 0, 1);
                     mover.Place(SwapMotion.Between(aBox, circle, p, lift), SwapMotion.ContentX(circle, aBox, a.IconX, 1 - p), row + (lift * Math.Sin(Math.PI * p)),
-                        a.IconX, back, 1 - p, lit ? 1 - back : 0, style == SwapStyle.MorphLine ? SwapMotion.Lerp(1, SwapMotion.FadeTo, Math.Clamp(p, 0, 1)) : 1);
+                        a.IconX, 1, 1 - p, lit ? 1 - back : 0, style == SwapStyle.MorphLine ? SwapMotion.Lerp(1, SwapMotion.FadeTo, Math.Clamp(p, 0, 1)) : 1,
+                        content: 1 - Math.Clamp(p / 0.35, 0, 1));
+                    icon.Opacity = Math.Clamp((p - 0.55) / 0.4, 0, 1);   // after the neighbours have made room
                 });
             }
             else
@@ -336,11 +347,14 @@ public sealed partial class MainWindow
             {
                 var circle = SwapMotion.CircleAt(up.CentreX, row);
                 var lit = up.Key == hoverKey;
+                var icon = CellGhost(up.Key, bc);   // the small icon fades out as the card's content fades in
+                Put(icon, up.CentreX - (PillGeometry.Cell / 2), row);
                 frames.Add((t, p) =>
                 {
                     var bg = Math.Clamp(p / turn, 0, 1);
                     mover.Place(SwapMotion.Between(circle, bBox, p, -lift), SwapMotion.ContentX(circle, bBox, b.IconX, p), row - (lift * Math.Sin(Math.PI * p)),
-                        b.IconX, bg, p, lit ? 1 - bg : 0, 1);
+                        b.IconX, 1, p, lit ? 1 - bg : 0, 1, content: Math.Clamp((p - 0.45) / 0.4, 0, 1));   // shows once the box is nearly open
+                    icon.Opacity = 1 - Math.Clamp((p - 0.1) / 0.35, 0, 1);
                 });
             }
             else
@@ -356,6 +370,30 @@ public sealed partial class MainWindow
         }
 
         return frames;
+    }
+
+    /// <summary>
+    /// Clips the window to the flying shapes: the small pill's surface and the cards' boxes, with their round corners (their
+    /// <c>Tag</c> holds the corner radius; the icons, the line and the circle sit inside the surface).
+    /// </summary>
+    private void ClipToFlying()
+    {
+        var scale = DpiSetup.Scale;
+        var shapes = new List<(int, int, int, int, int)>();
+        foreach (var child in FlyLayer.Children.OfType<FrameworkElement>())
+        {
+            if (child.Tag is not double radius || child.Opacity <= 0.01 || double.IsNaN(child.Width) || child.Width <= 0)
+            {
+                continue;
+            }
+
+            var x = Canvas.GetLeft(child);
+            var y = Canvas.GetTop(child);
+            shapes.Add(((int)Math.Round(x * scale), (int)Math.Round(y * scale), (int)Math.Round((x + child.Width) * scale),
+                (int)Math.Round((y + child.Height) * scale), (int)Math.Round(2 * radius * scale)));
+        }
+
+        PillRegion.ApplyShapes(_taskbar.OuterWindow, shapes);
     }
 
     /// <summary>A stand-in for one cell: its icon (or ⋯) as the small pill draws it.</summary>
@@ -435,6 +473,7 @@ public sealed partial class MainWindow
     private sealed class Mover
     {
         private readonly Grid _box = new() { IsHitTestVisible = false };
+        private readonly Border _back = new();   // the rounded fill (a Grid's own background ignored its corner radius: square slabs, user 10-07)
         private readonly Canvas _inside = new();
         private readonly Image _image;
         private readonly Ellipse _disc;
@@ -446,7 +485,7 @@ public sealed partial class MainWindow
         {
             _pill = window.RealSearchBoxFill();
             _fill = new SolidColorBrush(_pill);
-            _box.Background = _fill;
+            _back.Background = _fill;
             _image = window.Snapshot(shot);
             _disc = new Ellipse { Width = SwapMotion.Circle, Height = SwapMotion.Circle, Fill = new SolidColorBrush(HoverColor()) };
             _ring = new Border
@@ -456,14 +495,16 @@ public sealed partial class MainWindow
             };
             _inside.Children.Add(_disc);
             _inside.Children.Add(_image);
+            _box.Children.Add(_back);
             _box.Children.Add(_inside);
             _box.Children.Add(_ring);
             window.FlyLayer.Children.Add(_box);
         }
 
         /// <param name="contentX">Window x of the card content's left edge; <paramref name="contentY"/> its top.</param>
-        public void Place(MotionBox box, double contentX, double contentY, double iconX, double background, double ring, double disc, double opacity)
+        public void Place(MotionBox box, double contentX, double contentY, double iconX, double background, double ring, double disc, double opacity, double content = 1)
         {
+            _image.Opacity = Math.Clamp(content, 0, 1);
             if (box.X < 0)
             {
                 box = box with { X = 0, Width = box.Width + box.X };   // the window's left edge: a bounce past it is dropped, not cut
@@ -476,7 +517,9 @@ public sealed partial class MainWindow
             _box.Width = w;
             _box.Height = h;
             _box.CornerRadius = new CornerRadius(Math.Clamp(box.Radius, 0, h / 2));
+            _box.Tag = _box.CornerRadius.TopLeft;   // the window is clipped to this shape (ClipToFlying)
             _ring.CornerRadius = _box.CornerRadius;
+            _back.CornerRadius = _box.CornerRadius;
             _box.Opacity = Math.Clamp(opacity, 0, 1);
             _fill.Color = Windows.UI.Color.FromArgb((byte)Math.Round(255 * Math.Clamp(background, 0, 1)), _pill.R, _pill.G, _pill.B);
             _ring.Opacity = Math.Clamp(ring, 0, 1);

@@ -217,4 +217,25 @@ public sealed class UiLogicTests
     [InlineData(1, true)]
     public void Relaunches_except_when_quit_or_already_running(int code, bool relaunch)
         => Assert.Equal(relaunch, ExitCodes.ShouldRelaunch(code));
+
+    [Fact]
+    public void Glyph_mask_takes_the_light_spark_off_an_orange_tile()
+    {
+        // 64×64 orange tile with a white 8-wide bar in the middle
+        const int n = 64;
+        var px = new byte[n * n * 4];
+        for (var y = 0; y < n; y++)
+        {
+            for (var x = 0; x < n; x++)
+            {
+                var i = ((y * n) + x) * 4;
+                var white = x is >= 28 and < 36 && y is >= 8 and < 56;
+                (px[i], px[i + 1], px[i + 2], px[i + 3]) = white ? ((byte)250, (byte)250, (byte)250, (byte)255) : ((byte)87, (byte)119, (byte)217, (byte)255);
+            }
+        }
+
+        var mask = GlyphMask.Build(px, n, n, 16)!;
+        Assert.True(mask[(8 * 16) + 8] > 100);    // the bar is the shape (centre)
+        Assert.Equal(0, mask[(8 * 16) + 1]);      // the tile around it is not
+    }
 }

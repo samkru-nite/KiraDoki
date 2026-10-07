@@ -1129,6 +1129,14 @@ public sealed partial class MainWindow : Window
             return box;
         }
 
+        if (icon.Logo is { } agent && (agent == "codex" ? CodexGlyph.Source : _claudeGlyph) is { } logo)
+        {
+            // the same marks as the big pill, the same padding: the spark image is 20 for a 16 icon, Codex's 19
+            var size = agent == "codex" ? 19 : 20;
+            box.Children.Add(new Microsoft.UI.Xaml.Controls.Image { Source = logo, Width = size, Height = size, Margin = new Thickness((16 - size) / 2.0) });
+            return box;
+        }
+
         var color = icon.Tone switch
         {
             IconTone.Waiting => Attention(),
@@ -1765,7 +1773,7 @@ public sealed partial class MainWindow : Window
     {
         if (_flying)
         {
-            PillRegion.Clear(_taskbar.OuterWindow);   // pieces fly outside the pills
+            return;   // a transition clips the window itself, to what is flying
         }
         else
         {
@@ -2020,9 +2028,10 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private void ShowAgentMark(ActivityState state)
     {
-        if (state.Kind is not (ActivityKind.AgentDone or ActivityKind.AgentPermission or ActivityKind.AgentWorking))
+        if (state.Kind is not (ActivityKind.AgentDone or ActivityKind.AgentPermission or ActivityKind.AgentWorking)
+            && !(state.Kind == ActivityKind.Notice && state.Agent is not null))
         {
-            return;
+            return;   // every stage of an agent's card shows its logo (user 10-07), its notices too
         }
 
         var codex = state.AgentLabel == "Codex";
@@ -2602,14 +2611,26 @@ public sealed partial class MainWindow : Window
     /// The Claude spark (tinted with the theme's icon colour) and the Codex mark (black or white variant), both read from
     /// the user's own PC — nothing of Anthropic's or OpenAI's is shipped (user 10-01). Called again when the theme changes.
     /// </summary>
+    /// <summary>Claude's own colour for its spark (the logo, user 10-07: every agent stage shows the maker's logo).</summary>
+    private static readonly Windows.UI.Color ClaudeOrange = Windows.UI.Color.FromArgb(255, 0xD9, 0x77, 0x57);
+
+    /// <summary>
+    /// The agents' logos, from what is installed on this PC (nothing is shipped): Claude's spark from the command-line claude.exe or
+    /// the Claude app's icon, painted Claude orange; Codex's mark from the VS Code / Cursor extension or the Codex app's own logo.
+    /// </summary>
     private void LoadAgentMarks()
     {
-        _claudeGlyph = ClaudeGlyph.Create(
-            ClaudeExecutable.Resolve(AgentProfiles.Get(AgentKind.Claude)), DpiSetup.Px(21), _theme.Icon);
-        CodexGlyph.Source = CodexMark.Find(CodexMark.DefaultRoots(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)),
-                ThemeColors.FromSystem().Light) is { } blossom
+        var light = ThemeColors.FromSystem().Light;
+        var cli = ClaudeExecutable.Resolve(AgentProfiles.Get(AgentKind.Claude));
+        _claudeGlyph = ClaudeGlyph.Create(cli, DpiSetup.Px(21), ClaudeOrange)
+                       ?? (AgentApps.ClaudeExe() is { } app ? ClaudeGlyph.Create(app, DpiSetup.Px(21), ClaudeOrange) : null);
+        CodexGlyph.Source = CodexMark.Find(CodexMark.DefaultRoots(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)), light) is { } blossom
             ? new Microsoft.UI.Xaml.Media.Imaging.SvgImageSource(new Uri(blossom))
-            : null;
+            : AgentApps.CodexLogo(light) is { } png
+                ? new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(png)) { DecodePixelWidth = DpiSetup.Px(19) }
+                : null;
+        TaskbarHost.Log($"agent marks: claude {(_claudeGlyph is null ? "none" : "ok")}, codex {(CodexGlyph.Source is null ? "none" : "ok")}");
+        _cellsSig = null;   // small icons pick the logos up
     }
 
     /// <summary>

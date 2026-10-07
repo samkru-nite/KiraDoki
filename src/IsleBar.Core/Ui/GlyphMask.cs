@@ -17,6 +17,15 @@ public static class GlyphMask
     /// </summary>
     public static bool IsOrange(byte b, byte g, byte r, byte a) => a > 127 && r > 140 && r - b > 60;
 
+    /// <summary>A light pixel: the white spark on the Claude app's orange tile.</summary>
+    public static bool IsLight(byte b, byte g, byte r, byte a) => a > 127 && r > 200 && g > 190 && b > 180;
+
+    /// <summary>
+    /// When orange fills more than this share of its bounding box it is a tile behind the spark (the Claude desktop app's icon,
+    /// user 10-07), not the spark itself (the command-line claude.exe's icon): the spark is then the light pixels on it.
+    /// </summary>
+    private const double TileShare = 0.6;
+
     /// <summary>
     /// Builds a <paramref name="size"/>×<paramref name="size"/> alpha mask from <paramref name="bgra"/>
     /// (<paramref name="width"/> wide, <paramref name="height"/> tall). Null if there is no orange at all.
@@ -50,6 +59,34 @@ public static class GlyphMask
         if (right < 0)
         {
             return null;
+        }
+
+        var orange = mask.Count(v => v != 0);
+        if (orange > TileShare * (right - left + 1) * (bottom - top + 1))
+        {
+            // a tile: take the light shape on it, within the tile
+            int l2 = width, t2 = height, r2 = -1, b2 = -1;
+            var light = new byte[width * height];
+            for (var y = top; y <= bottom; y++)
+            {
+                for (var x = left; x <= right; x++)
+                {
+                    var i = ((y * width) + x) * 4;
+                    if (IsLight(bgra[i], bgra[i + 1], bgra[i + 2], bgra[i + 3]))
+                    {
+                        light[(y * width) + x] = 255;
+                        l2 = Math.Min(l2, x);
+                        t2 = Math.Min(t2, y);
+                        r2 = Math.Max(r2, x);
+                        b2 = Math.Max(b2, y);
+                    }
+                }
+            }
+
+            if (r2 >= 0)
+            {
+                (mask, left, top, right, bottom) = (light, l2, t2, r2, b2);   // nothing light on it: the orange shape itself
+            }
         }
 
         // 2) crop to the shape and center it in a square (margin 48 — same as the original)

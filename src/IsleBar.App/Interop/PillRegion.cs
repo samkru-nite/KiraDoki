@@ -34,6 +34,38 @@ internal static class PillRegion
         }
     }
 
+    /// <summary>
+    /// Clips the window to these rectangles (window pixels: left, top, right, bottom — right/bottom one past the edge). Used every
+    /// frame while cards fly: only what flies shows, the real taskbar everywhere else — with no clip the window's flat taskbar
+    /// colour showed as a dark box over a taskbar with a gradient (user 10-07). An empty list hides the window's content.
+    /// </summary>
+    public static void ApplyRects(IntPtr window, IReadOnlyList<(int Left, int Top, int Right, int Bottom)> rects)
+        => ApplyShapes(window, rects.Select(r => (r.Left, r.Top, r.Right, r.Bottom, 0)).ToList());
+
+    /// <summary>
+    /// Like <see cref="ApplyRects"/> with rounded corners (<c>Diameter</c> 0 = square): while cards fly the window is clipped to the
+    /// shapes themselves — a rectangle showed the window's flat taskbar colour around a see-through card as a box (user 10-07). The
+    /// round edges aren't anti-aliased, which a static pill would show, but not something moving for half a second.
+    /// </summary>
+    public static void ApplyShapes(IntPtr window, IReadOnlyList<(int Left, int Top, int Right, int Bottom, int Diameter)> shapes)
+    {
+        var region = CreateRectRgn(0, 0, 0, 0);
+        if (region == IntPtr.Zero)
+        {
+            return;
+        }
+
+        foreach (var (l, t, r, b, d) in shapes)
+        {
+            Add(region, d > 0 ? CreateRoundRectRgn(l, t, r + 1, b + 1, d, d) : CreateRectRgn(l, t, r, b));
+        }
+
+        if (SetWindowRgn(window, region, redraw: true) == 0)
+        {
+            DeleteObject(region);
+        }
+    }
+
     /// <summary>The whole window, no clip — E4's swap animation flies outside the pills this way (E1 test: clipping every frame
     /// left the edges looking discoloured, no clip looked right).</summary>
     public static void Clear(IntPtr window) => SetWindowRgn(window, IntPtr.Zero, redraw: true);
