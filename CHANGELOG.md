@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Small pill and card rules (fork, 10-07)
+- The small pill shows one icon for every card behind the big pill (temporary ones excepted), as many as fit before the
+  taskbar's app icons; the rest wait behind "⋯". Icons are colourless unless something needs you: orange waits for you,
+  green is done, red failed. Music shows its album cover; paused things get two bars.
+- Click an icon to swap that card onto the big pill (morph, morph with arcs, or flip — a setting).
+- Right click depends on where: the big pill closes its card, an icon shows its name and Close, the circle opens the tools
+  (timers in a submenu).
+- One card per media player; paused for 5 minutes it goes. A finished agent card stays until closed; a session that ends
+  mid-turn leaves "Claude interrupted". Mic / camera in use is a quiet card instead of an orange dot.
+
 ### File search
 - The results list is rebuilt on the system list control: Explorer-style column headers (name · date modified · size)
   that sort when clicked, the shell's own file icons, long names and paths shortened in the middle (the extension and the
