@@ -279,7 +279,7 @@ public sealed partial class MainWindow : Window
 
             if (IsInside(source, CloseZone))
             {
-                CloseShownCard();   // an inform card is closed only here or from its menu (TODO 7.2)
+                CloseCard(_shownCard);   // an inform card is closed only here or from its menu (TODO 7.2)
             }
 
             // the rest of the big pill lifts the card (step F)
@@ -297,7 +297,7 @@ public sealed partial class MainWindow : Window
             }
 
             e.Handled = true;
-            ShowContextMenu();
+            ShowZoneMenu(e.OriginalSource as DependencyObject);
         }), handledEventsToo: true);
         Root.PointerEntered += (_, _) => SetHover(true);
         Root.PointerExited += (_, _) => SetHover(false);
@@ -2452,9 +2452,6 @@ public sealed partial class MainWindow : Window
             : $"{total / 60}:{total % 60:00}";
     }
 
-    private static string DirectionGlyph(ActivityState state)
-        => state.Direction == TransferDirection.Incoming ? "⬇" : "⬆";
-
     /// <summary>Left icon. The text uses no emoji (blue boxes, overlaps), so the icon conveys kind, direction and result.</summary>
     private static string GlyphFor(ActivityState state) => state.Kind switch
     {
@@ -3375,14 +3372,14 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private const int MenuDismissBase = 100;
     private const int MenuQuit = 1;
+    private const int MenuClose = 2;   // close the card the menu is about
     private const int MenuQuickBase = 20;   // quick timers (from settings, up to 6)
     private const int MenuPomodoro = 13;
     private const int MenuStopwatch = 14;
-    private const int MenuUpdate = 15;
+    private const int MenuUpdate = 15;   // "Download update (x.y.z)" while a newer release is out
+    private const int MenuNotifications = 16;   // opens the Windows notification centre
     private const int MenuSettings = 17;
-    private const int MenuNotifications = 16;   // opens the Windows notification centre   // "Download update (x.y.z)" while a newer release is out
 
     /// <summary>A new timer waiting for "Replace the running timer?" to be answered (Enter = replace, Esc = keep).</summary>
     private ActivityState? _pendingTimer;
@@ -3414,16 +3411,12 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Right-click menu. A "Dismiss: …" entry for each island item currently shown (file-backed ones only — timers, done, transfers, notices),
-    /// and "Turn off search bar" at the bottom. Music is controlled by the player app and can't be dismissed, so it's left out.
+    /// "Close" on a card: a state file goes away (a finished task, a timer that rang, a failure, an agent's turn); a card with no file
+    /// (music, a download) is hidden until it ends.
     /// </summary>
-    /// <summary>
-    /// "Close" on the shown card: a state file goes away (a finished task, a timer that rang, a failure); a card with no file (a
-    /// download that failed) is hidden until it ends.
-    /// </summary>
-    private void CloseShownCard()
+    private void CloseCard(Card? card)
     {
-        if (_shownCard is not { } card)
+        if (card is null)
         {
             return;
         }
@@ -3437,85 +3430,103 @@ public sealed partial class MainWindow : Window
             _cards.Hide(card.Key, DateTimeOffset.UtcNow);
         }
 
+        _cards.Update(_feed.Collect(DateTimeOffset.UtcNow), DateTimeOffset.UtcNow);
         _shownCard = _cards.Shown;
         _snapshot = _shownCard is { } shown ? new IslandSnapshot(shown.State, _cards.Cards.Count - 1) : IslandSnapshot.Empty;
+        UpdateTaskCells();
         RenderIsland();
     }
 
     /// <summary>While the right-click menu is open (blocks starting to type).</summary>
     private bool _menuOpen;
 
-    private void ShowContextMenu()
+    /// <summary>
+    /// Right click: each place has its own menu (TODO 7.3, user 10-07) — the big pill = close its card; a task icon = that card's
+    /// name and state in grey, then close; the circle = the tools. The dots, the line and the margins open nothing.
+    /// </summary>
+    private void ShowZoneMenu(DependencyObject? source)
     {
-        var live = _feed.Store.Read(DateTimeOffset.UtcNow)
-            .Where(a => a.SourcePath is { } path && File.Exists(path))
-            .ToList();
-        var items = new List<(int, string?)>();
-        for (var i = 0; i < live.Count; i++)
+        if (IsInside(source, BallBox))
         {
-            items.Add((MenuDismissBase + i, $"{_text.Dismiss}: {DescribeForMenu(live[i])}"));
+            ShowToolMenu();
+        }
+        else if (IsInside(source, SmallPill))
+        {
+            if (CellTagAt(source) is { } tag && tag != DotsTag && _cellCards.FirstOrDefault(c => c.Key == tag) is { } card)
+            {
+                ShowCardMenu(card, header: true);
+            }
+        }
+        else if (_shownCard is { } shown && !_dropHover && _compose is null)
+        {
+            ShowCardMenu(shown, header: false);
+        }
+    }
+
+    private void ShowCardMenu(Card card, bool header)
+    {
+        var items = new List<MenuItem>();
+        if (header)
+        {
+            items.Add(new MenuItem(0, CardMenuTitle(card), Header: true));
         }
 
-        if (items.Count > 0)
+        items.Add(new MenuItem(MenuClose, _text.CloseCard));
+        if (RunMenu(items) == MenuClose)
         {
-            items.Add((0, null));
+            CloseCard(_cards.Cards.FirstOrDefault(c => c.Key == card.Key));
         }
+    }
 
+    /// <summary>"report.pdf · 12.3 MB/s" · "islebar · Claude working" · "Song · Artist" — what the card is and how it stands.</summary>
+    private string CardMenuTitle(Card card)
+    {
+        var s = card.State;
+        var now = DateTimeOffset.UtcNow;
+        var (name, state) = s.Kind switch
+        {
+            ActivityKind.AgentWorking => (s.Name, $"{s.AgentLabel} {_text.Working}"),
+            ActivityKind.AgentPermission => (s.Name, $"{s.AgentLabel} {_text.NeedsAnswer}"),
+            ActivityKind.AgentDone => (s.Name, $"{s.AgentLabel} {_text.AgentDone}"),
+            ActivityKind.Music => (s.Name, s.Stage == "paused" ? _text.Paused : s.Msg),
+            ActivityKind.Timer => (s.Name ?? _text.Timer, PrefixFor(s, now).Trim()),
+            ActivityKind.Transfer => (s.Name ?? (s.Stage == "copy" ? _text.FileTransfer : _text.Downloading), PrefixFor(s, now).Trim()),
+            _ => (s.Title, s.Name ?? s.Msg),
+        };
+        var line = string.Join(" · ", new[] { name, state }.Where(t => !string.IsNullOrWhiteSpace(t)));
+        return line.Length <= 48 ? line : line[..47] + "…";
+    }
+
+    /// <summary>The circle's tools: timers (a submenu), all notifications, an available update, settings, quit.</summary>
+    private void ShowToolMenu()
+    {
+        var timers = new List<MenuItem>();
         var quick = _settings.QuickTimers.Take(6).ToList();
         for (var q = 0; q < quick.Count; q++)
         {
-            items.Add((MenuQuickBase + q, $"{_text.Timer} {string.Format(System.Globalization.CultureInfo.InvariantCulture, _text.Minutes, quick[q])}"));
+            timers.Add(new MenuItem(MenuQuickBase + q, string.Format(System.Globalization.CultureInfo.InvariantCulture, _text.Minutes, quick[q])));
         }
 
-        items.Add((MenuPomodoro, _text.Pomodoro));
-        items.Add((MenuStopwatch, _text.Stopwatch));
-        items.Add((0, null));
+        if (timers.Count > 0)
+        {
+            timers.Add(MenuItem.Separator);
+        }
+
+        timers.Add(new MenuItem(MenuPomodoro, _text.Pomodoro));
+        timers.Add(new MenuItem(MenuStopwatch, _text.Stopwatch));
+
+        var items = new List<MenuItem> { new(0, _text.Timer, Sub: timers), new(MenuNotifications, _text.AllNotifications) };
         var update = _settings.CheckUpdates ? SystemWatch.UpdateWatcher.Available : null;
         if (update is { } u)
         {
-            items.Add((MenuUpdate, $"{_text.UpdateMenu} ({u.Version.ToString(3)})"));   // a newer release is out (10-01)
+            items.Add(new MenuItem(MenuUpdate, $"{_text.UpdateMenu} ({u.Version.ToString(3)})"));   // a newer release is out (10-01)
         }
 
-        items.Add((MenuNotifications, _text.AllNotifications));
-        items.Add((MenuSettings, _text.Settings));   // ⌄ is gone (TODO 7.3): settings live in the circle's menu
-        items.Add((MenuQuit, _text.Quit));
+        items.Add(MenuItem.Separator);
+        items.Add(new MenuItem(MenuSettings, _text.Settings));
+        items.Add(new MenuItem(MenuQuit, _text.Quit));
 
-        // A window attached to the taskbar can't become the foreground window, so the menu couldn't receive clicks (measured on PC 09-29) →
-        // detach and bring it forward, as when typing, only while the menu is open. Position and shape are unchanged, so it's unnoticeable.
-        var detached = false;
-        if (!_typing && _taskbar.IsAttached)
-        {
-            _taskbar.Detach(Spot.X, Spot.Y, _width, _height);
-            ApplyRegion();
-            detached = true;
-        }
-
-        _menuOpen = true;
-        int chosen;
-        try
-        {
-            chosen = ContextMenu.Show(_taskbar.OuterWindow, items);
-        }
-        finally
-        {
-            // focus notifications can arrive late after the menu closes, so release one beat later
-            _ui.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
-            {
-                if (!_typing)
-                {
-                    FocusSink.Focus(FocusState.Programmatic);   // so the input box isn't left with just a blinking caret
-                }
-
-                _menuOpen = false;
-            });
-        }
-
-        if (detached && !_typing && _taskbar.Attach())
-        {
-            PlaceOnTaskbar();
-            ApplyRegion();
-        }
-
+        var chosen = RunMenu(items);
         var now = DateTimeOffset.UtcNow;
         if (chosen == MenuQuit)
         {
@@ -3550,39 +3561,51 @@ public sealed partial class MainWindow : Window
         {
             StartTimer(TimerParser.ToStopwatch(now, _text.Stopwatch));
         }
-        else if (chosen >= MenuDismissBase && chosen - MenuDismissBase < live.Count)
-        {
-            try
-            {
-                File.Delete(live[chosen - MenuDismissBase].SourcePath!);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-            }
-        }
     }
 
-    /// <summary>Short label for the menu: "⏱ 24:59" · "Claude done · islebar" · "📥 a.jpg".</summary>
-    private string DescribeForMenu(ActivityState state)
+    /// <summary>
+    /// Shows a menu and returns the chosen id. A window attached to the taskbar can't become the foreground window, so the menu
+    /// couldn't receive clicks (measured on PC 09-29) → detach and bring it forward, as when typing, only while the menu is open.
+    /// Position and shape are unchanged, so it's unnoticeable.
+    /// </summary>
+    private int RunMenu(IReadOnlyList<MenuItem> items)
     {
-        var now = DateTimeOffset.UtcNow;
-        return state.Kind switch
+        var detached = false;
+        if (!_typing && _taskbar.IsAttached)
         {
-            ActivityKind.Timer when TimerParser.Elapsed(state, now) is { } went => $"⏱ {FormatClock(went)}",
-            ActivityKind.Timer => TimerRemaining(state, now) is { } left && left > TimeSpan.Zero
-                ? $"⏱ {FormatClock(left)}"
-                : $"⏱ {_text.Done}",
-            ActivityKind.AgentDone => AgentMenuLabel(state, _text.AgentDone),
-            ActivityKind.AgentPermission => AgentMenuLabel(state, _text.NeedsAnswer),
-            // "working" fell through to the transfer arrow ("Dismiss: ↑ session") — design check 10-01
-            ActivityKind.AgentWorking => AgentMenuLabel(state, _text.Working),
-            _ => $"{DirectionGlyph(state)} {state.Name}",
-        };
-    }
+            _taskbar.Detach(Spot.X, Spot.Y, _width, _height);
+            ApplyRegion();
+            detached = true;
+        }
 
-    /// <summary>"Claude done · name", or without the trailing " · " when the session has no name.</summary>
-    private static string AgentMenuLabel(ActivityState state, string word)
-        => string.IsNullOrEmpty(state.Name) ? $"{state.AgentLabel} {word}" : $"{state.AgentLabel} {word} · {state.Name}";
+        _menuOpen = true;
+        int chosen;
+        try
+        {
+            chosen = ContextMenu.Show(_taskbar.OuterWindow, items);
+        }
+        finally
+        {
+            // focus notifications can arrive late after the menu closes, so release one beat later
+            _ui.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+            {
+                if (!_typing)
+                {
+                    FocusSink.Focus(FocusState.Programmatic);   // so the input box isn't left with just a blinking caret
+                }
+
+                _menuOpen = false;
+            });
+        }
+
+        if (detached && !_typing && _taskbar.Attach())
+        {
+            PlaceOnTaskbar();
+            ApplyRegion();
+        }
+
+        return chosen;
+    }
 
     private void RequestExit(int code)
     {

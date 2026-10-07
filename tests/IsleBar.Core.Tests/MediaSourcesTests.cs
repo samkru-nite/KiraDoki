@@ -31,16 +31,4 @@ public class MediaSourcesTests
     [InlineData(null)]
     public void Music_apps_are_not_browsers(string? appId)
         => Assert.False(MediaSources.IsBrowser(appId));
-
-    [Theory]
-    [InlineData("MSEdge", "msedge", true)]
-    [InlineData("cloudmusic.exe", "cloudmusic", true)]
-    [InlineData("SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify", "Spotify", true)]
-    [InlineData(@"C:\Program Files\Google\Chrome\Application\chrome.exe", "chrome", true)]
-    [InlineData("MSEdge", "cloudmusic", false)]
-    [InlineData("cloudmusic.exe", "explorer", false)]
-    [InlineData("", "", false)]
-    [InlineData(null, "msedge", false)]
-    public void Player_matches_the_program_in_front(string? appId, string? process, bool expected)
-        => Assert.Equal(expected, MediaSources.IsApp(appId, process));
 }

@@ -28,13 +28,6 @@ public static class MediaSources
     }
 
     /// <summary>
-    /// Whether the player <paramref name="appId"/> is the program <paramref name="processName"/> (e.g. the app in front):
-    /// <c>MSEdge</c> ↔ <c>msedge</c>, <c>cloudmusic.exe</c> ↔ <c>cloudmusic</c>, <c>SpotifyAB.SpotifyMusic_…!Spotify</c> ↔ <c>Spotify</c>.
-    /// </summary>
-    public static bool IsApp(string? appId, string? processName)
-        => AppName(appId) is { } app && AppName(processName) is { } process && app == process;
-
-    /// <summary>
     /// The program's short name, lower case — accepts all of "C:\...\chrome.exe" · "chrome.exe" · "Chrome" ·
     /// "Microsoft.MicrosoftEdge_8wekyb3d8bbwe!MicrosoftEdge". Null if empty.
     /// </summary>

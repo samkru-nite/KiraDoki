@@ -50,10 +50,6 @@ public sealed class LanguageStrings
     /// <summary>Title of "Agent" (Claude / Codex picker) in the settings window.</summary>
     public required string Agent { get; init; }
 
-    /// <summary>"Dismiss" in the right-click menu (island item — cancel a timer, etc.).</summary>
-    public required string Dismiss { get; init; }
-
-
     /// <summary>File search (user 10-04): the sort buttons under the results, the button that opens Everything, the row-count setting.</summary>
     public required string SortName { get; init; }
     public required string SortModified { get; init; }
