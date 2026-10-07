@@ -33,6 +33,7 @@ public static class SettingsCodec
     private const string KeyManualOffset = "manual_offset";
     private const string KeyPillCorners = "pill_corners";
     private const string KeyBallSide = "ball_side";
+    private const string KeySwapAnimation = "swap_animation";
     private const string KeyCardTextAlign = "card_text_align";
     private const string KeyAudioBars = "audio_bars";
     private const string KeyHistory = "history";
@@ -156,6 +157,7 @@ public static class SettingsCodec
         s.Position = Ui.BarSlot.Key(Ui.BarSlot.Parse(AsString(raw[KeyPosition]) ?? s.Position));
         s.PillCorners = AsString(raw[KeyPillCorners]) == "small" ? "small" : "round";
         s.BallSide = AsString(raw[KeyBallSide]) == "left" ? "left" : "right";
+        s.SwapAnimation = Ui.SwapMotion.Key(Ui.SwapMotion.Parse(AsString(raw[KeySwapAnimation])));
         s.CardTextAlign = AsString(raw[KeyCardTextAlign]) is "group" or "text" ? AsString(raw[KeyCardTextAlign])! : "left";
         if (AsInt(raw[KeyManualOffset]) is { } manualOffset)
         {
@@ -280,6 +282,7 @@ public static class SettingsCodec
         raw[KeyManualOffset] = s.ManualOffset;
         raw[KeyPillCorners] = s.PillCorners;
         raw[KeyBallSide] = s.BallSide;
+        raw[KeySwapAnimation] = s.SwapAnimation;
         raw[KeyCardTextAlign] = s.CardTextAlign;
         raw[KeyAudioBars] = s.AudioBars;
         raw[KeyPomoFocus] = s.PomodoroFocus;

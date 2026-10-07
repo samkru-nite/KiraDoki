@@ -215,5 +215,7 @@
     </Grid>
     </Grid>
 
+    <!-- The swap animation (E4) flies its pieces here, over both pills; the window isn't clipped while they fly -->
+    <Canvas x:Name="FlyLayer" IsHitTestVisible="False" />
     </Grid>
 </Window>

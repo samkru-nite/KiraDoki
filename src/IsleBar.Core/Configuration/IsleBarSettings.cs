@@ -87,6 +87,9 @@ public sealed class IsleBarSettings
     /// <summary>Side of the big pill the small pill sits on: "right" (default) · "left". TODO 7.9 D, 10-06.</summary>
     public string BallSide { get; set; } = "right";
 
+    /// <summary>How a task icon and the big pill swap places: "line" (default) · "arc" · "flip" (<see cref="Ui.SwapMotion"/>).</summary>
+    public string SwapAnimation { get; set; } = "line";
+
     /// <summary>Card text on the big pill (user 10-07): "left" (default) · "group" = icon and text centred together · "text" = only the
     /// text centred, the icon stays. Centred only when it fits; text that has to scroll is left-aligned.</summary>
     public string CardTextAlign { get; set; } = "left";
@@ -207,6 +210,7 @@ public sealed class IsleBarSettings
         ManualOffset = ManualOffset,
         PillCorners = PillCorners,
         BallSide = BallSide,
+        SwapAnimation = SwapAnimation,
         CardTextAlign = CardTextAlign,
         AudioBars = AudioBars,
         History = [.. History],

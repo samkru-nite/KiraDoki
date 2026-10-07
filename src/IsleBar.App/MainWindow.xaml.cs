@@ -911,9 +911,9 @@ public sealed partial class MainWindow : Window
             UpdateTaskCells();
             ExpandIfMessage(items);   // feed EVERY new message notice to the expanded card, not just the primary one (bursts dropped middles — user 09-30)
             var change = _animator.Classify(next);   // the animator decides whether it's a new item (kind/source/track)
-            if (_swapping)
+            if (_swapping || _flying)
             {
-                return;   // previous content is still leaving — draw the latest _snapshot when it's done
+                return;   // previous content is still leaving / the swap is flying — draw the latest _snapshot when it's done
             }
 
             if (!_typing && change is IslandAnimator.Change.Swapped or IslandAnimator.Change.Cleared)
@@ -1022,7 +1022,7 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private void UpdateTaskCells()
     {
-        if (_typing || _menuOpen)
+        if (_typing || _menuOpen || _flying)
         {
             return;
         }
@@ -1166,15 +1166,6 @@ public sealed partial class MainWindow : Window
         }
 
         return canvas;
-    }
-
-    /// <summary>A task icon was clicked: its card goes on the big pill and the card there takes the clicked cell (TODO 7.3, 10-07).</summary>
-    private void OnTaskCellClicked(string key)
-    {
-        _slots.Swap(key, _shownCard?.Key, _shownCard?.Type == CardType.Temporary);
-        _cards.Choose(key, DateTimeOffset.UtcNow);
-        _shownCard = _cards.Shown;
-        UpdateTaskCells();   // the next tick draws the card on the big pill
     }
 
     /// <summary>The task cell (or ⋯) under <paramref name="source"/>, by its tag; null = not on a cell.</summary>

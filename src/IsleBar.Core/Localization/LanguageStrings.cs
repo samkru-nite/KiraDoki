@@ -307,6 +307,15 @@ public sealed class LanguageStrings
     /// <summary>Small pill side: left of the big pill.</summary>
     public required string BallSideLeft { get; init; }
 
+    /// <summary>Setting: how a task icon and the big pill swap places (E4, user 10-07), and its three choices.</summary>
+    public required string SwapAnimLabel { get; init; }
+
+    public required string SwapAnimLine { get; init; }
+
+    public required string SwapAnimArc { get; init; }
+
+    public required string SwapAnimFlip { get; init; }
+
     /// <summary>The close zone on an inform card (TODO 7.3): closes the card ("I've seen it").</summary>
     public required string CloseCard { get; init; }
 
