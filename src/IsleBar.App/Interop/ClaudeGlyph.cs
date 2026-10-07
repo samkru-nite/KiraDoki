@@ -13,19 +13,55 @@ internal static class ClaudeGlyph
 {
     private const int SourceSize = 256;
 
-    /// <summary>Extracts only the spark from <paramref name="exePath"/>'s icon and paints it in the single color <paramref name="color"/>.</summary>
-    public static WriteableBitmap? Create(string exePath, int pixelSize, Windows.UI.Color color)
+    /// <summary>
+    /// The spark from <paramref name="exePath"/>'s icon as a <paramref name="pixelSize"/>² coverage mask (one byte per pixel),
+    /// or null. Painted in any colour by <see cref="Paint"/> — the logo is one colour, its colour tells the stage (user 10-07).
+    /// </summary>
+    public static byte[]? Mask(string exePath, int pixelSize)
+        => File.Exists(exePath) && ReadIconPixels(exePath) is { } bgra ? GlyphMask.Build(bgra, SourceSize, SourceSize, pixelSize) : null;
+
+    /// <summary>
+    /// A transparent-ground logo image (the Codex app's PNG) as a <paramref name="pixelSize"/>² mask: its alpha channel. Null when
+    /// it can't be read.
+    /// </summary>
+    public static byte[]? MaskFromImage(string path, int pixelSize)
     {
-        if (!File.Exists(exePath) || ReadIconPixels(exePath) is not { } bgra)
+        try
+        {
+            return Task.Run(async () =>
+            {
+                var file = await Windows.Storage.StorageFile.GetFileFromPathAsync(path);
+                using var stream = await file.OpenReadAsync();
+                var decoder = await Windows.Graphics.Imaging.BitmapDecoder.CreateAsync(stream);
+                var data = await decoder.GetPixelDataAsync(
+                    Windows.Graphics.Imaging.BitmapPixelFormat.Bgra8,
+                    Windows.Graphics.Imaging.BitmapAlphaMode.Straight,
+                    new Windows.Graphics.Imaging.BitmapTransform
+                    {
+                        ScaledWidth = (uint)pixelSize, ScaledHeight = (uint)pixelSize,
+                        InterpolationMode = Windows.Graphics.Imaging.BitmapInterpolationMode.Fant,
+                    },
+                    Windows.Graphics.Imaging.ExifOrientationMode.IgnoreExifOrientation,
+                    Windows.Graphics.Imaging.ColorManagementMode.DoNotColorManage);
+                var bgra = data.DetachPixelData();
+                var alpha = new byte[pixelSize * pixelSize];
+                for (var i = 0; i < alpha.Length; i++)
+                {
+                    alpha[i] = bgra[(i * 4) + 3];
+                }
+
+                return alpha;
+            }).GetAwaiter().GetResult();
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             return null;
         }
+    }
 
-        if (GlyphMask.Build(bgra, SourceSize, SourceSize, pixelSize) is not { } alpha)
-        {
-            return null;
-        }
-
+    /// <summary>A mask painted in the single colour <paramref name="color"/>.</summary>
+    public static WriteableBitmap Paint(byte[] alpha, int pixelSize, Windows.UI.Color color)
+    {
         // Premultiplied BGRA
         var pixels = new byte[pixelSize * pixelSize * 4];
         for (var i = 0; i < alpha.Length; i++)

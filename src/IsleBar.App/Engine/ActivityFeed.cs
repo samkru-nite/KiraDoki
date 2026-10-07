@@ -77,7 +77,9 @@ internal sealed class ActivityFeed : IDisposable
         AdvancePomodoros(items);
         ChimeFinishedTimers(items);
         InterruptDeadAgents(items);
+        DropFinishedSameChat(items, now);
         ChimeFinishedAgents(items);
+        LogAgentChanges(items);
         items.AddRange(Media.Cards);   // one card per media player (user 10-07)
 
         items.AddRange(Downloads.Current);   // browser downloads (in progress / just finished)
@@ -258,6 +260,118 @@ internal sealed class ActivityFeed : IDisposable
     }
 
     // ---------------- Agents ----------------
+
+    private readonly Dictionary<string, string> _chatRoots = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, DateTimeOffset> _chatRootTried = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// A new turn in a chat clears the chat's old done / interrupted / stopped card (user 10-07). Within one session the hook already
+    /// overwrites it; but the desktop app can carry a chat on in a new session (new id, new state file), which left the old card.
+    /// The sessions are matched by their transcripts' first message (<see cref="ChatRoot"/>); the old one's transcript is found by its
+    /// id (the state file name holds its first 8 characters) next to the new one's.
+    /// </summary>
+    private void DropFinishedSameChat(List<ActivityState> items, DateTimeOffset now)
+    {
+        var busy = items.Where(s => s.Agent == IsleBar.Core.Launch.AgentKind.Claude && s.Kind is ActivityKind.AgentWorking or ActivityKind.AgentPermission
+                                    && s.Transcript is not null && s.SourcePath is not null).ToList();
+        if (busy.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var live in busy)
+        {
+            if (RootOf(live.Transcript!, now) is not { } root || Path.GetDirectoryName(live.Transcript!) is not { } folder)
+            {
+                continue;
+            }
+
+            foreach (var old in items.Where(s => s.Agent == IsleBar.Core.Launch.AgentKind.Claude && s.Kind is not (ActivityKind.AgentWorking or ActivityKind.AgentPermission)
+                                                  && s.SourcePath is not null && s.SourcePath != live.SourcePath).ToList())
+            {
+                var file = Path.GetFileNameWithoutExtension(old.SourcePath!);   // claude_9a7d9157
+                var id = file.Contains('_', StringComparison.Ordinal) ? file[(file.IndexOf('_', StringComparison.Ordinal) + 1)..] : string.Empty;
+                if (id.Length < 8)
+                {
+                    continue;
+                }
+
+                string? transcript = null;
+                try
+                {
+                    transcript = Directory.EnumerateFiles(folder, id + "*.jsonl").FirstOrDefault();
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                }
+
+                if (transcript is null || RootOf(transcript, now) != root)
+                {
+                    continue;
+                }
+
+                TaskbarHost.Log($"agent: {Path.GetFileName(old.SourcePath)} ({old.Kind}) dropped — {Path.GetFileName(live.SourcePath)} goes on in the same chat");
+                Store.Remove(file);
+                items.Remove(old);
+            }
+        }
+    }
+
+    /// <summary>A transcript's chat id, cached (it never changes); a transcript without its first message yet is tried again after 2 s.</summary>
+    private string? RootOf(string transcript, DateTimeOffset now)
+    {
+        if (_chatRoots.TryGetValue(transcript, out var known))
+        {
+            return known;
+        }
+
+        if (_chatRootTried.TryGetValue(transcript, out var tried) && now - tried < TimeSpan.FromSeconds(2))
+        {
+            return null;
+        }
+
+        _chatRootTried[transcript] = now;
+        if (ChatRoot.Read(transcript) is { } root)
+        {
+            _chatRoots[transcript] = root;
+            return root;
+        }
+
+        return null;
+    }
+
+    private Dictionary<string, string> _agentSeen = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Logs every agent item that comes, changes stage or goes ("agent: claude_9a7d9157.json done → working · name · session file"),
+    /// to see whether a new turn in the same chat reuses the session (user 10-07: an old "done" card seemed to stay).
+    /// </summary>
+    private void LogAgentChanges(List<ActivityState> items)
+    {
+        var now = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var s in items)
+        {
+            if (s.Agent is null || s.SourcePath is not { } path)
+            {
+                continue;
+            }
+
+            var file = Path.GetFileName(path);
+            now[file] = $"{s.Kind}";
+            var before = _agentSeen.TryGetValue(file, out var was) ? was : "(new)";
+            if (before != now[file])
+            {
+                TaskbarHost.Log($"agent: {file} {before} → {s.Kind} · {s.Name} · {Path.GetFileNameWithoutExtension(s.Transcript ?? "-")}");
+            }
+        }
+
+        foreach (var gone in _agentSeen.Keys.Where(k => !now.ContainsKey(k)))
+        {
+            TaskbarHost.Log($"agent: {gone} {_agentSeen[gone]} → (gone)");
+        }
+
+        _agentSeen = now;
+    }
 
     private readonly HashSet<string> _chimedDone = new();   // agent-done states already sounded, so a finished task chimes once
     private bool _chimeSeeded;

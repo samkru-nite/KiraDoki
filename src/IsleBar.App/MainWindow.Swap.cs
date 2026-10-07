@@ -117,6 +117,7 @@ public sealed partial class MainWindow
             _taskbar.PlaceAt(spanLeftPx, winY, spanRightPx - spanLeftPx, _layout.Height);
             var spanWidth = (spanRightPx - spanLeftPx) / DpiSetup.Scale;
 
+            RestMarquee();   // a scrolling title would be snapshotted whole and unclipped
             var oldShot = oldBig is null ? null : await Capture(CardRow);
             var oldIconX = oldBig is null ? 0 : IconX();
             Phase("old-card");
@@ -138,6 +139,10 @@ public sealed partial class MainWindow
 
             RenderTaskCells();
             RenderIsland();   // still "flying": the window keeps its span and stays unclipped
+            Root.UpdateLayout();
+            // the text was fitted to the slot's old width (say a plain card's 176) before layout gave the new card its own
+            // (a song's is narrower: cover, equalizer) — it ran over the equalizer while flying, then snapped back (user 10-07)
+            RenderIsland();
             Root.UpdateLayout();
 
             var newBig = _bigCard;
@@ -179,6 +184,12 @@ public sealed partial class MainWindow
             _placement = new BarPlacement(false, int.MinValue, int.MinValue);   // place the window for the new layout now
             RenderTaskCells();
             RenderIsland();
+            if (_lapAfterFlight)
+            {
+                _lapAfterFlight = false;
+                ReplayMarquee();   // the new title's lap, held back while it flew
+            }
+
             FollowTaskbar();
             ApplyRegion();
         }
@@ -316,17 +327,20 @@ public sealed partial class MainWindow
             {
                 var circle = SwapMotion.CircleAt(down.CentreX, row);
                 var lit = down.Key == hoverKey;
-                // the card's text fades as it closes and its small icon fades in at the cell — text cut by the closing circle
-                // looked like being sliced (user 10-07)
+                // the card's text fades as it closes (text cut by the closing circle looked like being sliced) while its icon stays
+                // and rides the card down into the cell — fading the small icon in at the end looked like it popped up (user 10-07)
                 var icon = CellGhost(down.Key, ac);
-                Put(icon, down.CentreX - (PillGeometry.Cell / 2), row);
+                Put(icon, 0, row);
                 frames.Add((t, p) =>
                 {
                     var back = 1 - Math.Clamp((p - (1 - turn)) / turn, 0, 1);
-                    mover.Place(SwapMotion.Between(aBox, circle, p, lift), SwapMotion.ContentX(circle, aBox, a.IconX, 1 - p), row + (lift * Math.Sin(Math.PI * p)),
-                        a.IconX, 1, 1 - p, lit ? 1 - back : 0, style == SwapStyle.MorphLine ? SwapMotion.Lerp(1, SwapMotion.FadeTo, Math.Clamp(p, 0, 1)) : 1,
+                    var x = SwapMotion.ContentX(circle, aBox, a.IconX, 1 - p);
+                    var y = row + (lift * Math.Sin(Math.PI * p));
+                    mover.Place(SwapMotion.Between(aBox, circle, p, lift), x, y, a.IconX, 1, 1 - p, lit ? 1 - back : 0,
+                        style == SwapStyle.MorphLine ? SwapMotion.Lerp(1, SwapMotion.FadeTo, Math.Clamp(p, 0, 1)) : 1,
                         content: 1 - Math.Clamp(p / 0.35, 0, 1));
-                    icon.Opacity = Math.Clamp((p - 0.55) / 0.4, 0, 1);   // after the neighbours have made room
+                    Canvas.SetLeft(icon, x + a.IconX - (PillGeometry.Cell / 2));
+                    Canvas.SetTop(icon, y);
                 });
             }
             else
@@ -347,14 +361,18 @@ public sealed partial class MainWindow
             {
                 var circle = SwapMotion.CircleAt(up.CentreX, row);
                 var lit = up.Key == hoverKey;
-                var icon = CellGhost(up.Key, bc);   // the small icon fades out as the card's content fades in
+                var icon = CellGhost(up.Key, bc);   // the small icon rides the card up to its place, then the card's content takes over
                 Put(icon, up.CentreX - (PillGeometry.Cell / 2), row);
                 frames.Add((t, p) =>
                 {
                     var bg = Math.Clamp(p / turn, 0, 1);
-                    mover.Place(SwapMotion.Between(circle, bBox, p, -lift), SwapMotion.ContentX(circle, bBox, b.IconX, p), row - (lift * Math.Sin(Math.PI * p)),
+                    var x = SwapMotion.ContentX(circle, bBox, b.IconX, p);
+                    var y = row - (lift * Math.Sin(Math.PI * p));
+                    mover.Place(SwapMotion.Between(circle, bBox, p, -lift), x, y,
                         b.IconX, 1, p, lit ? 1 - bg : 0, 1, content: Math.Clamp((p - 0.45) / 0.4, 0, 1));   // shows once the box is nearly open
-                    icon.Opacity = 1 - Math.Clamp((p - 0.1) / 0.35, 0, 1);
+                    Canvas.SetLeft(icon, x + b.IconX - (PillGeometry.Cell / 2));
+                    Canvas.SetTop(icon, y);
+                    icon.Opacity = 1 - Math.Clamp((p - 0.7) / 0.25, 0, 1);   // under it the content's own icon is already there
                 });
             }
             else
@@ -401,7 +419,7 @@ public sealed partial class MainWindow
     {
         UIElement content = key == DotsTag || card is null
             ? new FontIcon { FontFamily = new FontFamily("Segoe Fluent Icons"), FontSize = 16, Glyph = "", Foreground = BrushOf(_theme.Icon) }
-            : IconContent(TaskIcons.For(card, CoverOf(card) is not null, DateTimeOffset.UtcNow), CoverOf(card)?.Image);
+            : CellContent(card, TaskIcons.For(card, CoverOf(card) is not null, DateTimeOffset.UtcNow), DateTimeOffset.UtcNow);
         var cell = new Grid { Width = PillGeometry.Cell, Height = PillGeometry.Height, IsHitTestVisible = false };
         cell.Children.Add(content);
         return cell;
@@ -573,6 +591,7 @@ public sealed partial class MainWindow
     private Windows.UI.Color? GlowOf(Card? card) => card switch
     {
         { Pinned: true, Type: CardType.Pending } => Attention(),
+        { Pinned: true, Type: CardType.Inform } when card.State.RunState == ActivityRunState.Error => Alarm(),
         { Pinned: true, Type: CardType.Inform } => _theme.Ok,
         { Pinned: true, Type: CardType.Temporary } when card.State.RunState == ActivityRunState.Error => Alarm(),
         _ => null,

@@ -88,7 +88,8 @@ public sealed partial class MainWindow : Window
     // 90 ms debounce and Everything's answer) opened the old query's first hit, an .exe or .lnk included (review 10-03)
     private string? _shownQuery;
     private Options.SettingsWindow? _settingsWindow;
-    private Microsoft.UI.Xaml.Media.Imaging.WriteableBitmap? _claudeGlyph;
+    /// <summary>Claude's logo in the plain icon colour (null = not on this PC); the Codex one is <c>CodexGlyph.Source</c>.</summary>
+    private ImageSource? _claudeGlyph;
 
     /// <summary>Currently detaching from the taskbar (focus changes during this are not the end of typing).</summary>
     private bool _switching;
@@ -1067,8 +1068,11 @@ public sealed partial class MainWindow : Window
     {
         var left = _settings.BallSide == "left";
         var now = DateTimeOffset.UtcNow;
-        var icons = _cellCards.Select(c => (c.Key, Icon: TaskIcons.For(c, CoverOf(c) is not null, now), Cover: CoverOf(c)?.Image)).ToList();
-        var sig = string.Join("|", icons.Select(i => $"{i.Key}:{i.Icon}")) + $"|{_dotsOn}|{left}|{_theme.Icon}|{RealSearchBoxFill()}";
+        var icons = _cellCards.Select(c => (c.Key, Icon: TaskIcons.For(c, CoverOf(c) is not null, now), Card: c)).ToList();
+        // a timer's hand turns on its own; it is set again only when the timer itself changes (paused, resumed, lengthened)
+        var sig = string.Join("|", icons.Select(i => $"{i.Key}:{i.Icon}" + (i.Card.State.Kind == ActivityKind.Timer
+                      ? $":{i.Card.State.Due}:{i.Card.State.Total}:{i.Card.State.Left}:{i.Card.State.T0}" : string.Empty)))
+                  + $"|{_dotsOn}|{left}|{_theme.Icon}|{RealSearchBoxFill()}";
         SmallRule.Visibility = TaskCellCount > 0 ? Visibility.Visible : Visibility.Collapsed;
         if (sig == _cellsSig)
         {
@@ -1079,9 +1083,15 @@ public sealed partial class MainWindow : Window
         _renderedCells.Clear();
         _renderedCells.AddRange(_cellCards);
         TaskCells.Children.Clear();
-        foreach (var (key, icon, cover) in icons)
+        foreach (var (key, icon, card) in icons)
         {
-            TaskCells.Children.Add(MakeCell(key, IconContent(icon, cover)));
+            var content = CellContent(card, icon, now);
+            if (_cellCards.FirstOrDefault(c => c.Key == key)?.State.Stage == "privacy")
+            {
+                Breathe(content);   // mic / camera in use: plainly breathing, so it isn't forgotten (user 10-07)
+            }
+
+            TaskCells.Children.Add(MakeCell(key, content));
         }
 
         var more = MakeCell(DotsTag, new Microsoft.UI.Xaml.Controls.FontIcon
@@ -1092,6 +1102,111 @@ public sealed partial class MainWindow : Window
         {
             TaskCells.Children.Insert(left ? 0 : TaskCells.Children.Count, more);
         }
+    }
+
+    /// <summary>What a card's cell draws: a timer's turning dial, else its icon (<see cref="IconContent"/>).</summary>
+    private UIElement CellContent(Card card, TaskIcon icon, DateTimeOffset now)
+        => TimerDial.Of(card.State, card.Type == CardType.Inform, now) is { } dial
+            ? DialContent(dial, ToneColor(icon.Tone), icon.Paused)
+            : IconContent(icon, CoverOf(card)?.Image);
+
+    /// <summary>
+    /// A timer's small icon (user 10-07): Segoe Fluent's stopwatch (E916) rebuilt in its own proportions — ring, top bar, side
+    /// button — with a hand that turns (the font draws the hand into the glyph, it can't move on its own). Measured from E916 at
+    /// 160 px: ring centre (8, 9.1), outer radius 6.9, line 1; bar 5.6–10.4 on top; hand 1.2 wide up to 4.3; button a short
+    /// diagonal at the top right. The compositor turns the hand (<see cref="TimerDial"/>).
+    /// </summary>
+    private UIElement DialContent(TimerDial dial, Windows.UI.Color color, bool paused)
+    {
+        var brush = BrushOf(color);
+        var box = new Microsoft.UI.Xaml.Controls.Grid { Width = 16, Height = 16, IsHitTestVisible = false };
+        var canvas = new Microsoft.UI.Xaml.Controls.Canvas { Width = 16, Height = 16 };
+        const double cx = 8, cy = 9.1, outer = 6.9, line = 1, hand = 1.2, tip = 4.3;
+        var ring = new Microsoft.UI.Xaml.Shapes.Ellipse { Width = 2 * outer, Height = 2 * outer, Stroke = brush, StrokeThickness = line };
+        Microsoft.UI.Xaml.Controls.Canvas.SetLeft(ring, cx - outer);
+        Microsoft.UI.Xaml.Controls.Canvas.SetTop(ring, cy - outer);
+        var bar = new Microsoft.UI.Xaml.Shapes.Rectangle { Width = 4.8, Height = line, RadiusX = line / 2, RadiusY = line / 2, Fill = brush };
+        Microsoft.UI.Xaml.Controls.Canvas.SetLeft(bar, cx - 2.4);
+        var button = new Microsoft.UI.Xaml.Shapes.Line
+        {
+            X1 = 13.3, Y1 = 2.7, X2 = 14.4, Y2 = 3.9, Stroke = brush, StrokeThickness = line,
+            StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round,
+        };
+        var needle = new Microsoft.UI.Xaml.Shapes.Rectangle
+        {
+            Width = hand, Height = cy - tip + (hand / 2), RadiusX = hand / 2, RadiusY = hand / 2, Fill = brush,
+        };
+        Microsoft.UI.Xaml.Controls.Canvas.SetLeft(needle, cx - (hand / 2));
+        Microsoft.UI.Xaml.Controls.Canvas.SetTop(needle, tip);
+        canvas.Children.Add(ring);
+        canvas.Children.Add(bar);
+        canvas.Children.Add(button);
+        canvas.Children.Add(needle);
+        box.Children.Add(canvas);
+
+        var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(needle);
+        visual.CenterPoint = new System.Numerics.Vector3((float)(hand / 2), (float)(cy - tip), 0);
+        visual.RotationAngleInDegrees = (float)dial.Angle;
+        if (dial.Turn > 0 && dial.Over > TimeSpan.Zero)
+        {
+            var turn = visual.Compositor.CreateScalarKeyFrameAnimation();
+            var linear = visual.Compositor.CreateLinearEasingFunction();
+            turn.InsertKeyFrame(0f, (float)dial.Angle);
+            turn.InsertKeyFrame(1f, (float)(dial.Angle + dial.Turn), linear);
+            turn.Duration = dial.Over;
+            turn.IterationBehavior = dial.Loop ? Microsoft.UI.Composition.AnimationIterationBehavior.Forever : Microsoft.UI.Composition.AnimationIterationBehavior.Count;
+            turn.IterationCount = 1;
+            visual.StartAnimation("RotationAngleInDegrees", turn);
+        }
+
+        if (paused)
+        {
+            AddPauseNotch(box);
+        }
+
+        return box;
+    }
+
+    /// <summary>
+    /// The big pill's timer icon: the same turning dial as the small one (user 10-07: only the small one turned). Built again only
+    /// when the timer itself changes (the pill redraws a timer every tick; the compositor turns the hand in between).
+    /// </summary>
+    private void ShowLeadDial(ActivityState? state, Windows.UI.Color color)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var dial = state is null ? null : TimerDial.Of(state, _shownCard?.Type == CardType.Inform, now);
+        var key = dial is null || state is null ? null : $"{state.SourcePath}|{state.Due}|{state.Total}|{state.Left}|{state.T0}|{_shownCard?.Type}|{color}|{RealSearchBoxFill()}";
+        if (dial is not null)
+        {
+            LeadIcon.Visibility = Visibility.Collapsed;
+        }
+
+        if (key == _leadDialKey)
+        {
+            return;
+        }
+
+        _leadDialKey = key;
+        LeadDial.Children.Clear();
+        if (dial is not null)
+        {
+            LeadDial.Children.Add(DialContent(dial, color, state!.IsPaused));
+        }
+    }
+
+    private string? _leadDialKey;
+
+    /// <summary>A slow, clear breath on the compositor: full → 30% → full every 2 s, for as long as the element lives.</summary>
+    private static void Breathe(UIElement element)
+    {
+        var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(element);
+        var breath = visual.Compositor.CreateScalarKeyFrameAnimation();
+        breath.InsertKeyFrame(0f, 1f);
+        breath.InsertKeyFrame(0.5f, 0.3f);
+        breath.InsertKeyFrame(1f, 1f);
+        breath.Duration = TimeSpan.FromSeconds(2);
+        breath.IterationBehavior = Microsoft.UI.Composition.AnimationIterationBehavior.Forever;
+        visual.StartAnimation("Opacity", breath);
     }
 
     /// <summary>Tag of the ⋯ cell (task cells carry their card's key).</summary>
@@ -1129,7 +1244,7 @@ public sealed partial class MainWindow : Window
             return box;
         }
 
-        if (icon.Logo is { } agent && (agent == "codex" ? CodexGlyph.Source : _claudeGlyph) is { } logo)
+        if (icon.Logo is { } agent && AgentLogo(agent, ToneColor(icon.Tone)) is { } logo)
         {
             // the same marks as the big pill, the same padding: the spark image is 20 for a 16 icon, Codex's 19
             var size = agent == "codex" ? 19 : 20;
@@ -1137,34 +1252,78 @@ public sealed partial class MainWindow : Window
             return box;
         }
 
-        var color = icon.Tone switch
-        {
-            IconTone.Waiting => Attention(),
-            IconTone.Done => _theme.Ok,
-            IconTone.Error => Alarm(),
-            _ => _theme.Icon,
-        };
+        var color = ToneColor(icon.Tone);
         box.Children.Add(new Microsoft.UI.Xaml.Controls.FontIcon
         {
             FontFamily = new FontFamily("Segoe Fluent Icons"), FontSize = 16, Glyph = icon.Glyph, Foreground = BrushOf(color),
         });
         if (icon.Paused)
         {
-            // a pill-coloured disc cuts the glyph's corner, the bars sit in it
-            box.Children.Add(new Microsoft.UI.Xaml.Shapes.Ellipse
-            {
-                Width = 9, Height = 9, Fill = BrushOf(pill), HorizontalAlignment = HorizontalAlignment.Right,
-                VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, -2, -2),
-            });
-            var bars = PauseBars(9, 1.5, 5, 2.2, 5.3);
-            bars.HorizontalAlignment = HorizontalAlignment.Right;
-            bars.VerticalAlignment = VerticalAlignment.Bottom;
-            bars.Margin = new Thickness(0, 0, -2, -2);
-            box.Children.Add(bars);
+            AddPauseNotch(box);
         }
 
         return box;
     }
+
+    /// <summary>Paused: a pill-coloured disc cuts the icon's bottom-right corner and the two bars sit in it.</summary>
+    private void AddPauseNotch(Microsoft.UI.Xaml.Controls.Grid box)
+    {
+        box.Children.Add(new Microsoft.UI.Xaml.Shapes.Ellipse
+        {
+            Width = 9, Height = 9, Fill = BrushOf(RealSearchBoxFill()), HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, -2, -2),
+        });
+        var bars = PauseBars(9, 1.5, 5, 2.2, 5.3);
+        bars.HorizontalAlignment = HorizontalAlignment.Right;
+        bars.VerticalAlignment = VerticalAlignment.Bottom;
+        bars.Margin = new Thickness(0, 0, -2, -2);
+        box.Children.Add(bars);
+    }
+
+    /// <summary>
+    /// A paused song on the big pill, drawn like its small icon (user 10-07): the cover under a veil of pill colour with two bars, or
+    /// without a cover a pill-coloured notch in the glyph's corner holding them.
+    /// </summary>
+    private void ShowLeadPause(bool on)
+    {
+        var cover = on && AlbumArt.Visibility == Visibility.Visible;
+        var key = !on ? null : $"{cover}|{RealSearchBoxFill()}|{_theme.Foreground}";
+        if (key == _leadPauseKey)
+        {
+            return;
+        }
+
+        _leadPauseKey = key;
+        LeadPause.Children.Clear();
+        if (!on)
+        {
+            return;
+        }
+
+        var pill = RealSearchBoxFill();
+        if (cover)
+        {
+            // the cover is 22 centred on the 16 slot: the veil the same size, the bars scaled from the 16 icon's
+            LeadPause.Children.Add(new Microsoft.UI.Xaml.Shapes.Ellipse { Width = 22, Height = 22, Margin = new Thickness(-3), Fill = BrushOf(Windows.UI.Color.FromArgb(148, pill.R, pill.G, pill.B)) });
+            var bars = PauseBars(22, 2.4, 8.2, 7.4, 12.2);
+            bars.Margin = new Thickness(-3);
+            LeadPause.Children.Add(bars);
+            return;
+        }
+
+        LeadPause.Children.Add(new Microsoft.UI.Xaml.Shapes.Ellipse
+        {
+            Width = 9, Height = 9, Fill = BrushOf(pill), HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, -2, -2),
+        });
+        var small = PauseBars(9, 1.5, 5, 2.2, 5.3);
+        small.HorizontalAlignment = HorizontalAlignment.Right;
+        small.VerticalAlignment = VerticalAlignment.Bottom;
+        small.Margin = new Thickness(0, 0, -2, -2);
+        LeadPause.Children.Add(small);
+    }
+
+    private string? _leadPauseKey;
 
     /// <summary>Two rounded bars in a <paramref name="size"/> square, at x <paramref name="x1"/> and <paramref name="x2"/>, centred vertically.</summary>
     private FrameworkElement PauseBars(double size, double width, double height, double x1, double x2)
@@ -1324,7 +1483,17 @@ public sealed partial class MainWindow : Window
             if (_marqueeText != full)
             {
                 _marqueeText = full;
-                StartMarquee();   // new title: one lap
+                if (_flying)
+                {
+                    // a snapshot is about to be taken: it showed both copies unclipped, over the equalizer and past the pill
+                    // (user 10-07) — rest with "…" now, the lap starts once the card has landed
+                    _lapAfterFlight = true;
+                    ShowMarqueeRest();
+                }
+                else
+                {
+                    StartMarquee();   // new title: one lap
+                }
             }
             else if (!_marqueeRunning)
             {
@@ -1653,6 +1822,7 @@ public sealed partial class MainWindow : Window
             _ when _dropHover => ("drop", _theme.Accent),   // dragging over — "drop here to send"
             null or { Pinned: false } => ((string?)null, _theme.Ok),
             { Type: CardType.Pending } => ($"ask|{card.Key}", Attention()),
+            { Type: CardType.Inform } when card.State.RunState == ActivityRunState.Error => ($"fail|{card.Key}", Alarm()),   // interrupted / stopped / failed: red, not green (user 10-07)
             { Type: CardType.Inform } => ($"inform|{card.Key}", _theme.Ok),
             { Type: CardType.Temporary } when card.State.RunState == ActivityRunState.Error => ($"warn|{card.Key}", Alarm()),
             _ => ((string?)null, _theme.Ok),
@@ -1664,6 +1834,7 @@ public sealed partial class MainWindow : Window
     private Windows.UI.Color IconColorFor(Card? card) => card switch
     {
         { Pinned: true, Type: CardType.Pending } => Attention(),
+        { Pinned: true, Type: CardType.Inform } when card.State.RunState == ActivityRunState.Error => Alarm(),
         { Pinned: true, Type: CardType.Inform } => _theme.Ok,
         { Pinned: true, Type: CardType.Temporary } when card.State.RunState == ActivityRunState.Error => Alarm(),
         _ => _theme.Icon,
@@ -1889,6 +2060,29 @@ public sealed partial class MainWindow : Window
         });
     }
 
+    /// <summary>A new title's lap was held back while a transition flew; it runs once the card has landed.</summary>
+    private bool _lapAfterFlight;
+
+    /// <summary>
+    /// Stops a lap mid-scroll and shows the "…" look, keeping the title (a snapshot doesn't see the scroll offset nor the clip:
+    /// it showed the whole unscrolled title running past the slot — user 10-07).
+    /// </summary>
+    private void RestMarquee()
+    {
+        if (!_marqueeRunning)
+        {
+            return;
+        }
+
+        _marqueeRun++;   // the lap's own end mustn't act later
+        _marqueeRunning = false;
+        SetMarqueeFade(false);
+        var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(MarqueePanel);
+        visual.StopAnimation("Translation.X");
+        visual.Properties.InsertVector3("Translation", System.Numerics.Vector3.Zero);
+        ShowMarqueeRest();
+    }
+
     private void StopMarquee()
     {
         ShowClockDigits(null);
@@ -2035,12 +2229,14 @@ public sealed partial class MainWindow : Window
         }
 
         var codex = state.AgentLabel == "Codex";
-        if (codex ? CodexGlyph.Source is null : _claudeGlyph is null)
+        if ((codex ? _codexBrand : _claudeGlyph) is null)
         {
             return;   // no mark on this PC → keep ✓/🔔
         }
 
-        ClaudeGlyphImage.Source = _claudeGlyph;
+        ClaudeGlyphImage.Source = _claudeGlyph;   // the makers' colours here: the ring tells the stage (user 10-07)
+        CodexGlyph.Source = _codexBrand;
+
         ClaudeGlyphImage.Visibility = codex ? Visibility.Collapsed : Visibility.Visible;
         CodexGlyph.Visibility = codex ? Visibility.Visible : Visibility.Collapsed;
         LeadIcon.Visibility = Visibility.Collapsed;
@@ -2220,6 +2416,8 @@ public sealed partial class MainWindow : Window
         {
             SetEqualizer(false);
             ShowAlbumArt(false);
+            ShowLeadPause(false);
+            ShowLeadDial(null, _theme.Icon);
             StopMarquee();
             IslandContent.Visibility = Visibility.Collapsed;
             Entry.Visibility = Visibility.Visible;
@@ -2263,6 +2461,7 @@ public sealed partial class MainWindow : Window
         UpdateLeadIcon();
         LeadIcon.Glyph = state.IsPaused ? "\uE769" : GlyphFor(state);   // paused timer = pause icon
         LeadIcon.Foreground = BrushOf(_dropHover ? _theme.Icon : IconColorFor(_shownCard));
+        ShowLeadDial(_dropHover ? null : state, IconColorFor(_shownCard));
         // music: 8 before the now-playing bars, else 12 to the pill's edge (TODO 7.9 D)
         IslandContent.Margin = new Thickness(0, 0, state.Kind == ActivityKind.Music && state.Stage != "paused" ? 8 : 12, 0);
         // compressing: the document outline gets zipper teeth (the drop hint uses the same outline without them)
@@ -2270,6 +2469,7 @@ public sealed partial class MainWindow : Window
                            && state.Glyph == Media.FileOperationWatcher.CompressGlyph ? 1 : 0;
         ShowAgentMark(state);
         ShowAlbumArt(state.Kind == ActivityKind.Music);
+        ShowLeadPause(state.Kind == ActivityKind.Music && state.Stage == "paused");
         SetEqualizer(state.Kind == ActivityKind.Music && state.Stage != "paused");
         var now = DateTimeOffset.UtcNow;
         // The done-alert hook only carries the session name (no folder name — user feedback 09-30). Without a name, just "Claude done"
@@ -2608,30 +2808,104 @@ public sealed partial class MainWindow : Window
     /// during a theme switch the registry and the screen disagree, and trusting the setting makes text vanish.
     /// </summary>
     /// <summary>
-    /// The Claude spark (tinted with the theme's icon colour) and the Codex mark (black or white variant), both read from
-    /// the user's own PC — nothing of Anthropic's or OpenAI's is shipped (user 10-01). Called again when the theme changes.
-    /// </summary>
-    /// <summary>Claude's own colour for its spark (the logo, user 10-07: every agent stage shows the maker's logo).</summary>
-    private static readonly Windows.UI.Color ClaudeOrange = Windows.UI.Color.FromArgb(255, 0xD9, 0x77, 0x57);
-
-    /// <summary>
-    /// The agents' logos, from what is installed on this PC (nothing is shipped): Claude's spark from the command-line claude.exe or
-    /// the Claude app's icon, painted Claude orange; Codex's mark from the VS Code / Cursor extension or the Codex app's own logo.
+    /// The agents' logos, from what is installed on this PC (nothing is shipped — user 10-01): Claude's spark from the command-line
+    /// claude.exe or the Claude app's icon; Codex's mark from the VS Code / Cursor extension or the Codex app's own logo. Each is kept
+    /// as a shape and painted in one colour (user 10-07): the plain icon colour while working, orange / green / red when it waits for
+    /// you, is done, went wrong — the same three colours as every small icon (<see cref="TaskIcons"/>). Called again on a theme change.
     /// </summary>
     private void LoadAgentMarks()
     {
         var light = ThemeColors.FromSystem().Light;
         var cli = ClaudeExecutable.Resolve(AgentProfiles.Get(AgentKind.Claude));
-        _claudeGlyph = ClaudeGlyph.Create(cli, DpiSetup.Px(21), ClaudeOrange)
-                       ?? (AgentApps.ClaudeExe() is { } app ? ClaudeGlyph.Create(app, DpiSetup.Px(21), ClaudeOrange) : null);
-        CodexGlyph.Source = CodexMark.Find(CodexMark.DefaultRoots(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)), light) is { } blossom
-            ? new Microsoft.UI.Xaml.Media.Imaging.SvgImageSource(new Uri(blossom))
-            : AgentApps.CodexLogo(light) is { } png
-                ? new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(png)) { DecodePixelWidth = DpiSetup.Px(19) }
+        _claudeMask = ClaudeGlyph.Mask(cli, DpiSetup.Px(21))
+                      ?? (AgentApps.ClaudeExe() is { } app ? ClaudeGlyph.Mask(app, DpiSetup.Px(21)) : null);
+        _codexSvg = null;
+        _codexMask = null;
+        string? blossomPath = null, pngPath = null;
+        if (CodexMark.Find(CodexMark.DefaultRoots(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)), light) is { } blossom)
+        {
+            try
+            {
+                _codexSvg = File.ReadAllText(blossom);
+                blossomPath = blossom;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // no mark: the glyph
+            }
+        }
+        else if (AgentApps.CodexLogo(light) is { } png)
+        {
+            _codexMask = ClaudeGlyph.MaskFromImage(png, DpiSetup.Px(19));
+            pngPath = png;
+        }
+
+        _logos.Clear();
+        // the big pill (and the lifted card) keep the makers' own colours — its ring already tells the stage (user 10-07);
+        // only the small icons are one colour + orange / green / red
+        _claudeGlyph = AgentLogo("claude", ClaudeOrange);
+        _codexBrand = blossomPath is not null
+            ? new Microsoft.UI.Xaml.Media.Imaging.SvgImageSource(new Uri(blossomPath))
+            : _codexMask is not null && pngPath is not null
+                ? new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(pngPath)) { DecodePixelWidth = DpiSetup.Px(19) }
                 : null;
-        TaskbarHost.Log($"agent marks: claude {(_claudeGlyph is null ? "none" : "ok")}, codex {(CodexGlyph.Source is null ? "none" : "ok")}");
+        CodexGlyph.Source = _codexBrand;
+        TaskbarHost.Log($"agent marks: claude {(_claudeGlyph is null ? "none" : "ok")}, codex {(_codexSvg is not null ? "svg" : _codexMask is not null ? "png" : "none")}");
         _cellsSig = null;   // small icons pick the logos up
     }
+
+    private byte[]? _claudeMask;
+    private ImageSource? _codexBrand;
+
+    /// <summary>Claude's own colour for its spark on the big pill.</summary>
+    private static readonly Windows.UI.Color ClaudeOrange = Windows.UI.Color.FromArgb(255, 0xD9, 0x77, 0x57);
+    private byte[]? _codexMask;
+    private string? _codexSvg;
+    private readonly Dictionary<(string Agent, Windows.UI.Color Color), ImageSource> _logos = [];
+
+    /// <summary>An agent's logo ("claude" / "codex") painted in <paramref name="color"/>; null when this PC doesn't have it.</summary>
+    private ImageSource? AgentLogo(string agent, Windows.UI.Color color)
+    {
+        if (_logos.TryGetValue((agent, color), out var known))
+        {
+            return known;
+        }
+
+        ImageSource? logo = null;
+        if (agent == "claude" && _claudeMask is { } spark)
+        {
+            logo = ClaudeGlyph.Paint(spark, DpiSetup.Px(21), color);
+        }
+        else if (agent == "codex" && _codexMask is { } mark)
+        {
+            logo = ClaudeGlyph.Paint(mark, DpiSetup.Px(19), color);
+        }
+        else if (agent == "codex" && _codexSvg is { } svg)
+        {
+            // the extension's mark is one-colour vector art: every fill / stroke takes the colour
+            var hex = $"#{color.R:X2}{color.G:X2}{color.B:X2}";
+            var painted = System.Text.RegularExpressions.Regex.Replace(svg, @"\b(fill|stroke)(=""|:\s*)(?!none)[^"";]+", m => m.Groups[1].Value + m.Groups[2].Value + hex);
+            var source = new Microsoft.UI.Xaml.Media.Imaging.SvgImageSource();
+            _ = source.SetSourceAsync(new MemoryStream(System.Text.Encoding.UTF8.GetBytes(painted)).AsRandomAccessStream());
+            logo = source;
+        }
+
+        if (logo is not null)
+        {
+            _logos[(agent, color)] = logo;
+        }
+
+        return logo;
+    }
+
+    /// <summary>The colour of a small icon's tone (also the agents' logos on the big pill).</summary>
+    private Windows.UI.Color ToneColor(IconTone tone) => tone switch
+    {
+        IconTone.Waiting => Attention(),
+        IconTone.Done => _theme.Ok,
+        IconTone.Error => Alarm(),
+        _ => _theme.Icon,
+    };
 
     /// <summary>
     /// Light/dark switched while running: recolour in place. The taskbar itself often repaints a few seconds after the
@@ -2797,6 +3071,56 @@ public sealed partial class MainWindow : Window
         {
             CloseHover.Opacity = 0;
         }
+        else if (_closeInkFor != CloseLabel.Text)
+        {
+            _closeInkFor = CloseLabel.Text;
+            CentreCloseInk();
+        }
+    }
+
+    private string? _closeInkFor;
+
+    /// <summary>
+    /// "Close" centred by its glyphs, not its line box (user 10-07: it sat off-centre up and down): its own inked rows are found in
+    /// a snapshot and the label is moved so their middle is the zone's middle, rounded to 0.5. Again when the text changes.
+    /// </summary>
+    private async void CentreCloseInk()
+    {
+        try
+        {
+            CloseLabel.UpdateLayout();
+            var bitmap = new Microsoft.UI.Xaml.Media.Imaging.RenderTargetBitmap();
+            await bitmap.RenderAsync(CloseLabel);
+            var pixels = System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBufferExtensions.ToArray(await bitmap.GetPixelsAsync());
+            int width = bitmap.PixelWidth, height = bitmap.PixelHeight;
+            int top = -1, bottom = -1;
+            for (var y = 0; y < height; y++)
+            {
+                for (var x = 0; x < width; x++)
+                {
+                    if (pixels[(((y * width) + x) * 4) + 3] > 64)
+                    {
+                        top = top < 0 ? y : top;
+                        bottom = y;
+                        break;
+                    }
+                }
+            }
+
+            if (top < 0 || CloseLabel.ActualHeight <= 0)
+            {
+                return;
+            }
+
+            var scale = height / CloseLabel.ActualHeight;
+            var inkMiddle = (top + bottom + 1) / 2.0 / scale;
+            CloseShift.Y = Math.Round(((CloseLabel.ActualHeight / 2) - inkMiddle) * 2) / 2;
+            TaskbarHost.Log($"close ink: rows {top}–{bottom} of {height} px → y {CloseShift.Y}");
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)   // async void: nothing may escape
+        {
+            TaskbarHost.Log("close ink: measure failed — " + ex.Message);
+        }
     }
 
     /// <summary>The mouse on the big pill: it lifts slightly, like the real search box.</summary>
@@ -2937,8 +3261,9 @@ public sealed partial class MainWindow : Window
         var island = _snapshot.IsActive && !_typing && _compose is null;   // composing counts as typing (agent mark, not the island icon)
         var agentIcon = !island && _mode == BarMode.Claude;
         var spark = agentIcon && _settings.Agent == AgentKind.Claude && _claudeGlyph is not null;
-        var blossom = agentIcon && _settings.Agent == AgentKind.Codex && CodexGlyph.Source is not null;
+        var blossom = agentIcon && _settings.Agent == AgentKind.Codex && _codexBrand is not null;
         ClaudeGlyphImage.Source = _claudeGlyph;
+        CodexGlyph.Source = _codexBrand;
         ClaudeGlyphImage.Visibility = spark ? Visibility.Visible : Visibility.Collapsed;
         CodexGlyph.Visibility = blossom ? Visibility.Visible : Visibility.Collapsed;
         LeadIcon.Visibility = spark || blossom ? Visibility.Collapsed : Visibility.Visible;
