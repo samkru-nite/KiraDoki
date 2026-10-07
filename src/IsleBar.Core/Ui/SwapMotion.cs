@@ -30,6 +30,13 @@ public static class SwapMotion
     /// <summary>Easing: cubic-bezier(.4, 0, .2, 1) — Material's "standard" curve, the one the preview used.</summary>
     public const double X1 = 0.4, Y1 = 0, X2 = 0.2, Y2 = 1;
 
+    /// <summary>With the bounce on (setting, user 10-07) movements take a little longer and overshoot by about this share before settling.</summary>
+    public static readonly TimeSpan BounceDuration = TimeSpan.FromSeconds(0.46);
+    public const double BounceStrength = 1.2;   // easeOutBack's s: 1.2 ≈ 5% past the end
+
+    /// <summary>Room kept right of the pills while things fly, for the bounce to overshoot into (dip).</summary>
+    public const double Overshoot = 16;
+
     /// <summary>How far the arcs rise / dip (the taskbar has 7.5 above and below the pills).</summary>
     public const double Arc = 7;
 
@@ -114,6 +121,23 @@ public static class SwapMotion
         => Lerp(circle.X + (circle.Width / 2) - iconX, pill.X, p);
 
     public static double Lerp(double a, double b, double t) => a + ((b - a) * t);
+
+    /// <summary>
+    /// The movement curve: <see cref="Ease"/>, or with the bounce an ease-out-back that passes the end by ~5% and comes back
+    /// (opacities clamp it; sizes and positions overshoot — that is the bounce).
+    /// </summary>
+    public static double Move(double t, bool bounce)
+    {
+        if (!bounce)
+        {
+            return Ease(t);
+        }
+
+        var u = Math.Clamp(t, 0, 1) - 1;
+        return 1 + ((BounceStrength + 1) * u * u * u) + (BounceStrength * u * u);
+    }
+
+    public static TimeSpan Length(bool bounce) => bounce ? BounceDuration : Duration;
 
     /// <summary>Flip's curves: leaving speeds up (quadratic), arriving slows down (cubic).</summary>
     public static double EaseIn(double t) => Math.Clamp(t, 0, 1) * Math.Clamp(t, 0, 1);

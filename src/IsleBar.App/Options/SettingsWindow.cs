@@ -346,6 +346,7 @@ internal sealed class SettingsWindow : Window
             () => _settings.PillCorners, v => _settings.PillCorners = v);
         ChoiceRow(_text.SwapAnimLabel, [("line", _text.SwapAnimLine), ("arc", _text.SwapAnimArc), ("flip", _text.SwapAnimFlip)],
             () => _settings.SwapAnimation, v => _settings.SwapAnimation = v);
+        ToggleRow(_text.SwapBounce, () => _settings.SwapBounce, v => _settings.SwapBounce = v);
         ChoiceRow(_text.CardTextLabel, [("left", _text.CardTextLeft), ("group", _text.CardTextCenterGroup), ("text", _text.CardTextCenterText)],
             () => _settings.CardTextAlign, v => _settings.CardTextAlign = v);
 

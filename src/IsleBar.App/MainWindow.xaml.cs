@@ -908,33 +908,23 @@ public sealed partial class MainWindow : Window
             var next = _shownCard is { } shown ? new IslandSnapshot(shown.State, _cards.Cards.Count - 1) : IslandSnapshot.Empty;
             _snapshot = next;
             LoadAlbumArt();
-            UpdateTaskCells();
             ExpandIfMessage(items);   // feed EVERY new message notice to the expanded card, not just the primary one (bursts dropped middles — user 09-30)
-            var change = _animator.Classify(next);   // the animator decides whether it's a new item (kind/source/track)
-            if (_swapping || _flying)
+            if (_flying)
             {
-                return;   // previous content is still leaving / the swap is flying — draw the latest _snapshot when it's done
+                return;   // a transition is flying — it draws the latest state when it lands
             }
 
-            if (!_typing && change is IslandAnimator.Change.Swapped or IslandAnimator.Change.Cleared)
+            var change = _animator.Classify(next);   // the animator decides whether it's a new item (kind/source/track)
+            ComputeCells();
+            if (SceneChanged())
             {
-                // the previous content fades out first (0.12s), then the new content comes in (09-30 design M3)
-                _swapping = true;
-                _animator.Exit(() =>
-                {
-                    _swapping = false;
-                    RenderIsland();
-                    if (_snapshot.IsActive)
-                    {
-                        _animator.Enter();
-                    }
-                    else
-                    {
-                        _animator.Restore();
-                    }
-                });
+                // a card went up or down, an icon came or went: everything moves from where it was to where it goes (user 10-07)
+                _ = Transition(hoverKey: null);
                 return;
             }
+
+            RenderTaskCells();
+            LayoutPills();
 
             // Music is the long-running island and its only per-tick change is the progress bar, which now advances ~once a second
             // (the media watcher is event-driven). So skip its re-render when nothing visible changed — the title marquee keeps
@@ -952,9 +942,9 @@ public sealed partial class MainWindow : Window
                 RenderIsland();
             }
 
-            if (change is IslandAnimator.Change.Appeared or IslandAnimator.Change.Swapped)
+            if (change is IslandAnimator.Change.Swapped)
             {
-                _animator.Enter();
+                _animator.Enter();   // the same card, a new item in it (next song): a small dip
             }
           }
           catch
@@ -971,6 +961,11 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private void FollowTaskbar()
     {
+        if (_flying)
+        {
+            return;   // a transition has the window spanning the old and the new layout; it places it when it lands
+        }
+
         var spot = _tracker.PlaceNow(_width);
         var placement = spot.Visible ? spot with { Y = spot.Y - DpiSetup.Px(PillGeometry.ArcRoom) } : spot;
         if (placement == _placement && _width == _placedWidth)
@@ -996,9 +991,8 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    /// <summary>The big pill shows a card, typing, a dragged file or the compose box; otherwise only the small pill (TODO 7.1).
-    /// While the last card is fading out (<see cref="_swapping"/>) it stays until the fade is done.</summary>
-    private bool BigVisible => _typing || _compose is not null || _dropHover || _snapshot.IsActive || _swapping;
+    /// <summary>The big pill shows a card, typing, a dragged file or the compose box; otherwise only the small pill (TODO 7.1).</summary>
+    private bool BigVisible => _typing || _compose is not null || _dropHover || _snapshot.IsActive;
 
     // ---------------- Small pill: task icons (E3) ----------------
 
@@ -1022,9 +1016,19 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private void UpdateTaskCells()
     {
+        if (ComputeCells())
+        {
+            RenderTaskCells();
+            LayoutPills();
+        }
+    }
+
+    /// <summary>Works out which cells should show (<see cref="_cellCards"/>, <see cref="_dotsOn"/>). False while frozen.</summary>
+    private bool ComputeCells()
+    {
         if (_typing || _menuOpen || _flying)
         {
-            return;
+            return false;
         }
 
         _slots.Update(_cards.Cards, _shownCard?.Key, _hovering);
@@ -1034,8 +1038,7 @@ public sealed partial class MainWindow : Window
         _cellCards.Clear();
         _cellCards.AddRange(cells.Take(icons));
         _dotsOn = dots;
-        RenderTaskCells();
-        LayoutPills();
+        return true;
     }
 
     /// <summary>The most cells (⋯ included) that fit on the taskbar at the bar's position, up to <paramref name="wanted"/>.</summary>
@@ -1073,6 +1076,8 @@ public sealed partial class MainWindow : Window
         }
 
         _cellsSig = sig;
+        _renderedCells.Clear();
+        _renderedCells.AddRange(_cellCards);
         TaskCells.Children.Clear();
         foreach (var (key, icon, cover) in icons)
         {
@@ -1656,8 +1661,6 @@ public sealed partial class MainWindow : Window
         _ => _theme.Icon,
     };
 
-    /// <summary>Previous island content is still leaving (no redraw meanwhile).</summary>
-    private bool _swapping;
 
     private string? _lastMusicSig;
 
@@ -1758,7 +1761,17 @@ public sealed partial class MainWindow : Window
     private static extern uint GetPixel(IntPtr dc, int x, int y);
 
     /// <summary>Clip to the pill shape (flush, with no margin, when the alert border is on).</summary>
-    private void ApplyRegion() => PillRegion.Apply(_taskbar.OuterWindow, _layout);
+    private void ApplyRegion()
+    {
+        if (_flying)
+        {
+            PillRegion.Clear(_taskbar.OuterWindow);   // pieces fly outside the pills
+        }
+        else
+        {
+            PillRegion.Apply(_taskbar.OuterWindow, _layout);
+        }
+    }
 
     /// <summary>Orange (warning) — the Windows warning color, visible on light and dark themes.</summary>
     private static Windows.UI.Color Attention()
@@ -2179,6 +2192,7 @@ public sealed partial class MainWindow : Window
 
     private void RenderIsland()
     {
+        _bigCard = !_typing && _compose is null && !_dropHover && _snapshot.IsActive ? _shownCard : null;
         LayoutPills();
         _animator.Breathe(_snapshot.IsActive && !_typing && _snapshot.Primary?.Kind == ActivityKind.AgentWorking);
         ShowCloseZone();
@@ -2469,6 +2483,7 @@ public sealed partial class MainWindow : Window
         ActivityKind.Timer => "\uE916",                                 // stopwatch
         ActivityKind.Notice => state.Glyph ?? "\uE7E7",                   // icon chosen by the notice (bell if none)
         ActivityKind.Music => state.Stage == "paused" ? "\uE769" : "\uE8D6",
+        ActivityKind.AgentWorking => TaskIcons.Chat,   // same as its small icon (it was the magnifier \u2014 a card flying down changed face)
         _ => "\uE721",
     };
 
@@ -3433,8 +3448,15 @@ public sealed partial class MainWindow : Window
         _cards.Update(_feed.Collect(DateTimeOffset.UtcNow), DateTimeOffset.UtcNow);
         _shownCard = _cards.Shown;
         _snapshot = _shownCard is { } shown ? new IslandSnapshot(shown.State, _cards.Cards.Count - 1) : IslandSnapshot.Empty;
-        UpdateTaskCells();
-        RenderIsland();
+        _animator.Classify(_snapshot);
+        if (ComputeCells())
+        {
+            _ = Transition(hoverKey: null);   // the next card comes up / icons close the gap, animated
+        }
+        else
+        {
+            RenderIsland();
+        }
     }
 
     /// <summary>While the right-click menu is open (blocks starting to type).</summary>
