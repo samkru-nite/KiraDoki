@@ -129,7 +129,8 @@ public static class ClipboardRules
 
     /// <summary>
     /// The single line shown on the island: newlines/tabs become one space, surrounding whitespace is trimmed, and long text is cut at <paramref name="max"/> characters with "…".
-    /// Surrogate pairs (emoji) are never split. Masked with dots if it looks like a password.
+    /// Surrogate pairs (emoji) are never split. Masked with dots if it looks like a password. Empty when there is nothing worth showing:
+    /// only spaces, punctuation or symbols ("Copied · ," — user 10-07: then just "Copied").
     /// </summary>
     public static string Preview(string? text, bool fromPasswordManager = false, int max = PreviewLength)
     {
@@ -158,6 +159,11 @@ public static class ClipboardRules
         }
 
         var line = sb.ToString().Trim();
+        if (!line.Any(char.IsLetterOrDigit) && !line.Any(char.IsSurrogate))
+        {
+            return string.Empty;   // a comma, a dash, a bullet: the word "Copied" says enough
+        }
+
         if (line.Length <= max)
         {
             return line;

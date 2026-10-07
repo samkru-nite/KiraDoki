@@ -187,6 +187,9 @@ public sealed class LanguageStrings
     /// <summary>An agent's turn ended on an error (not the usage limit); {a} = agent.</summary>
     public required string AgentStopped { get; init; }
 
+    /// <summary>"{a} interrupted": the session ended while the agent was still working or waiting (TODO 7.9 D, 10-06).</summary>
+    public required string AgentInterrupted { get; init; }
+
     /// <summary>Why it stopped: authentication failed.</summary>
     public required string StopLogin { get; init; }
 

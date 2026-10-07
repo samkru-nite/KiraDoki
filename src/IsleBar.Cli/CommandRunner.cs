@@ -201,7 +201,7 @@ public static class CommandRunner
             var agent = opts.Value("agent") ?? AgentKind.Claude;
             // Codex: the legacy notify passes its JSON as the last argument; lifecycle hooks pass it on stdin like Claude's
             var action = agent == AgentKind.Codex
-                ? (opts.Rest.Count > 0 ? AgentHook.FromCodex(opts.Rest[^1]) : AgentHook.FromCodexHook(input.ReadToEnd()))
+                ? (opts.Rest.Count > 0 ? AgentHook.FromCodex(opts.Rest[^1]) : AgentHook.FromCodexHook(input.ReadToEnd(), BarLanguage))
                 : AgentHook.FromClaude(input.ReadToEnd(), Environment.GetEnvironmentVariable("CLAUDE_PROJECT_DIR"), SessionTitle.FromTranscript,
                     BarLanguage);
             if (action is null)

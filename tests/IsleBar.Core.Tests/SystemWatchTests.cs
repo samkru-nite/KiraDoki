@@ -311,6 +311,10 @@ public sealed class SystemWatchTests
         Assert.Equal("••••••", ClipboardRules.Preview("Tr0ub4dor&3"));
         Assert.Equal("••••••", ClipboardRules.Preview("그냥 글", fromPasswordManager: true));
         Assert.Equal(string.Empty, ClipboardRules.Preview("   \n "));
+        Assert.Equal(string.Empty, ClipboardRules.Preview(" , "));   // only punctuation: "Copied" alone (user 10-07)
+        Assert.Equal("Copied", NoticeText.Copied(LanguageCatalog.For("en"), string.Empty));
+        Assert.Equal("已复制", NoticeText.Copied(LanguageCatalog.For("zh"), string.Empty));
+        Assert.Equal("已复制 · a,b", NoticeText.Copied(LanguageCatalog.For("zh"), ClipboardRules.Preview("a,b")));
 
         // Don't cut an emoji (surrogate pair) in half
         var emoji = new string('a', 23) + "😀😀";

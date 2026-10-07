@@ -62,6 +62,27 @@ public static class AgentNotices
         };
     }
 
+    /// <summary>
+    /// The session ended (terminal closed, app quit, SessionEnd) while the agent was still working or waiting for an answer: an inform
+    /// card that stays until closed by hand (TODO 7.9 D, user 10-06: say so instead of silently dropping the card). Stage
+    /// <c>interrupted</c> marks it for the lifted card's longer text; the name is the session's.
+    /// </summary>
+    public static ActivityState Interrupted(string agent, string? name, LanguageStrings? text, DateTimeOffset now)
+    {
+        text ??= LanguageCatalog.For(LanguageCatalog.Fallback);
+        return new ActivityState
+        {
+            RawKind = ActivityState.KindNotice,
+            Agent = agent,
+            Glyph = Warning,
+            Title = text.AgentInterrupted.Replace("{a}", Name(agent), StringComparison.Ordinal),
+            Name = name,
+            Stage = "interrupted",
+            State = "error",
+            T0 = Seconds(now),
+        };
+    }
+
     /// <summary>A usage window passed <see cref="WarnAtPercent"/>: a plain notice (no border), shown briefly.</summary>
     public static ActivityState UsageHigh(string agent, double percent, DateTimeOffset? resetsAt, LanguageStrings? text, DateTimeOffset now)
     {

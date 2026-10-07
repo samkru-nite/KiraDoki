@@ -26,8 +26,21 @@ public class CliHookTests
         live = new ActivityStore(dir.Path).Read(DateTimeOffset.UtcNow);
         Assert.Equal(ActivityKind.AgentDone, Assert.Single(live).Kind);
 
+        // a finished task stays when the session ends (closed by hand only, user 10-06)
         Hook("""{"hook_event_name":"SessionEnd","session_id":"s1"}""", "--dir", dir.Path);
-        Assert.Empty(new ActivityStore(dir.Path).Read(DateTimeOffset.UtcNow));
+        Assert.Equal(ActivityKind.AgentDone, Assert.Single(new ActivityStore(dir.Path).Read(DateTimeOffset.UtcNow)).Kind);
+    }
+
+    [Fact]
+    public void Session_ending_mid_turn_leaves_an_interrupted_card_with_the_session_name()
+    {
+        using var dir = new TempDir();
+        Hook("""{"hook_event_name":"Notification","session_id":"s2","cwd":"C:/p/isle","message":"need permission"}""", "--dir", dir.Path);
+        Hook("""{"hook_event_name":"SessionEnd","session_id":"s2"}""", "--dir", dir.Path);
+        var card = Assert.Single(new ActivityStore(dir.Path).Read(DateTimeOffset.UtcNow));
+        Assert.Equal("interrupted", card.Stage);
+        Assert.Equal("isle", card.Name);
+        Assert.Equal(IsleBar.Core.Island.CardType.Inform, IsleBar.Core.Island.CardStack.TypeOf(card, DateTimeOffset.UtcNow));
     }
 
     [Fact]

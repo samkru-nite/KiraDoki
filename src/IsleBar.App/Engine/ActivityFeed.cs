@@ -12,7 +12,7 @@ namespace IsleBar.App.Engine;
 /// <summary>
 /// Everything the pill can show, gathered in one list each tick: the state files (agents, timers, notices) plus the in-memory
 /// sources (music, downloads, phone drop, system notices). Also runs the rules that act on that list — Pomodoro phases, the
-/// chimes, clearing agent states whose terminal was closed or looked at. No UI here; the window only draws what this returns.
+/// chimes, marking agent turns whose terminal was closed as interrupted. No UI here; the window only draws what this returns.
 /// </summary>
 internal sealed class ActivityFeed : IDisposable
 {
@@ -76,21 +76,58 @@ internal sealed class ActivityFeed : IDisposable
         var items = Store.Read(now).ToList();
         AdvancePomodoros(items);
         ChimeFinishedTimers(items);
-        DismissSeenAgents(items);   // first, so a completion whose terminal is already gone is cleared without a chime
+        InterruptDeadAgents(items);
         ChimeFinishedAgents(items);
-        if (Media.Current is { } music)
-        {
-            items.Add(music);
-        }
+        items.AddRange(Media.Cards);   // one card per media player (user 10-07)
 
         items.AddRange(Downloads.Current);   // browser downloads (in progress / just finished)
         items.AddRange(PhoneDrop.Current(items));   // dropped files being sent to the phone
         if (Watchers is not null)
         {
             items.AddRange(Watchers.Current);   // brief notices
+            AddPrivacy(items, now);
         }
 
         return items;
+    }
+
+    /// <summary>How long the "camera / mic turned on" temporary card shows before only the status card is left.</summary>
+    private static readonly TimeSpan PrivacyStartFor = TimeSpan.FromSeconds(4);
+
+    private DateTimeOffset? _privacySince;
+
+    /// <summary>
+    /// Mic / camera in use (TODO 7.9 D, 10-06): a status card while it lasts (its icon waits on the small pill, uncoloured — it is
+    /// your own doing), plus a temporary card for a few seconds when it starts, so it is noticed. Gone by itself when it stops.
+    /// </summary>
+    private void AddPrivacy(List<ActivityState> items, DateTimeOffset now)
+    {
+        var w = Watchers!;
+        if (!w.MicInUse && !w.CameraInUse)
+        {
+            _privacySince = null;
+            return;
+        }
+
+        var since = _privacySince ??= now;
+        var camera = w.CameraInUse;
+        ActivityState Card(string source, string? stage) => new()
+        {
+            RawKind = ActivityState.KindNotice,
+            Title = camera ? _text().NoticeCameraInUse : _text().NoticeMicInUse,
+            Name = w.PrivacyApp,
+            Glyph = camera ? NoticeGlyphs.Camera : NoticeGlyphs.Microphone,
+            State = "run",
+            Stage = stage,
+            SourcePath = source,
+            UpdatedAt = since,
+        };
+
+        items.Add(Card("privacy", "privacy"));
+        if (now - since < PrivacyStartFor)
+        {
+            items.Add(Card("privacy-start", null));
+        }
     }
 
     // ---------------- Timers ----------------
@@ -260,76 +297,32 @@ internal sealed class ActivityFeed : IDisposable
         _chimedDone.RemoveWhere(p => !present.Contains(p));
     }
 
-    // Terminal window of each finished task's session, looked up once per state file (finding it briefly attaches to the console).
-    // A failed lookup (no visible terminal — e.g. an editor's built-in terminal) is retried after a while rather than kept forever.
-    private readonly Dictionary<string, IntPtr> _doneWindows = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, DateTimeOffset> _doneWindowRetry = new(StringComparer.OrdinalIgnoreCase);
-    private readonly TerminalInputWatch _terminalInput = new();
-    private HashSet<IntPtr> _watchedWindows = [];
-
     /// <summary>
-    /// A finished task's green border clears once you've actually gone back to its terminal — clicked it or typed in it — or when that
-    /// terminal is closed (user 10-01). Merely having the window in front doesn't count: it can be left open while you're away, and
-    /// if you were watching it when the task ended the green vanished before you could see it. ✕, a click on the bar and the next
-    /// prompt still clear it too.
+    /// A session whose terminal was closed: a turn still working or waiting for an answer becomes an "interrupted" inform card
+    /// (closing the window kills the session before its SessionEnd hook can run — user 10-06: say so, don't drop it). A finished
+    /// task stays until closed by hand; looking at its terminal no longer clears it (TODO 7.9 D, 10-06).
     /// </summary>
-    private void DismissSeenAgents(List<ActivityState> items)
+    private void InterruptDeadAgents(List<ActivityState> items)
     {
-        var present = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var state in items)
+        for (var i = 0; i < items.Count; i++)
         {
-            // A question/permission prompt whose terminal was closed can't be answered any more — clear the orange too.
-            // Same for "working": closing the window kills the session before its SessionEnd hook can run, which left a dead
-            // session "working" for 6 h (found 10-01 when a terminal holding three sessions closed).
-            if (state is { Kind: ActivityKind.AgentPermission or ActivityKind.AgentWorking, SourcePath: { } asked, Pid: { } askPid }
-                && !ProcessAlive(askPid))
-            {
-                TaskbarHost.Log($"{(state.Kind == ActivityKind.AgentWorking ? "working" : "permission")} cleared: {Path.GetFileName(asked)} (its terminal was closed)");
-                DeleteState(asked);
-                continue;
-            }
-
-            if (state.Kind != ActivityKind.AgentDone || state.SourcePath is not { } path || state.Pid is not { } pid)
+            if (items[i] is not { Kind: ActivityKind.AgentPermission or ActivityKind.AgentWorking, SourcePath: { } path, Pid: { } pid } state
+                || ProcessAlive(pid))
             {
                 continue;
             }
 
-            if (!ProcessAlive(pid))
+            TaskbarHost.Log($"{(state.Kind == ActivityKind.AgentWorking ? "working" : "permission")} interrupted: {Path.GetFileName(path)} (its terminal was closed)");
+            var card = AgentNotices.Interrupted(state.Agent ?? IsleBar.Core.Launch.AgentKind.Claude, state.Name, _text(), DateTimeOffset.UtcNow);
+            try
             {
-                TaskbarHost.Log($"done cleared: {Path.GetFileName(path)} (its terminal was closed)");
-                DeleteState(path);
-                continue;
+                card.SourcePath = Store.Write(Path.GetFileNameWithoutExtension(path), card);
+                items[i] = card;
             }
-
-            present.Add(path);
-            if (!_doneWindows.TryGetValue(path, out var window)
-                || (window == IntPtr.Zero && DateTimeOffset.UtcNow >= _doneWindowRetry.GetValueOrDefault(path)))
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                window = AgentWindow.Find(pid);
-                _doneWindows[path] = window;
-                _doneWindowRetry[path] = DateTimeOffset.UtcNow.AddSeconds(30);
+                // tried again next tick
             }
-
-            if (window != IntPtr.Zero && _terminalInput.TakeTouched(window))
-            {
-                TaskbarHost.Log($"done seen: {Path.GetFileName(path)} (clicked or typed in its terminal)");
-                DeleteState(path);
-                present.Remove(path);
-            }
-        }
-
-        foreach (var gone in _doneWindows.Keys.Where(p => !present.Contains(p)).ToList())
-        {
-            _doneWindows.Remove(gone);
-            _doneWindowRetry.Remove(gone);
-        }
-
-        // Hooks only while a finished task is waiting (installing/removing only when that changes)
-        var windows = _doneWindows.Values.Where(w => w != IntPtr.Zero).ToHashSet();
-        if (!windows.SetEquals(_watchedWindows))
-        {
-            _watchedWindows = windows;
-            _terminalInput.Watch(windows);
         }
     }
 
@@ -383,6 +376,5 @@ internal sealed class ActivityFeed : IDisposable
         Media.Dispose();
         Downloads.Dispose();
         Watchers?.Dispose();
-        _terminalInput.Dispose();
     }
 }

@@ -4,45 +4,15 @@ using Windows.Media.Control;
 namespace IsleBar.App.Media;
 
 /// <summary>
-/// Turns what's playing now (Windows media controls — what Spotify, browser YouTube, etc. report)
-/// into an island item. Nothing is written to disk; memory only (re-read every second).
-/// <para>
-/// Which one (user 10-04): <b>the player you started last, while it plays; when nothing plays, the one shown last, as paused</b>
-/// (gone after <see cref="PausedLinger"/>). Two guards against what browsers report while switching videos (measured on
-/// Edge/Bilibili 10-04 — Windows sees one session for the whole browser):
-/// <list type="bullet">
-/// <item>for 1–4 s the session says "paused" with the title of some other video (often one paused in another tab), until the new
-/// video plays — so a player that stops with a <i>different</i> title than the one shown is switching, and still counts as
-/// playing for up to <see cref="SwitchGrace"/> (otherwise background music took over for those seconds);</item>
-/// <item>such a stale title can also blink "playing" for an instant — so the pill moves to a different item only once it has played
-/// for <see cref="Confirm"/>, from any player (one rule for all). Pause / resume of the item shown applies at once.</item>
-/// </list>
-/// </para>
-/// <para>
-/// "Started" also counts a player that keeps playing but changes title <b>while its window is in front</b> — you picked another
-/// song or video in it. The same change with the window in the back is the player moving on by itself (next track, next episode):
-/// it doesn't take the pill, but if it isn't the player shown, its new item peeks in for <see cref="PeekFor"/> (user 10-04).
-/// Players don't say whether a change was automatic, and NetEase Cloud Music reports no position, so the window in front is the
-/// only sign of your choice.
-/// </para>
+/// Turns what's playing (Windows media controls — what Spotify, browser YouTube, etc. report) into music cards: one per player,
+/// by the rules in <see cref="MediaCards"/> (user 10-07). Nothing is written to disk; memory only. A browser is one player:
+/// Windows gives it one session, naming the tab it picked (usually the last one started) — the other tabs can't be seen.
 /// </summary>
 internal sealed class MediaWatcher : IDisposable
 {
     // Event-driven: track/state/timeline changes wake the loop instantly (SafetyPoll is only a slow backstop for missed events
     // and reconnection). A 1 s poll used to make a track change or a play/pause button press show up to ~1 s late (09-30 → 10-01).
     private static readonly TimeSpan SafetyPoll = TimeSpan.FromSeconds(1);   // also the playback-position refresh cadence for the progress bar (track/state changes come from events)
-
-    /// <summary>Keep showing this long after everything stopped — so it can be resumed with the island's ⏯ button.</summary>
-    private static readonly TimeSpan PausedLinger = TimeSpan.FromSeconds(30);
-
-    /// <summary>A different item must play this long before the pill moves to it.</summary>
-    private static readonly TimeSpan Confirm = TimeSpan.FromSeconds(0.5);
-
-    /// <summary>How long a player switching to another video/track still counts as playing (the slowest load seen was ~4 s).</summary>
-    private static readonly TimeSpan SwitchGrace = TimeSpan.FromSeconds(8);
-
-    /// <summary>How long a background player's next track/video peeks in before the pill goes back.</summary>
-    private static readonly TimeSpan PeekFor = TimeSpan.FromSeconds(4);
 
     private readonly CancellationTokenSource _stop = new();
     private readonly SemaphoreSlim _wake = new(0, 1);
@@ -57,16 +27,12 @@ internal sealed class MediaWatcher : IDisposable
     private GlobalSystemMediaTransportControlsSessionManager? _manager;
     private List<GlobalSystemMediaTransportControlsSession> _subscribed = [];
 
-    /// <summary>Per player (app ID): its current playing run. Loop thread only.</summary>
-    private readonly Dictionary<string, Run> _runs = [];
+    /// <summary>The card rules. Loop thread only.</summary>
+    private readonly MediaCards _cards = new();
 
-    private Reading? _shown;                  // what the pill shows when nothing peeks in
-    private string? _shownId;                 // its player
-    private volatile string? _controlId;      // the player on the pill right now (shown or peeking), for ⏯ / ⏮ / ⏭ (read from another thread)
-    private (string Id, string Title, DateTimeOffset Since)? _candidate;   // a different item waiting out Confirm
-    private (string Id, string Title, DateTimeOffset Since)? _peekCandidate;   // a background player's next item waiting out Confirm
-    private (Reading Read, string Id, DateTimeOffset Until)? _peek;            // a background player's next item, on the pill for a moment
-    private DateTimeOffset _lastActive = DateTimeOffset.MinValue;          // last time any player played (or was switching)
+    /// <summary>Each card's cover (card key → art), replaced whole so the UI thread may read it.</summary>
+    private IReadOnlyDictionary<string, (Windows.Storage.Streams.IRandomAccessStreamReference Art, string Key)> _art =
+        new Dictionary<string, (Windows.Storage.Streams.IRandomAccessStreamReference, string)>();
 
     public MediaWatcher(Func<bool> browsers)
     {
@@ -77,13 +43,12 @@ internal sealed class MediaWatcher : IDisposable
         _onSessions = (_, _) => SignalRefresh();
     }
 
-    /// <summary>The music item to show now. Null if nothing is playing. Safe to read from any thread.</summary>
-    public ActivityState? Current { get; private set; }
+    /// <summary>The music cards now (one per player). Safe to read from any thread.</summary>
+    public IReadOnlyList<ActivityState> Cards { get; private set; } = [];
 
-    /// <summary>Album art for the current track (only if the player provides it). When the track changes, <see cref="CurrentArtKey"/> changes too.</summary>
-    public Windows.Storage.Streams.IRandomAccessStreamReference? CurrentArt { get; private set; }
-
-    public string? CurrentArtKey { get; private set; }
+    /// <summary>A card's album art and a key that changes with it, or null when its player gives none.</summary>
+    public (Windows.Storage.Streams.IRandomAccessStreamReference Art, string Key)? ArtOf(string? cardKey)
+        => cardKey is not null && _art.TryGetValue(cardKey, out var art) ? art : null;
 
     public void Start() => _ = Task.Run(LoopAsync);
 
@@ -129,12 +94,8 @@ internal sealed class MediaWatcher : IDisposable
             {
                 // any failure (a session closing mid-read throws all sorts): start over — an uncaught one ended this loop and left
                 // the last track on the pill for good (review 10-03)
-                _peek = null;
-                Show(null);
-                Publish();
-                _runs.Clear();
-                _candidate = null;
-                _peekCandidate = null;
+                _cards.Update([], DateTimeOffset.UtcNow);
+                Cards = [];
                 try
                 {
                     SyncSubscriptions([]);   // on a session that just closed this can throw too
@@ -171,262 +132,45 @@ internal sealed class MediaWatcher : IDisposable
         }
     }
 
-    /// <summary>One player as read now. <see cref="Read"/> is null while it reports no title.</summary>
-    private sealed record Seen(GlobalSystemMediaTransportControlsSession Session, string Id, bool Playing, Reading? Read);
-
-    /// <summary>
-    /// A player's playing run. <see cref="Started"/> orders players (the last started wins); <see cref="SwitchUntil"/> is set while it
-    /// is switching items; <see cref="ShownTitle"/> is the title of its item the pill last showed; <see cref="Title"/> the one it
-    /// last played.
-    /// </summary>
-    private sealed class Run
-    {
-        public DateTimeOffset Started;
-        public bool Playing;
-        public DateTimeOffset? SwitchUntil;
-        public string? ShownTitle;
-        public string? Title;
-
-        public bool Active(DateTimeOffset now) => Playing || SwitchUntil > now;
-    }
-
     private async Task RefreshAsync(GlobalSystemMediaTransportControlsSessionManager manager)
     {
-        var now = DateTimeOffset.UtcNow;
         var browsers = _browsers();
         var sessions = manager.GetSessions().Where(s => browsers || !MediaSources.IsBrowser(s.SourceAppUserModelId)).ToList();
         SyncSubscriptions(sessions);
 
-        // one entry per player (two sessions of one app: the playing one)
-        var seen = new List<Seen>();
+        // one reading per player (two sessions of one app: the playing one)
+        var seen = new List<(MediaReading Reading, Reading? Read)>();
         foreach (var session in sessions)
         {
             var playing = session.GetPlaybackInfo()?.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
-            seen.Add(new Seen(session, session.SourceAppUserModelId, playing, await ReadAsync(session, playing)));
+            var read = await ReadAsync(session, playing);
+            seen.Add((new MediaReading(session.SourceAppUserModelId, playing, read?.State), read));
         }
 
-        seen = [.. seen.GroupBy(s => s.Id).Select(g => g.OrderByDescending(s => s.Playing && s.Read is not null).First())];
-
-        var movedOn = UpdateRuns(seen, now, ForegroundProcess());
-
-        var winner = seen.Where(s => _runs[s.Id].Active(now)).OrderByDescending(s => _runs[s.Id].Started).FirstOrDefault();
-        if (winner is not null)
+        seen = [.. seen.GroupBy(s => s.Reading.Source).Select(g => g.OrderByDescending(s => s.Reading.Playing && s.Read is not null).First())];
+        if (_cards.Update(seen.Select(s => s.Reading).ToList(), DateTimeOffset.UtcNow))
         {
-            _lastActive = now;
-            if (winner.Playing && winner.Read is { } playing)
+            SignalLater(MediaCards.Confirm);   // a new title is waiting: look again once it has had its half second
+        }
+
+        // a card's cover is its player's current art while the card shows that player's current title
+        var art = new Dictionary<string, (Windows.Storage.Streams.IRandomAccessStreamReference, string)>(_art.Count);
+        foreach (var card in _cards.Cards)
+        {
+            if (card.SourcePath is { } key && seen.FirstOrDefault(s => s.Reading.Source == _cards.SourceOf(key)).Read is { Art: { } cover, ArtKey: { } artKey } read
+                && read.State.Name == card.Name)
             {
-                Offer(playing, winner.Id, now);
+                art[key] = (cover, artKey);
             }
-            else
+            else if (card.SourcePath is { } kept && _art.TryGetValue(kept, out var old))
             {
-                _candidate = null;   // switching: keep what's shown until it plays something
+                art[kept] = old;   // paused / no title right now: keep the cover it had
             }
-        }
-        else if (_shown is { } shown && now - _lastActive <= PausedLinger)
-        {
-            // nothing plays: keep the item shown last, as paused (re-read if its player still reports it, for the position)
-            _candidate = null;
-            var same = seen.FirstOrDefault(s => s.Id == _shownId && s.Read?.State.Name == shown.State.Name)?.Read;
-            Show(same ?? shown with { State = Paused(shown.State) });
-        }
-        else
-        {
-            _candidate = null;
-            Show(null);
         }
 
-        UpdatePeek(seen, movedOn, now);
-        Publish();
+        _art = art;
+        Cards = _cards.Cards;
     }
-
-    /// <summary>
-    /// A background player that moved on by itself (and isn't the one shown) peeks in with its new item for <see cref="PeekFor"/>,
-    /// once that item has played for <see cref="Confirm"/> (same guard against stale titles as everywhere else).
-    /// </summary>
-    private void UpdatePeek(List<Seen> seen, List<string> movedOn, DateTimeOffset now)
-    {
-        foreach (var id in movedOn.Where(id => id != _shownId))
-        {
-            _peekCandidate = (id, _runs[id].Title ?? string.Empty, now);
-            SignalLater(Confirm);
-        }
-
-        if (_peekCandidate is { } waiting)
-        {
-            var player = seen.FirstOrDefault(s => s.Id == waiting.Id);
-            if (waiting.Id == _shownId || player is not { Playing: true, Read: { } read } || read.State.Name != waiting.Title)
-            {
-                _peekCandidate = null;   // it became the one shown, stopped, or moved on again (a new candidate then)
-            }
-            else if (now - waiting.Since >= Confirm)
-            {
-                _peekCandidate = null;
-                _peek = (read, waiting.Id, now + PeekFor);
-                SignalLater(PeekFor);
-            }
-        }
-
-        if (_peek is { } peek)
-        {
-            var fresh = seen.FirstOrDefault(s => s.Id == peek.Id)?.Read;
-            if (now >= peek.Until || peek.Id == _shownId || fresh is null || fresh.State.Name != peek.Read.State.Name)
-            {
-                _peek = null;   // over, or the pill shows that player now anyway, or it changed again
-            }
-            else
-            {
-                _peek = peek with { Read = fresh };   // keep its position / play state current
-            }
-        }
-    }
-
-    /// <summary>Put the peeking item, else the shown one, on the pill.</summary>
-    private void Publish()
-    {
-        var (read, id) = _peek is { } peek ? (peek.Read, peek.Id) : (_shown, _shownId);
-        _controlId = id;
-        Current = read?.State;
-        CurrentArt = read?.Art;
-        CurrentArtKey = read?.ArtKey;
-    }
-
-    /// <summary>
-    /// Start, continue or end each player's playing run from what it reports now. Returns the players that moved on to another
-    /// item by themselves (title changed while playing, window not in front).
-    /// </summary>
-    private List<string> UpdateRuns(List<Seen> seen, DateTimeOffset now, string? foreground)
-    {
-        var movedOn = new List<string>();
-        foreach (var gone in _runs.Keys.Except(seen.Select(s => s.Id)).ToList())
-        {
-            _runs.Remove(gone);   // the player closed: no grace
-        }
-
-        foreach (var s in seen)
-        {
-            if (!_runs.TryGetValue(s.Id, out var run))
-            {
-                _runs[s.Id] = run = new Run { Started = now };
-            }
-
-            if (s.Playing && s.Read is { } read)
-            {
-                var title = read.State.Name;
-                if (!run.Active(now))
-                {
-                    run.Started = now;   // a new run; a run that was only switching keeps its place
-                }
-                else if (run.Playing && run.Title is not null && run.Title != title)
-                {
-                    // kept playing, another item: picked in its window (in front) → your latest choice; else it moved on by itself
-                    if (MediaSources.IsApp(s.Id, foreground))
-                    {
-                        run.Started = now;
-                    }
-                    else
-                    {
-                        movedOn.Add(s.Id);
-                    }
-                }
-
-                run.Playing = true;
-                run.SwitchUntil = null;
-                run.Title = title;
-            }
-            else if (run.Playing)
-            {
-                run.Playing = false;
-                // Stopped showing another title than the one on the pill → switching to another video/track, not paused by you
-                if (run.ShownTitle is { } shownTitle && s.Read?.State.Name != shownTitle)
-                {
-                    run.SwitchUntil = now + SwitchGrace;
-                    SignalLater(SwitchGrace);
-                }
-            }
-        }
-
-        return movedOn;
-    }
-
-    /// <summary>The process name of the window in front (null if unknown) — the sign of which player you are using.</summary>
-    private static string? ForegroundProcess()
-    {
-        try
-        {
-            var window = Interop.NativeMethods.GetForegroundWindow();
-            if (window == IntPtr.Zero || GetWindowThreadProcessId(window, out var pid) == 0 || pid == 0)
-            {
-                return null;
-            }
-
-            using var process = System.Diagnostics.Process.GetProcessById((int)pid);
-            return process.ProcessName;
-        }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
-        {
-            return null;   // it just closed
-        }
-    }
-
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
-    private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
-
-    /// <summary>A playing item that should be on the pill: the same item updates at once, a different one after <see cref="Confirm"/>.</summary>
-    private void Offer(Reading read, string id, DateTimeOffset now)
-    {
-        var title = read.State.Name ?? string.Empty;
-        if (_shown is null || (_shownId == id && _shown.State.Name == title))
-        {
-            _candidate = null;
-            Show(read, id);
-            return;
-        }
-
-        if (_candidate is not { } waiting || waiting.Id != id || waiting.Title != title)
-        {
-            _candidate = (id, title, now);
-            SignalLater(Confirm);
-            return;
-        }
-
-        if (now - waiting.Since >= Confirm)
-        {
-            _candidate = null;
-            Show(read, id);
-        }
-    }
-
-    private void Show(Reading? read, string? id = null)
-    {
-        if (read is not null && id is not null)
-        {
-            _shownId = id;
-            if (_runs.TryGetValue(id, out var run))
-            {
-                run.ShownTitle = read.State.Name;
-            }
-        }
-        else if (read is null)
-        {
-            _shownId = null;
-        }
-
-        _shown = read;   // on the pill at the next Publish
-    }
-
-    /// <summary>The item as paused (its player no longer reports it). Copies the fields <see cref="ReadAsync"/> fills.</summary>
-    private static ActivityState Paused(ActivityState state) => new()
-    {
-        RawKind = state.RawKind,
-        Total = state.Total,
-        Done = state.Done,
-        Name = state.Name,
-        Msg = state.Msg,
-        State = state.State,
-        Stage = "paused",
-        SourcePath = state.SourcePath,
-        UpdatedAt = state.UpdatedAt,
-    };
 
     /// <summary>Follow every player's events (not just the shown one's), so a player starting or stopping is seen at once.</summary>
     private void SyncSubscriptions(List<GlobalSystemMediaTransportControlsSession> sessions)
@@ -485,19 +229,18 @@ internal sealed class MediaWatcher : IDisposable
             Msg = artist.Length > 0 ? artist : null,
             State = "run",
             Stage = playing ? "playing" : "paused",
-            SourcePath = "media:" + session.SourceAppUserModelId,   // used by the island to decide "is it the same item"
             UpdatedAt = DateTimeOffset.UtcNow.AddMinutes(-10),      // sort behind other items (least urgent)
         }, props.Thumbnail, $"{session.SourceAppUserModelId}|{props.Title}|{props.AlbumTitle}");
     }
 
-    /// <summary>Play/pause / previous / next on the player on the pill. Failures are silently ignored.</summary>
-    public async Task SendAsync(MediaAction action)
+    /// <summary>Play/pause / previous / next on the player of the card <paramref name="cardKey"/>. Failures are silently ignored.</summary>
+    public async Task SendAsync(MediaAction action, string cardKey)
     {
         try
         {
             // a manager of its own when the loop is between reconnects — setting _manager here left it without its events (review 10-03)
             var manager = _manager ?? await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
-            var id = _controlId;   // the player on the pill — the one peeking in, if any
+            var id = MediaCards.SourceIn(cardKey);   // not _cards: that belongs to the loop thread
             var candidates = manager.GetSessions().Where(s => s.SourceAppUserModelId == id).ToList();
             var session = candidates.FirstOrDefault(s => s.GetPlaybackInfo()?.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing)
                           ?? candidates.FirstOrDefault();

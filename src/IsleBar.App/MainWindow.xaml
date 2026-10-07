@@ -54,7 +54,7 @@
                 <ColumnDefinition Width="Auto" />   <!-- close zone (inform cards only) -->
                 <ColumnDefinition Width="Auto" />   <!-- icon -->
                 <ColumnDefinition Width="*" />      <!-- text / input box -->
-                <ColumnDefinition Width="Auto" />   <!-- now-playing bars, Tab hint, privacy dot -->
+                <ColumnDefinition Width="Auto" />   <!-- now-playing bars, Tab hint -->
             </Grid.ColumnDefinitions>
 
             <!-- Inform card: "Close" always shown on the left (TODO 7.3, A4). Moved 1.5 right of the geometric centre: the round left end makes
@@ -172,8 +172,6 @@
                     <Image x:Name="TabNextMark" Width="13" Height="13" VerticalAlignment="Center" Visibility="Collapsed" />
                 </StackPanel>
 
-                <!-- Mic/camera in use (orange dot) — moves to the small pill in E3 -->
-                <Ellipse x:Name="PrivacyDot" Width="6" Height="6" Margin="0,0,12,0" VerticalAlignment="Center" Visibility="Collapsed" />
             </StackPanel>
         </Grid>
 

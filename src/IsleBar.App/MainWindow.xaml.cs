@@ -901,7 +901,6 @@ public sealed partial class MainWindow : Window
             FollowTaskbar();
             RefreshBesideColor();
             var items = _feed.Collect(DateTimeOffset.UtcNow);
-            UpdatePrivacyDot();
             EndStaleHover();
 
             _cards.Update(items, DateTimeOffset.UtcNow);
@@ -1065,8 +1064,7 @@ public sealed partial class MainWindow : Window
     {
         var left = _settings.BallSide == "left";
         var now = DateTimeOffset.UtcNow;
-        var cover = _albumImage is not null && _feed.Media.CurrentArt is not null;
-        var icons = _cellCards.Select(c => (c.Key, Icon: TaskIcons.For(c, cover, now))).ToList();
+        var icons = _cellCards.Select(c => (c.Key, Icon: TaskIcons.For(c, CoverOf(c) is not null, now), Cover: CoverOf(c)?.Image)).ToList();
         var sig = string.Join("|", icons.Select(i => $"{i.Key}:{i.Icon}")) + $"|{_dotsOn}|{left}|{_theme.Icon}|{RealSearchBoxFill()}";
         SmallRule.Visibility = TaskCellCount > 0 ? Visibility.Visible : Visibility.Collapsed;
         if (sig == _cellsSig)
@@ -1076,9 +1074,9 @@ public sealed partial class MainWindow : Window
 
         _cellsSig = sig;
         TaskCells.Children.Clear();
-        foreach (var (key, icon) in icons)
+        foreach (var (key, icon, cover) in icons)
         {
-            TaskCells.Children.Add(MakeCell(key, IconContent(icon)));
+            TaskCells.Children.Add(MakeCell(key, IconContent(icon, cover)));
         }
 
         var more = MakeCell(DotsTag, new Microsoft.UI.Xaml.Controls.FontIcon
@@ -1110,11 +1108,11 @@ public sealed partial class MainWindow : Window
     /// A small icon from the table (<see cref="TaskIcons"/>): the glyph in its tone's colour, or the cover; paused = two bars — on the cover
     /// over a 58% wash of the pill colour in the text colour (follows light/dark, user 10-07), on a glyph at its lower right.
     /// </summary>
-    private UIElement IconContent(TaskIcon icon)
+    private UIElement IconContent(TaskIcon icon, Microsoft.UI.Xaml.Media.Imaging.BitmapImage? cover)
     {
         var box = new Microsoft.UI.Xaml.Controls.Grid { Width = 16, Height = 16, IsHitTestVisible = false };
         var pill = RealSearchBoxFill();
-        if (icon.Cover && _albumImage is { } image)
+        if (icon.Cover && cover is { } image)
         {
             box.Children.Add(new Microsoft.UI.Xaml.Shapes.Ellipse { Fill = new ImageBrush { ImageSource = image, Stretch = Stretch.UniformToFill } });
             if (icon.Paused)
@@ -1896,46 +1894,71 @@ public sealed partial class MainWindow : Window
         visual.Properties.InsertVector3("Translation", System.Numerics.Vector3.Zero);
     }
 
-    private string? _albumArtKey;
-
-    /// <summary>
-    /// Album art for music in the left slot (as in the mockup). If the player provides no art, keep the note icon.
-    /// Only re-read when the track changes (reading art is async).
-    /// </summary>
     /// <summary>Album art on the big pill (22) when the shown card is music and its cover is loaded.</summary>
     private void ShowAlbumArt(bool on)
     {
-        var show = on && _albumImage is not null && _feed.Media.CurrentArt is not null;
-        AlbumArt.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-        if (show)
+        var cover = on ? CoverOf(_shownCard) : null;
+        _albumTint = cover?.Tint;
+        AlbumArt.Visibility = cover is null ? Visibility.Collapsed : Visibility.Visible;
+        if (cover is { } c)
         {
+            if (!ReferenceEquals(AlbumArtBrush.ImageSource, c.Image))
+            {
+                AlbumArtBrush.ImageSource = c.Image;
+            }
+
             LeadIcon.Visibility = Visibility.Collapsed;
         }
     }
 
-    /// <summary>The current cover as a decoded image, shared by the big pill and the small pill's music cell. Null = none / not loaded.</summary>
-    private Microsoft.UI.Xaml.Media.Imaging.BitmapImage? _albumImage;
-
     /// <summary>
-    /// Loads the player's cover when it changes (every tick; cheap when unchanged) — not only when music is on the big pill, since the
-    /// small pill shows it too (TODO 7.9 D: music cell = cover 16).
+    /// Decoded covers by the player's art key, shared by the big pill and the small pill's music cells (one per player, user 10-07).
+    /// Each keeps our own copy of the art stream alive: XAML decodes the image later, on a worker thread, straight from that stream;
+    /// the player's own stream can be closed before that — by leaving the method, or on a track change — and decoding a closed stream
+    /// fail-fasts the whole bar (RO_E_CLOSED 0x80000013 in Microsoft.UI.Xaml, dump 10-01 23:33).
     /// </summary>
-    private async void LoadAlbumArt()
+    private readonly Dictionary<string, (Microsoft.UI.Xaml.Media.Imaging.BitmapImage Image, Windows.UI.Color? Tint, Windows.Storage.Streams.IRandomAccessStream Stream)> _covers = new(StringComparer.Ordinal);
+
+    /// <summary>Covers being read, and ones that failed (not retried every tick; the note shows instead).</summary>
+    private readonly HashSet<string> _coversBusy = new(StringComparer.Ordinal);
+
+    /// <summary>The loaded cover of a music card, or null (none, not loaded yet, failed).</summary>
+    private (Microsoft.UI.Xaml.Media.Imaging.BitmapImage Image, Windows.UI.Color? Tint, Windows.Storage.Streams.IRandomAccessStream Stream)? CoverOf(Card? card)
+        => card is { State.Kind: ActivityKind.Music } && _feed.Media.ArtOf(card.Key) is { } art && _covers.TryGetValue(art.Key, out var cover)
+            ? cover
+            : null;
+
+    /// <summary>Starts reading the cover of every music card that has a new one (every tick; cheap when nothing changed) and drops unused ones.</summary>
+    private void LoadAlbumArt()
     {
-        var art = _feed.Media.CurrentArt;
-        var key = _feed.Media.CurrentArtKey;
-        if (art is null || key == _albumArtKey)
+        var used = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var card in _cards.Cards)
         {
-            return;
+            if (card.State.Kind == ActivityKind.Music && _feed.Media.ArtOf(card.Key) is { } art)
+            {
+                used.Add(art.Key);
+                if (!_covers.ContainsKey(art.Key) && _coversBusy.Add(art.Key))
+                {
+                    LoadCover(art.Art, art.Key);
+                }
+            }
         }
 
-        _albumArtKey = key;
+        foreach (var gone in _covers.Keys.Where(k => !used.Contains(k)).ToList())
+        {
+            _covers.Remove(gone);   // the image may still be on its way out: its stream goes with it to the GC
+        }
+
+        _coversBusy.RemoveWhere(k => !used.Contains(k) && !_coversLoading.Contains(k));
+    }
+
+    private readonly HashSet<string> _coversLoading = new(StringComparer.Ordinal);
+
+    private async void LoadCover(Windows.Storage.Streams.IRandomAccessStreamReference art, string key)
+    {
+        _coversLoading.Add(key);
         try
         {
-            // XAML decodes the image later, on a worker thread, straight from the stream it was given. The player's thumbnail stream
-            // can be closed before that — by leaving this method, or by the player on a track change — and decoding a closed stream
-            // fail-fasts the whole bar (RO_E_CLOSED 0x80000013 in Microsoft.UI.Xaml, dump 10-01 23:33). So copy the art into a stream
-            // we own and keep it alive for as long as the image may read from it.
             var owned = new Windows.Storage.Streams.InMemoryRandomAccessStream();
             using (var source = await art.OpenReadAsync())
             {
@@ -1946,26 +1969,22 @@ public sealed partial class MainWindow : Window
             var image = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage { DecodePixelWidth = DpiSetup.Px(24) };
             await image.SetSourceAsync(owned);
             var tint = await PickAlbumTintAsync(art);
-            if (_albumArtKey == key)
-            {
-                AlbumArtBrush.ImageSource = image;
-                _albumImage = image;
-                _albumArtStream = owned;   // the previous one is left to the GC: an image still on its way out may be reading it
-                _albumTint = tint;
-                _cellsSig = null;   // the small pill's music cell picks the new cover up
-            }
+            _covers[key] = (image, tint, owned);
+            _coversBusy.Remove(key);
+            _cellsSig = null;   // the small pill's music cell picks it up
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)   // async void: anything escaping here ends the app (a player's cover file gone — review 10-03)
         {
-            _albumImage = null;   // the key stays: a broken cover isn't retried every tick, the note shows instead
+            // stays in _coversBusy: not retried until the player gives other art
+        }
+        finally
+        {
+            _coversLoading.Remove(key);
         }
     }
 
-    /// <summary>Dominant color of the current album (null if none or grayscale → normal color).</summary>
+    /// <summary>Dominant color of the shown album (null if none or grayscale → normal color).</summary>
     private Windows.UI.Color? _albumTint;
-
-    /// <summary>Our own copy of the current album art, which the album image decodes from (see <see cref="ShowAlbumArt"/>).</summary>
-    private Windows.Storage.Streams.IRandomAccessStream? _albumArtStream;
 
     /// <summary>Shrinks the album art to 16×16 and picks its dominant color (Core's AlbumTint). Returns null on failure.</summary>
     private async Task<Windows.UI.Color?> PickAlbumTintAsync(Windows.Storage.Streams.IRandomAccessStreamReference art)
@@ -3019,35 +3038,6 @@ public sealed partial class MainWindow : Window
         Entry.Focus(FocusState.Programmatic);
         Entry.SelectionStart = Entry.Text.Length;
     }
-
-    /// <summary>
-    /// Mic/camera in use: orange dot at the far right (like a phone's privacy dot). It sits in the same row as the music bars etc.
-    /// so they don't overlap (user feedback 09-30: the dot overlapped the graph — fix without hurting the look). Visible while typing too.
-    /// </summary>
-    private bool _privacyOn;
-
-    private void UpdatePrivacyDot()
-    {
-        var on = _feed.Watchers is { } s && (s.MicInUse || s.CameraInUse);
-        if (on != _privacyOn)
-        {
-            _privacyOn = on;
-            TaskbarHost.Log($"privacy dot {(on ? "on" : "off")}: {_feed.Watchers?.PrivacyApp}");
-        }
-
-        PrivacyDot.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
-        var sig = on ? $"{Attention()}|{_feed.Watchers!.PrivacyApp}" : null;
-        if (on && sig != _privacySig)
-        {
-            // only on a change: a new brush and tooltip 4 times a second piled up native objects while the mic was on (review 10-03)
-            PrivacyDot.Fill = BrushOf(Attention());
-            Microsoft.UI.Xaml.Controls.ToolTipService.SetToolTip(PrivacyDot, _feed.Watchers!.PrivacyApp);
-        }
-
-        _privacySig = sig;
-    }
-
-    private string? _privacySig;
 
     private ExpandedNotice? _expanded;
     private DateTimeOffset _lastExpandedAt = DateTimeOffset.MinValue;   // high-water mark so an older notice resurfacing (e.g. after X dismisses a newer one) doesn't re-open the card

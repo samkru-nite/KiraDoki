@@ -190,8 +190,8 @@ internal sealed class ClipboardWatcher : NoticeWatcher
 
             if (IsClipboardFormatAvailable(CfUnicodeText) && ReadText() is { } text)
             {
-                var preview = ClipboardRules.Preview(text);
-                return preview.Length == 0 ? null : (NoticeText.Copied(s, preview), NoticeGlyphs.Copy);
+                // only spaces / punctuation: "Copied" alone (user 10-07)
+                return string.IsNullOrEmpty(text) ? null : (NoticeText.Copied(s, ClipboardRules.Preview(text)), NoticeGlyphs.Copy);
             }
 
             if (IsClipboardFormatAvailable(CfDib) || IsClipboardFormatAvailable(CfDibV5)

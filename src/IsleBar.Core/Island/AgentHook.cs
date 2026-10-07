@@ -14,7 +14,7 @@ public sealed record HookAction(string Id, ActivityState? Write, ActivityKind? O
 /// Turns notifications sent by agents into island items. Used by <c>islebar hook</c>.
 /// <list type="bullet">
 /// <item>Claude Code hooks (JSON on stdin): <c>Notification</c> = permission prompt / waiting for input → 🔔,
-/// <c>Stop</c> = answer finished → ✅, <c>SessionEnd</c> = clear.</item>
+/// <c>Stop</c> = answer finished → ✅, <c>SessionEnd</c> = an unfinished turn becomes "interrupted" (a finished one stays).</item>
 /// <item>Codex <c>notify</c> (JSON as the last argument): <c>agent-turn-complete</c> → ✅.</item>
 /// </list>
 /// One item per session (<c>agent_first8charsOfSession</c>) — done overwrites the permission prompt so both never linger together.
@@ -87,7 +87,9 @@ public static class AgentHook
             "StopFailure" => new HookAction(id, AgentNotices.ClaudeReason(Text(root, "error_type")) is { } reason
                 ? AgentNotices.Stopped(AgentKind.Claude, reason, text, DateTimeOffset.UtcNow)
                 : AgentNotices.UsageLimit(AgentKind.Claude, ResetTime(root), text, DateTimeOffset.UtcNow)),
-            "SessionEnd" => new HookAction(id, null),
+            // ended mid-turn: say so (an inform card, user 10-06); done / failed cards stay until closed by hand
+            "SessionEnd" => new HookAction(id, AgentNotices.Interrupted(AgentKind.Claude, null, text, DateTimeOffset.UtcNow),
+                OnlyOver: ActivityKind.AgentWorking, OrOver: ActivityKind.AgentPermission),
             _ => null,
         };
     }
@@ -101,9 +103,9 @@ public static class AgentHook
     /// <summary>
     /// Codex lifecycle hooks (Codex 0.15x+, JSON on stdin, same shape as Claude's): <c>UserPromptSubmit</c> = working,
     /// <c>PermissionRequest</c> = needs an answer (orange), <c>PostToolUse</c> = answered → working again, <c>Stop</c> = done,
-    /// <c>SessionEnd</c> = clear. The legacy <c>notify</c> only ever said "done", so Codex had no working/orange light (user 10-01).
+    /// <c>SessionEnd</c> = an unfinished turn becomes "interrupted". The legacy <c>notify</c> only ever said "done", so Codex had no working/orange light (user 10-01).
     /// </summary>
-    public static HookAction? FromCodexHook(string? json)
+    public static HookAction? FromCodexHook(string? json, Localization.LanguageStrings? text = null)
     {
         if (Parse(json) is not { } root)
         {
@@ -131,7 +133,8 @@ public static class AgentHook
                 RawKind = ActivityState.KindAgentWorking, Agent = AgentKind.Codex, State = "run", T0 = now,
             }, OnlyOver: ActivityKind.AgentPermission, FallbackName: folder),
             "Stop" => new HookAction(id, Done(AgentKind.Codex, null), FallbackName: folder),
-            "SessionEnd" => new HookAction(id, null),
+            "SessionEnd" => new HookAction(id, AgentNotices.Interrupted(AgentKind.Codex, null, text, DateTimeOffset.UtcNow),
+                OnlyOver: ActivityKind.AgentWorking, OrOver: ActivityKind.AgentPermission),
             _ => null,
         };
     }

@@ -59,9 +59,11 @@ public class AgentHookTests
     }
 
     [Fact]
-    public void Codex_session_end_clears_and_unknown_events_do_nothing()
+    public void Codex_session_end_interrupts_an_unfinished_turn_and_unknown_events_do_nothing()
     {
-        Assert.Null(AgentHook.FromCodexHook("""{"hook_event_name":"SessionEnd","session_id":"019a2b3c"}""")!.Write);
+        var end = AgentHook.FromCodexHook("""{"hook_event_name":"SessionEnd","session_id":"019a2b3c"}""")!;
+        Assert.Equal("interrupted", end.Write!.Stage);
+        Assert.Equal(ActivityKind.AgentWorking, end.OnlyOver);
         Assert.Null(AgentHook.FromCodexHook("""{"hook_event_name":"PreCompact","session_id":"019a2b3c"}"""));
         Assert.Null(AgentHook.FromCodexHook("not json"));
         Assert.Null(AgentHook.FromCodexHook(""));
@@ -108,10 +110,14 @@ public class AgentHookTests
     }
 
     [Fact]
-    public void Claude_session_end_removes_it()
+    public void Claude_session_end_turns_only_an_unfinished_turn_into_interrupted()
     {
         var action = AgentHook.FromClaude("""{"hook_event_name":"SessionEnd","session_id":"abc"}""")!;
-        Assert.Null(action.Write);
+        Assert.Equal(ActivityKind.Notice, action.Write!.Kind);
+        Assert.Equal(ActivityRunState.Error, action.Write.RunState);
+        Assert.Equal("Claude interrupted", action.Write.Title);
+        Assert.Equal(ActivityKind.AgentWorking, action.OnlyOver);
+        Assert.Equal(ActivityKind.AgentPermission, action.OrOver);
         Assert.Equal("claude_abc", action.Id);
     }
 

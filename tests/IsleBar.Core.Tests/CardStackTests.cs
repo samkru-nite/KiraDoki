@@ -73,9 +73,9 @@ public sealed class CardStackTests
     }
 
     [Fact]
-    public void All_music_is_one_card_and_the_merged_download_keeps_its_key()
+    public void Each_player_is_its_own_card_and_the_merged_download_keeps_its_key()
     {
-        Assert.Equal(CardStack.KeyOf(Item(ActivityKind.Music, "media:spotify")), CardStack.KeyOf(Item(ActivityKind.Music, "media:cloudmusic")));
+        Assert.NotEqual(CardStack.KeyOf(Item(ActivityKind.Music, "media:spotify")), CardStack.KeyOf(Item(ActivityKind.Music, "media:cloudmusic")));
         Assert.Equal(CardStack.KeyOf(Item(ActivityKind.Transfer, "download:a.zip")), CardStack.KeyOf(Item(ActivityKind.Transfer, "download:b.zip")));
         Assert.NotEqual(CardStack.KeyOf(Item(ActivityKind.Transfer, "download:a.zip")), CardStack.KeyOf(Item(ActivityKind.Transfer, "download-done:a.zip")));
     }
@@ -103,7 +103,7 @@ public sealed class CardStackTests
             Item(ActivityKind.Notice, "copied"),
         ], T0);
 
-        Assert.Equal(["copied", "ask", "done", "music"], Keys(stack));
+        Assert.Equal(["copied", "ask", "done", "m"], Keys(stack));
         Assert.Equal("copied", stack.Shown!.Key);
     }
 
@@ -122,8 +122,8 @@ public sealed class CardStackTests
         stack.Update([Item(ActivityKind.Music, "m")], T0);
         stack.Update([Item(ActivityKind.Music, "m"), Item(ActivityKind.Transfer, "download:a")], T0.AddSeconds(1));
 
-        Assert.Equal(["music", "download"], Keys(stack));
-        Assert.Equal("music", stack.Shown!.Key);
+        Assert.Equal(["m", "download"], Keys(stack));
+        Assert.Equal("m", stack.Shown!.Key);
     }
 
     [Fact]
@@ -132,13 +132,13 @@ public sealed class CardStackTests
         var stack = new CardStack();
         stack.Update([Item(ActivityKind.AgentWorking, "s")], T0);
         stack.Update([Item(ActivityKind.AgentWorking, "s"), Item(ActivityKind.Music, "m")], T0.AddSeconds(1));
-        Assert.Equal(["s", "music"], Keys(stack));
+        Assert.Equal(["s", "m"], Keys(stack));
 
         stack.Update([Item(ActivityKind.AgentDone, "s", 2, "done"), Item(ActivityKind.Music, "m")], T0.AddSeconds(2));
         Assert.True(stack.Cards[0].Pinned);
 
         stack.Update([Item(ActivityKind.AgentWorking, "s", 4), Item(ActivityKind.Music, "m")], T0.AddSeconds(4));
-        Assert.Equal(["music", "s"], Keys(stack));
+        Assert.Equal(["m", "s"], Keys(stack));
     }
 
     [Fact]
@@ -149,7 +149,7 @@ public sealed class CardStackTests
         stack.Update([Item(ActivityKind.Music, "m"), Item(ActivityKind.AgentDone, "d", 1, "done")], T0.AddSeconds(1),
             new HashSet<ActivityKind> { ActivityKind.AgentDone });
 
-        Assert.Equal(["music", "d"], Keys(stack));
+        Assert.Equal(["m", "d"], Keys(stack));
         Assert.False(stack.Cards[1].Pinned);
     }
 
@@ -213,7 +213,7 @@ public sealed class CardStackTests
         Assert.Equal("w", stack.Shown!.Key);
         stack.Update(withAsk, left.AddSeconds(3));
         Assert.Equal("ask", stack.Shown!.Key);
-        Assert.Equal(["ask", "music", "w", "download"], Keys(stack));   // the order is unchanged
+        Assert.Equal(["ask", "m", "w", "download"], Keys(stack));   // the order is unchanged
 
         stack.Update(Three, left.AddSeconds(10));   // answered
         Assert.Equal("w", stack.Shown!.Key);   // back to the chosen card
@@ -248,7 +248,7 @@ public sealed class CardStackTests
         stack.SetHover(false, T0.AddSeconds(4));
 
         stack.Update(Three[..2], T0.AddMinutes(1));   // the download finished and went away
-        Assert.Equal("music", stack.Shown!.Key);
+        Assert.Equal("m", stack.Shown!.Key);
         Assert.Null(stack.ChosenKey);
     }
 
@@ -270,14 +270,18 @@ public sealed class CardStackTests
     public void A_hidden_card_stays_hidden_until_it_ends_and_shows_again_when_it_comes_back()
     {
         var stack = ThreeStatusCards();
-        stack.Hide("music", T0.AddSeconds(3));
+        stack.Hide("m", T0.AddSeconds(3));
         Assert.Equal(["w", "download"], Keys(stack));
 
         stack.Update(Three, T0.AddSeconds(4));   // a new song is still the music card — still hidden
-        Assert.DoesNotContain("music", Keys(stack));
+        Assert.DoesNotContain("m", Keys(stack));
 
         stack.Update(Three[1..], T0.AddSeconds(5));   // music stopped
         stack.Update(Three, T0.AddSeconds(6));
-        Assert.Equal(["w", "download", "music"], Keys(stack));
+        Assert.Equal(["w", "download", "m"], Keys(stack));
     }
+
+    [Fact]
+    public void Mic_or_camera_in_use_waits_as_a_status_card()
+        => Assert.Equal(CardType.Status, CardStack.TypeOf(new ActivityState { RawKind = ActivityState.KindNotice, Stage = "privacy", State = "run" }, T0));
 }

@@ -70,6 +70,8 @@ public sealed class CardStack
         ActivityKind.AgentPermission => CardType.Pending,
         ActivityKind.AgentDone or ActivityKind.Error => CardType.Inform,
         // an agent's own failure (usage limit, stopped on an error, couldn't be started) is inform; the system's notices are temporary
+        // the mic / camera in use is a status card while it lasts (TODO 7.9 D, 10-06: not pinned — it is your own doing)
+        ActivityKind.Notice when state.Stage == "privacy" => CardType.Status,
         ActivityKind.Notice => state.RunState == ActivityRunState.Error && state.Agent is not null ? CardType.Inform : CardType.Temporary,
         ActivityKind.Transfer => state.RunState switch
         {
@@ -84,16 +86,12 @@ public sealed class CardStack
     };
 
     /// <summary>
-    /// Which items are "the same card" from tick to tick. All music is one card (a new song or player doesn't reorder the stack);
-    /// the merged browser download is one card even when the file it names changes; everything else is its state file / source.
+    /// Which items are "the same card" from tick to tick. The merged browser download is one card even when the file it names
+    /// changes; everything else is its state file / source — for music one card per player and playing run (user 10-07: a new song
+    /// keeps the card, playing again after it was dropped is a new one; see <see cref="MediaCards"/>).
     /// </summary>
     public static string KeyOf(ActivityState state)
     {
-        if (state.Kind == ActivityKind.Music)
-        {
-            return "music";
-        }
-
         if (state.SourcePath is { } source)
         {
             return source.StartsWith("download:", StringComparison.Ordinal) ? "download" : source;

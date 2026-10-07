@@ -49,7 +49,8 @@ public static class NoticeText
 
     public static string Disconnected(LanguageStrings s, string name) => Name(s.NoticeDisconnected, name);
 
-    public static string Copied(LanguageStrings s, string preview) => Name(s.NoticeCopied, preview);
+    public static string Copied(LanguageStrings s, string preview)
+        => preview.Length == 0 ? Name(s.NoticeCopied, string.Empty).TrimEnd(' ', '·', ':', '：') : Name(s.NoticeCopied, preview);
 
     /// <summary>"File copied" (1) · "3 files copied".</summary>
     public static string CopiedFiles(LanguageStrings s, int count)
