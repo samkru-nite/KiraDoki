@@ -2206,13 +2206,13 @@ public sealed partial class MainWindow : Window
     /// the player's own stream can be closed before that — by leaving the method, or on a track change — and decoding a closed stream
     /// fail-fasts the whole bar (RO_E_CLOSED 0x80000013 in Microsoft.UI.Xaml, dump 10-01 23:33).
     /// </summary>
-    private readonly Dictionary<string, (Microsoft.UI.Xaml.Media.Imaging.BitmapImage Image, Windows.UI.Color? Tint, Windows.Storage.Streams.IRandomAccessStream Stream)> _covers = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (Microsoft.UI.Xaml.Media.Imaging.BitmapImage Image, Microsoft.UI.Xaml.Media.Imaging.BitmapImage Large, Windows.UI.Color? Tint, Windows.Storage.Streams.IRandomAccessStream Stream)> _covers = new(StringComparer.Ordinal);
 
     /// <summary>Covers being read, and ones that failed (not retried every tick; the note shows instead).</summary>
     private readonly HashSet<string> _coversBusy = new(StringComparer.Ordinal);
 
     /// <summary>The loaded cover of a music card, or null (none, not loaded yet, failed).</summary>
-    private (Microsoft.UI.Xaml.Media.Imaging.BitmapImage Image, Windows.UI.Color? Tint, Windows.Storage.Streams.IRandomAccessStream Stream)? CoverOf(Card? card)
+    private (Microsoft.UI.Xaml.Media.Imaging.BitmapImage Image, Microsoft.UI.Xaml.Media.Imaging.BitmapImage Large, Windows.UI.Color? Tint, Windows.Storage.Streams.IRandomAccessStream Stream)? CoverOf(Card? card)
         => card is { State.Kind: ActivityKind.Music } && _feed.Media.ArtOf(card.Key) is { } art && _covers.TryGetValue(art.Key, out var cover)
             ? cover
             : null;
@@ -2257,8 +2257,12 @@ public sealed partial class MainWindow : Window
             owned.Seek(0);
             var image = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage { DecodePixelWidth = DpiSetup.Px(24) };
             await image.SetSourceAsync(owned);
+            owned.Seek(0);
+            // the lifted card's cover is up to 72 (TODO 7.9 F2): decoded at the pill's 24 it came out blurred (user 10-08)
+            var large = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage { DecodePixelWidth = DpiSetup.Px(CardSheets.CoverSize(progress: false)) };
+            await large.SetSourceAsync(owned);
             var tint = await PickAlbumTintAsync(art);
-            _covers[key] = (image, tint, owned);
+            _covers[key] = (image, large, tint, owned);
             _coversBusy.Remove(key);
             _cellsSig = null;   // the small pill's music cell picks it up
         }

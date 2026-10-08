@@ -364,6 +364,38 @@ public sealed class LanguageStrings
     /// <summary>"done" after an agent's name ("Claude done") — lower-case like <see cref="Working"/>, unlike the stand-alone <see cref="Done"/> (10-01).</summary>
     public required string AgentDone { get; init; }
 
+    // ---- the lifted card (TODO 7.9 F2): buttons, state words, notes. "{}" = the value ----
+    public required string CardOpenChat { get; init; }
+    public required string CardHide { get; init; }
+    public required string CardPause { get; init; }
+    public required string CardResume { get; init; }
+    public required string CardCancel { get; init; }
+    public required string CardAgain { get; init; }
+    public required string CardOpenFolder { get; init; }
+    public required string CardPrivacy { get; init; }
+
+    /// <summary>After a timer's big number: the time left.</summary>
+    public required string CardRemaining { get; init; }
+    public required string CardStarted { get; init; }
+    public required string CardEnds { get; init; }
+    public required string CardJustNow { get; init; }
+    public required string CardMinutesAgo { get; init; }
+
+    /// <summary>An agent at work: "running 3 min" ({} = whole minutes).</summary>
+    public required string CardRunningFor { get; init; }
+    public required string CardRunning { get; init; }
+    public required string CardEnded { get; init; }
+    public required string CardPlaying { get; init; }
+    public required string CardInUse { get; init; }
+    public required string CardDownloaded { get; init; }
+
+    /// <summary>Source names on the card's top row.</summary>
+    public required string CardMusic { get; init; }
+    public required string CardSystem { get; init; }
+    public required string CardDownloads { get; init; }
+    public required string CardMicrophone { get; init; }
+    public required string CardCamera { get; init; }
+
     public string FormatLaunchFail(string message)
         => LaunchFail.Replace("{}", message ?? string.Empty, StringComparison.Ordinal);
 

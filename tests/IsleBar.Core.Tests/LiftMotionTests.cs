@@ -37,10 +37,10 @@ public sealed class LiftMotionTests
     }
 
     [Fact]
-    public void A_long_card_is_square()
+    public void A_long_card_is_3_by_4()
     {
         var lift = LiftMotion.Place(new ScreenRect(1000, 1359, 1440, 1423), 0, 2560, TaskbarTop, Scale, tall: true);
-        Assert.Equal(lift.Card.Width, lift.Card.Height);
+        Assert.Equal(lift.Card.Width * 4 / 3, lift.Card.Height);
     }
 
     [Fact]
@@ -64,17 +64,6 @@ public sealed class LiftMotionTests
         Assert.True(lift.Window.Right >= lift.Card.Right + 48 && lift.Window.Right >= pill.Right);
         Assert.Equal(lift.Card.Top - (int)(LiftMotion.Room * Scale), lift.Window.Top);
         Assert.Equal(pill.Bottom, lift.Window.Bottom);
-    }
-
-    [Fact]
-    public void Ai_done_and_ai_trouble_get_the_long_card_the_rest_standard()
-    {
-        Assert.True(LiftMotion.IsTall(new ActivityState { RawKind = ActivityState.KindToString(ActivityKind.AgentDone), Agent = "claude" }));
-        Assert.True(LiftMotion.IsTall(new ActivityState { RawKind = ActivityState.KindToString(ActivityKind.Notice), Agent = "claude", Stage = "interrupted" }));
-        Assert.True(LiftMotion.IsTall(new ActivityState { RawKind = ActivityState.KindToString(ActivityKind.Error), Agent = "codex" }));
-        Assert.False(LiftMotion.IsTall(new ActivityState { RawKind = ActivityState.KindToString(ActivityKind.AgentWorking), Agent = "claude" }));
-        Assert.False(LiftMotion.IsTall(new ActivityState { RawKind = ActivityState.KindToString(ActivityKind.Notice) }));
-        Assert.False(LiftMotion.IsTall(new ActivityState { RawKind = ActivityState.KindToString(ActivityKind.Music) }));
     }
 
     [Fact]

@@ -32,9 +32,9 @@ public static class LiftMotion
     /// <summary>Fixed width (dip): the big pill 220 + 2 × 40, so with the small pill on the left and no tasks it lines up with the circle.</summary>
     public const double Width = 300;
 
-    /// <summary>Standard card 3:2 and long card square (dip). Long = AI done, AI interrupted/error; the rest is standard.</summary>
+    /// <summary>Standard card 3:2 and long card 3:4 (dip, user 10-08). Which one: <see cref="CardSheet.Adaptive"/> — fixed cards stay 3:2, adaptive ones go 3:4 when their middle doesn't fit.</summary>
     public const double Height = 200;
-    public const double TallHeight = 300;
+    public const double TallHeight = 400;
 
     /// <summary>The card's corners (dip) — Windows 11's popups.</summary>
     public const double Radius = 8;
@@ -77,14 +77,6 @@ public static class LiftMotion
     /// <summary>Morph: the share of the way over which the frame turns from the pill's colour to the card's.</summary>
     public const double ColourTurn = 0.4;
 
-    /// <summary>The long (square) card: AI done, AI interrupted / stopped / error. Everything else, system notifications included, is standard.</summary>
-    public static bool IsTall(ActivityState state)
-    {
-        ArgumentNullException.ThrowIfNull(state);
-        return state.Kind == ActivityKind.AgentDone
-            || (state.Agent is not null && state.Kind is ActivityKind.Error or ActivityKind.Notice);
-    }
-
     public static LiftStyle Parse(string? value) => value == "slide" ? LiftStyle.SlideUp : LiftStyle.Morph;
 
     public static string Key(LiftStyle style) => style == LiftStyle.SlideUp ? "slide" : "morph";
@@ -96,10 +88,13 @@ public static class LiftMotion
     /// side: a swap while the card is up sends the card down into a task cell (user 10-08), and the window can't grow mid-flight
     /// without a jump.
     /// </summary>
-    public static LiftLayout Place(ScreenRect pill, int screenLeft, int screenRight, int taskbarTop, double scale, bool tall, ScreenRect? bar = null)
+    /// <para>With <paramref name="reserveTall"/> (an adaptive card) the window has room for 3:4 from the start, so a card that grows
+    /// while open doesn't move its window (a frame's jump).</para>
+    public static LiftLayout Place(ScreenRect pill, int screenLeft, int screenRight, int taskbarTop, double scale, bool tall, ScreenRect? bar = null, bool reserveTall = false)
     {
         var w = PillGeometry.Px(Width, scale);
         var h = PillGeometry.Px(tall ? TallHeight : Height, scale);
+        var roomFor = PillGeometry.Px(tall || reserveTall ? TallHeight : Height, scale);
         var margin = PillGeometry.Px(ScreenMargin, scale);
         var left = pill.Left + ((pill.Width - w) / 2);
         left = Math.Max(screenLeft + margin, Math.Min(left, screenRight - margin - w));
@@ -110,7 +105,7 @@ public static class LiftMotion
         var cell = bar is null ? 0 : PillGeometry.Px(PillGeometry.Cell + SwapMotion.Overshoot, scale);
         var window = new ScreenRect(
             Math.Min(card.Left - room, Math.Min(pill.Left, reach.Left - cell)),
-            card.Top - room,
+            card.Bottom - roomFor - room,
             Math.Max(card.Right + room, Math.Max(pill.Right, reach.Right + cell)),
             Math.Max(Math.Max(pill.Bottom, reach.Bottom), taskbarTop));
         return new LiftLayout(card, window);

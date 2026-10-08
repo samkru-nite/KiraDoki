@@ -1,5 +1,7 @@
 using IsleBar.App.Interop;
 using IsleBar.App.IslandUi;
+using IsleBar.App.Media;
+using IsleBar.Core.Island;
 using IsleBar.Core.Ui;
 
 namespace IsleBar.App;
@@ -65,6 +67,7 @@ public sealed partial class MainWindow
             };
             _lift.TakeShot = () => Capture(CardRow);
             _lift.KeepsPress = OnTaskCell;
+            _lift.Act = OnSheetAction;
             _lift.Landed = () =>
             {
                 // the card lands back in the pill: after a click on the pill, the pill (kept down since) springs up now; after a
@@ -82,6 +85,7 @@ public sealed partial class MainWindow
 
         var cover = CoverOf(card)?.Image;
         var look = TaskIcons.For(card, cover is not null, DateTimeOffset.UtcNow);
+        _liftIconKey = LiftIconKey(card);
         _lift.Open(new LiftRequest(
             card.Key,
             pill,
@@ -92,14 +96,85 @@ public sealed partial class MainWindow
             screen.X,
             screen.X + screen.Width,
             TaskbarTop(),
-            LiftMotion.IsTall(card.State),
             LiftMotion.Parse(_settings.LiftAnimation),
             _settings.Bounce,
-            !ThemeColors.FromSystem().Light,
-            _theme.Foreground,
-            BigIconContent(look, cover),   // as on the big pill: an agent's logo in its makers' colours (user 10-08)
-            new LiftRider(BigIconContent(look, cover), HasBigLook(look) ? IconContent(look, cover) : null),
-            card.State.Title ?? card.State.Msg ?? card.Key));
+            SheetColors(),
+            LiftIcon(card),   // as on the big pill: an agent's logo in its makers' colours, a timer's turning dial (user 10-08)
+            new LiftRider(LiftIcon(card), HasBigLook(look) ? IconContent(look, cover) : null),
+            CardSheets.Build(card, DateTimeOffset.UtcNow, _text),
+            CoverOf(card)?.Large,
+            _language));
+    }
+
+    /// <summary>The lifted card's colours: Windows 11's popup, the theme's text, the pills' green / orange / red, the system accent for bars.</summary>
+    private SheetPalette SheetColors()
+    {
+        var dark = !ThemeColors.FromSystem().Light;
+        var ui = new Windows.UI.ViewManagement.UISettings();
+        var accent = ui.GetColorValue(dark ? Windows.UI.ViewManagement.UIColorType.AccentLight2 : Windows.UI.ViewManagement.UIColorType.AccentDark1);
+        return new SheetPalette(
+            LiftWindow.CardColor(dark), _theme.Foreground, _theme.Hint, _theme.Ok, Attention(), Alarm(), accent,
+            dark ? Windows.UI.Color.FromArgb(41, 255, 255, 255) : Windows.UI.Color.FromArgb(31, 0, 0, 0),
+            dark);
+    }
+
+    /// <summary>A button on the lifted card (TODO 7.9 F2). Closing ones put the card down first, so it goes back into the pill it came from.</summary>
+    private void OnSheetAction(SheetAction action)
+    {
+        if (_shownCard is not { } card)
+        {
+            return;
+        }
+
+        var state = card.State;
+        TaskbarHost.Log($"lift: button {action} on {card.Key}");
+        switch (action)
+        {
+            case SheetAction.Close or SheetAction.Hide or SheetAction.TimerCancel:
+                _lift?.Collapse();
+                CloseCard(card);
+                break;
+            case SheetAction.TimerPause or SheetAction.TimerResume:
+                _feed.TogglePause(state);
+                break;
+            case SheetAction.TimerAgain when state.Total is > 0:
+                _lift?.Collapse();
+                _feed.ReplaceTimer(TimerParser.ToActivity(TimeSpan.FromSeconds(state.Total.Value), DateTimeOffset.UtcNow, state.Name));
+                break;
+            case SheetAction.MediaPrevious:
+                _ = _feed.Media.SendAsync(MediaAction.Previous, card.Key);
+                break;
+            case SheetAction.MediaPlayPause:
+                _ = _feed.Media.SendAsync(MediaAction.PlayPause, card.Key);
+                break;
+            case SheetAction.MediaNext:
+                _ = _feed.Media.SendAsync(MediaAction.Next, card.Key);
+                break;
+            case SheetAction.Open when state.Open is { } open:
+                _lift?.Collapse();
+                Engine.FileActions.Open(open, revealInFolder: false);
+                break;
+            case SheetAction.OpenFolder:
+                _lift?.Collapse();
+                if (state.Open is { } done && File.Exists(done))
+                {
+                    Engine.FileActions.Open(done, revealInFolder: true);
+                }
+                else
+                {
+                    Engine.FileActions.Open(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads"), revealInFolder: false);
+                }
+
+                break;
+            case SheetAction.PrivacySettings:
+                _lift?.Collapse();
+                Engine.FileActions.Open(state.Glyph == IsleBar.Core.SystemWatch.NoticeGlyphs.Camera ? "ms-settings:privacy-webcam" : "ms-settings:privacy-microphone", revealInFolder: false);
+                break;
+            case SheetAction.OpenChat:
+                // F2b: find that chat's window in the Claude / ChatGPT app (TODO 7.9 F2) — not yet
+                TaskbarHost.Log("lift: open chat — not built yet (F2b)");
+                break;
+        }
     }
 
     /// <summary>
@@ -127,9 +202,34 @@ public sealed partial class MainWindow
         }
 
         _cards.SetHover(true, DateTimeOffset.UtcNow);
+        // a timer's number, "2 min ago", more downloads, the next song; the icon only when it changes (a timer paused: its hand stops)
+        var iconKey = LiftIconKey(_shownCard);
+        var icon = iconKey == _liftIconKey ? null : LiftIcon(_shownCard);
+        _liftIconKey = iconKey;
+        _lift.Refresh(CardSheets.Build(_shownCard, DateTimeOffset.UtcNow, _text), icon, CoverOf(_shownCard)?.Large);
     }
 
     private void CloseLift() => _lift?.Collapse();
+
+    /// <summary>The lifted card's icon: as on the big pill — a timer's dial turning on its own, an agent's logo in its own colours.</summary>
+    private Microsoft.UI.Xaml.UIElement LiftIcon(Card card)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var cover = CoverOf(card)?.Image;
+        return TimerDial.Of(card.State, card.Type == CardType.Inform, now) is { } dial
+            ? DialContent(dial, IconColorFor(card), card.State.IsPaused)
+            : BigIconContent(TaskIcons.For(card, cover is not null, now), cover);
+    }
+
+    /// <summary>What the icon is drawn from; a new icon only when this changes.</summary>
+    private string LiftIconKey(Card card)
+    {
+        var s = card.State;
+        var look = TaskIcons.For(card, CoverOf(card) is not null, DateTimeOffset.UtcNow);
+        return $"{card.Key}|{card.Type}|{look}|{s.Due}|{s.Left}|{s.Total}|{s.T0}|{s.Stage}|{IconColorFor(card)}|{CoverOf(card)?.Image.GetHashCode()}";
+    }
+
+    private string? _liftIconKey;
 
     /// <summary>
     /// A press at this screen point lands on a task cell (not ⋯): it doesn't close the lifted card — the swap it starts on release

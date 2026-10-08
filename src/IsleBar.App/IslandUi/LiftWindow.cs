@@ -24,14 +24,14 @@ internal sealed record LiftRequest(
     int ScreenLeft,
     int ScreenRight,
     int TaskbarTop,
-    bool Tall,
     LiftStyle Style,
     bool Bounce,
-    bool Dark,
-    Color Foreground,
+    SheetPalette Palette,
     UIElement Icon,
     LiftRider Rider,
-    string Title);
+    CardSheet Sheet,
+    ImageSource? Cover,
+    string? Language);
 
 /// <summary>
 /// The card's icon once more, for riding down into its task cell: as on the card (<paramref name="Big"/>) and, when the cell draws
@@ -87,6 +87,17 @@ internal sealed class LiftWindow : Window
 
     /// <summary>A press there is the bar's own (a task cell: its swap closes the card itself) — it doesn't close the card.</summary>
     public Func<int, int, bool>? KeepsPress { get; set; }
+
+    /// <summary>A button on the card was clicked.</summary>
+    public Action<SheetAction>? Act { get; set; }
+
+    /// <summary>The card's inside (F2), and whether it went 3:4.</summary>
+    private SheetView? _view;
+    private bool _tall;
+
+    /// <summary>Growing to 3:4 while open (more came in; it never shrinks back while open — user 10-08): from where, since when.</summary>
+    private ScreenRect? _growFrom;
+    private readonly Stopwatch _growClock = new();
 
     /// <summary>Called once the card has fully gone (after the closing animation).</summary>
     public Action? Gone { get; set; }
@@ -162,7 +173,14 @@ internal sealed class LiftWindow : Window
         _rider.Children.Clear();
         _rider.Visibility = Visibility.Collapsed;
         _firstFrameChecked = false;
-        _layout = LiftMotion.Place(request.Pill, request.ScreenLeft, request.ScreenRight, request.TaskbarTop, DpiSetup.Scale, request.Tall, request.Bar);
+        _growFrom = null;
+
+        // the card's inside first: an adaptive card is 3:2 when its middle fits, else 3:4 (user 10-08)
+        BuildView(request.Sheet);
+        _tall = request.Sheet.Adaptive && _view!.ContentHeight() > CardSheets.MiddleHeight(request.Sheet, LiftMotion.Height) + 0.5;
+        _layout = LiftMotion.Place(request.Pill, request.ScreenLeft, request.ScreenRight, request.TaskbarTop, DpiSetup.Scale, _tall, request.Bar,
+            reserveTall: request.Sheet.Adaptive);
+        _view!.SetSize(LiftMotion.Width, _tall ? LiftMotion.TallHeight : LiftMotion.Height);
         var win = _layout.Window;
 
         // A picture taken ahead (when the mouse came onto the pill) — waiting for one here held the card back a beat (user 10-08).
@@ -175,7 +193,6 @@ internal sealed class LiftWindow : Window
             _ = FetchShot();
         }
 
-        BuildPlaceholder(request);
         _root.Width = win.Width / DpiSetup.Scale;   // the perspective's centre is the root's centre
         _root.Height = win.Height / DpiSetup.Scale;
         _clipper.Clip = request.Style == LiftStyle.SlideUp ? _rootClip : null;
@@ -193,7 +210,7 @@ internal sealed class LiftWindow : Window
         SetWindowPos(_hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         Start();
         _outside.Arm();
-        TaskbarHost.Log($"lift: open {request.Style} {request.Key} card={_layout.Card.Left},{_layout.Card.Top} {_layout.Card.Width}x{_layout.Card.Height} window={win.Left},{win.Top} {win.Width}x{win.Height} pill={request.Pill.Left},{request.Pill.Top} {request.Pill.Width}x{request.Pill.Height}");
+        TaskbarHost.Log($"lift: open {request.Style} {request.Key} {(_tall ? "3:4" : "3:2")}{(request.Sheet.Adaptive ? " (adaptive)" : string.Empty)} card={_layout.Card.Left},{_layout.Card.Top} {_layout.Card.Width}x{_layout.Card.Height} window={win.Left},{win.Top} {win.Width}x{win.Height} pill={request.Pill.Left},{request.Pill.Top} {request.Pill.Width}x{request.Pill.Height}");
     }
 
     /// <summary>
@@ -375,10 +392,13 @@ internal sealed class LiftWindow : Window
         var s = DpiSetup.Scale;
         var win = lay.Window;
         MotionBox Local(ScreenRect rect, double radius) => new((rect.Left - win.Left) / s, (rect.Top - win.Top) / s, rect.Width / s, rect.Height / s, radius);
-        var card = Local(lay.Card, LiftMotion.Radius);
+        var cardRect = _growFrom is { } from
+            ? new ScreenRect(lay.Card.Left, (int)Math.Round(SwapMotion.Lerp(from.Top, lay.Card.Top, _growShare)), lay.Card.Right, lay.Card.Bottom)
+            : lay.Card;
+        var card = Local(cardRect, LiftMotion.Radius);
         var pill = Local(r.Pill, r.PillRadius);
-        var cardColour = CardColor(r.Dark);
-        var edgeColour = EdgeColor(r.Dark);
+        var cardColour = r.Palette.Card;
+        var edgeColour = EdgeColor(r.Palette.Dark);
 
         // closing into a task cell: the end is the card flying there, where it is this frame (its own stand-in draws its look)
         var follow = _closing ? _follow?.Invoke() : null;
@@ -480,31 +500,108 @@ internal sealed class LiftWindow : Window
         element.Height = Math.Max(0, box.Height);
     }
 
-    /// <summary>F1 placeholder: the card's icon and the pill's text, top left. The real inside of each card is F2.</summary>
-    private void BuildPlaceholder(LiftRequest r)
+    /// <summary>The card's inside (F2): the four zones of <see cref="SheetView"/>, laid out at the card's final size.</summary>
+    private void BuildView(CardSheet sheet)
     {
-        _content.Children.Clear();
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        if (r.Icon is FrameworkElement icon && icon.Parent is null)
+        if (_request is not { } r)
         {
-            row.Children.Add(icon);
+            return;
         }
 
-        row.Children.Add(new TextBlock
+        _content.Children.Clear();
+        if (r.Icon is FrameworkElement icon && icon.Parent is Panel old)
         {
-            Text = r.Title,
-            FontSize = 14,
-            Foreground = new SolidColorBrush(r.Foreground),
-            VerticalAlignment = VerticalAlignment.Center,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            MaxWidth = LiftMotion.Width - 56,
-        });
-        Canvas.SetLeft(row, 16);
-        Canvas.SetTop(row, 16);
-        _content.Children.Add(row);
+            old.Children.Remove(icon);   // built again (another card, or the same one changed shape): the icon moves over
+        }
+
+        _view = new SheetView(sheet, r.Icon, r.Cover, r.Palette, r.Language, LiftMotion.Width) { Act = a => Act?.Invoke(a) };
+        _content.Children.Add(_view.Root);
     }
 
-    private static Color CardColor(bool dark) => dark ? Color.FromArgb(255, 0x2C, 0x2C, 0x2C) : Color.FromArgb(255, 0xF9, 0xF9, 0xF9);
+    /// <summary>
+    /// The card's words of the moment (each tick while it's up): changed in place when only the moving parts differ, built again
+    /// otherwise. An adaptive card whose middle no longer fits grows to 3:4 — once; it never shrinks back while open (user 10-08).
+    /// </summary>
+    public void Refresh(CardSheet sheet, UIElement? icon, ImageSource? cover)
+    {
+        try
+        {
+            RefreshNow(sheet, icon, cover);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // the tick would swallow it silently (10-08: a card went blank after Pause, nothing in the log)
+            TaskbarHost.Log($"lift: refresh failed: {ex.ToString().Replace(Environment.NewLine, " | ")}");
+        }
+    }
+
+    private void RefreshNow(CardSheet sheet, UIElement? icon, ImageSource? cover)
+    {
+        if (_request is not { } r || _closing || _animating || _view is null || _layout is not { } lay)
+        {
+            return;
+        }
+
+        _request = r = r with { Sheet = sheet, Icon = icon ?? r.Icon, Cover = cover };
+        if (icon is not null)
+        {
+            _view.SetIcon(icon);
+        }
+
+        _view.SetCover(cover);
+        if (!_view.Update(sheet))
+        {
+            TaskbarHost.Log($"lift: rebuild {r.Key} (its layout changed)");
+            BuildView(sheet);
+            _view!.SetSize(LiftMotion.Width, _tall ? LiftMotion.TallHeight : LiftMotion.Height);
+        }
+
+        if (_tall || _growFrom is not null || !sheet.Adaptive || _view!.ContentHeight() <= CardSheets.MiddleHeight(sheet, LiftMotion.Height) + 0.5)
+        {
+            return;
+        }
+
+        _tall = true;
+        var grown = LiftMotion.Place(r.Pill, r.ScreenLeft, r.ScreenRight, r.TaskbarTop, DpiSetup.Scale, true, r.Bar, reserveTall: true);
+        if (grown.Window != lay.Window)
+        {
+            TaskbarHost.Log("lift: grow skipped, the window would move");
+            _tall = false;
+            return;
+        }
+
+        TaskbarHost.Log($"lift: grow {r.Key} to 3:4");
+        _view.SetSize(LiftMotion.Width, LiftMotion.TallHeight);
+        _growFrom = lay.Card;
+        _layout = grown;
+        SetWindowRgn(_hwnd, IntPtr.Zero, redraw: true);
+        _growClock.Restart();
+        CompositionTarget.Rendering += OnGrowFrame;
+    }
+
+    private void OnGrowFrame(object? sender, object e)
+    {
+        var t = Math.Min(1, _growClock.Elapsed.TotalMilliseconds / SwapMotion.Duration.TotalMilliseconds);
+        _growShare = SwapMotion.Ease(t);
+        Draw(1);
+        if (t < 1 && !_closing)
+        {
+            return;
+        }
+
+        CompositionTarget.Rendering -= OnGrowFrame;
+        _growFrom = null;
+        if (!_closing && _layout is { } lay)
+        {
+            Draw(1);
+            SetWindowRgn(_hwnd, CreateRectRgn(lay.Card.Left - lay.Window.Left, lay.Card.Top - lay.Window.Top, lay.Card.Right - lay.Window.Left, lay.Card.Bottom - lay.Window.Top), redraw: true);
+        }
+    }
+
+    private double _growShare;
+
+    /// <summary>The card's fill (Windows 11's popups), for <see cref="SheetPalette.Card"/>.</summary>
+    public static Color CardColor(bool dark) => dark ? Color.FromArgb(255, 0x2C, 0x2C, 0x2C) : Color.FromArgb(255, 0xF9, 0xF9, 0xF9);
 
     private static Color EdgeColor(bool dark) => dark ? Color.FromArgb(255, 0x3C, 0x3C, 0x3C) : Color.FromArgb(255, 0xE0, 0xE0, 0xE0);
 
