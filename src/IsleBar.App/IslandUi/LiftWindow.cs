@@ -31,7 +31,9 @@ internal sealed record LiftRequest(
     LiftRider Rider,
     CardSheet Sheet,
     ImageSource? Cover,
-    string? Language);
+    string? Language,
+    ScreenRect? From = null,
+    Color? FromGlow = null);
 
 /// <summary>
 /// The card's icon once more, for riding down into its task cell: as on the card (<paramref name="Big"/>) and, when the cell draws
@@ -113,39 +115,7 @@ internal sealed class LiftWindow : Window
 
     public LiftWindow()
     {
-        if (AppWindow.Presenter is OverlappedPresenter presenter)
-        {
-            presenter.SetBorderAndTitleBar(false, false);
-            presenter.IsResizable = false;
-            presenter.IsMaximizable = false;
-            presenter.IsMinimizable = false;
-            presenter.IsAlwaysOnTop = true;
-        }
-
-        AppWindow.IsShownInSwitchers = false;
-        SystemBackdrop = new TransparentBackdrop();
-
-        _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        var ex = Unsigned32(GetWindowLong(_hwnd, GWL_EXSTYLE));
-        SetWindowLong(_hwnd, GWL_EXSTYLE, Signed32(ex | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW));
-
-        // A plain popup, no frame at all: with the frame styles left on (even without a title bar) a 1 px white system edge showed
-        // around the see-through window (user 10-08 screenshot).
-        SetWindowLong(_hwnd, GWL_STYLE, Signed32(WS_POPUP | WS_CLIPSIBLINGS));
-        SetWindowPos(_hwnd, IntPtr.Zero, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
-        var none = DWMWA_COLOR_NONE;
-        var square = DWMWCP_DONOTROUND;
-        var hrBorder = DwmSetWindowAttributeUInt(_hwnd, DWMWA_BORDER_COLOR, ref none, sizeof(uint));
-        var hrCorner = DwmSetWindowAttribute(_hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, ref square, sizeof(int));
-        // The transparent backdrop alone came out black where nothing is drawn (user 10-08 screenshots). DWM only composes a
-        // window with its per-pixel alpha once "blur behind" is on; an empty, off-window blur region means nothing gets blurred.
-        var nothing = CreateRectRgn(-2, -2, -1, -1);
-        var blur = new BlurBehind { Flags = DWM_BB_ENABLE | DWM_BB_BLURREGION, Enable = true, Region = nothing };
-        var hrAlpha = DwmEnableBlurBehindWindow(_hwnd, ref blur);
-        DeleteObject(nothing);
-        TaskbarHost.Log($"lift: per-pixel alpha (blur behind) hr={hrAlpha:X}");
-        TaskbarHost.Log($"lift: window made, style={Unsigned32(GetWindowLong(_hwnd, GWL_STYLE)):X} dwm border={hrBorder:X} corner={hrCorner:X}");
-        AppWindow.Move(new Windows.Graphics.PointInt32(-32000, -32000));
+        _hwnd = SeeThrough.Make(this, "lift");
 
         _frame.Fill = _fill;
         _frame.Edge = _edge;
@@ -179,7 +149,7 @@ internal sealed class LiftWindow : Window
         BuildView(request.Sheet);
         _tall = request.Sheet.Adaptive && _view!.ContentHeight() > CardSheets.MiddleHeight(request.Sheet, LiftMotion.Height) + 0.5;
         _layout = LiftMotion.Place(request.Pill, request.ScreenLeft, request.ScreenRight, request.TaskbarTop, DpiSetup.Scale, _tall, request.Bar,
-            reserveTall: request.Sheet.Adaptive);
+            reserveTall: request.Sheet.Adaptive, from: request.From);
         _view!.SetSize(LiftMotion.Width, _tall ? LiftMotion.TallHeight : LiftMotion.Height);
         var win = _layout.Window;
 
@@ -396,7 +366,8 @@ internal sealed class LiftWindow : Window
             ? new ScreenRect(lay.Card.Left, (int)Math.Round(SwapMotion.Lerp(from.Top, lay.Card.Top, _growShare)), lay.Card.Right, lay.Card.Bottom)
             : lay.Card;
         var card = Local(cardRect, LiftMotion.Radius);
-        var pill = Local(r.Pill, r.PillRadius);
+        // opening from a pill of the ⋯ list (F3) it grows out of that pill; it always goes back into the big pill
+        var pill = !_closing && r.From is { } from0 ? Local(from0, r.PillRadius) : Local(r.Pill, r.PillRadius);
         var cardColour = r.Palette.Card;
         var edgeColour = EdgeColor(r.Palette.Dark);
 
@@ -444,7 +415,17 @@ internal sealed class LiftWindow : Window
         _frame.Radius = Math.Clamp(box.Radius, 0, Math.Max(0, Math.Min(box.Width, box.Height)) / 2);
         _frame.SetSize(Math.Max(0, box.Width), Math.Max(0, box.Height));   // the shape in this frame, not after layout
         _fill.Color = Mix(r.PillColor, cardColour, turn);
-        _edge.Color = Color.FromArgb((byte)(edgeColour.A * turn), edgeColour.R, edgeColour.G, edgeColour.B);
+        if (!_closing && r.FromGlow is { } glow && r.Style == LiftStyle.Morph)
+        {
+            // a list pill with a coloured border (done green, waiting orange): the border turns into the card's edge
+            _frame.EdgeWidth = 2 - turn;
+            _edge.Color = Mix(glow, edgeColour, turn);
+        }
+        else
+        {
+            _frame.EdgeWidth = 1;
+            _edge.Color = Color.FromArgb((byte)(edgeColour.A * turn), edgeColour.R, edgeColour.G, edgeColour.B);
+        }
 
         Canvas.SetLeft(_shot, pill.X);
         Canvas.SetTop(_shot, pill.Y);
@@ -577,7 +558,7 @@ internal sealed class LiftWindow : Window
         }
 
         _tall = true;
-        var grown = LiftMotion.Place(r.Pill, r.ScreenLeft, r.ScreenRight, r.TaskbarTop, DpiSetup.Scale, true, r.Bar, reserveTall: true);
+        var grown = LiftMotion.Place(r.Pill, r.ScreenLeft, r.ScreenRight, r.TaskbarTop, DpiSetup.Scale, true, r.Bar, reserveTall: true, from: r.From);
         if (grown.Window != lay.Window)
         {
             TaskbarHost.Log("lift: grow skipped, the window would move");
@@ -618,9 +599,9 @@ internal sealed class LiftWindow : Window
     /// <summary>The card's fill (Windows 11's popups), for <see cref="SheetPalette.Card"/>.</summary>
     public static Color CardColor(bool dark) => dark ? Color.FromArgb(255, 0x2C, 0x2C, 0x2C) : Color.FromArgb(255, 0xF9, 0xF9, 0xF9);
 
-    private static Color EdgeColor(bool dark) => dark ? Color.FromArgb(255, 0x3C, 0x3C, 0x3C) : Color.FromArgb(255, 0xE0, 0xE0, 0xE0);
+    internal static Color EdgeColor(bool dark) => dark ? Color.FromArgb(255, 0x3C, 0x3C, 0x3C) : Color.FromArgb(255, 0xE0, 0xE0, 0xE0);
 
-    private static Color Mix(Color a, Color b, double t) => Color.FromArgb(
+    internal static Color Mix(Color a, Color b, double t) => Color.FromArgb(
         (byte)Math.Round(a.A + ((b.A - a.A) * t)),
         (byte)Math.Round(a.R + ((b.R - a.R) * t)),
         (byte)Math.Round(a.G + ((b.G - a.G) * t)),
@@ -646,23 +627,6 @@ internal sealed class LiftWindow : Window
 
     [DllImport("user32.dll")]
     private static extern IntPtr WindowFromPoint(POINT point);
-
-    private const uint DWM_BB_ENABLE = 0x1;
-    private const uint DWM_BB_BLURREGION = 0x2;
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct BlurBehind
-    {
-        public uint Flags;
-        [MarshalAs(UnmanagedType.Bool)]
-        public bool Enable;
-        public IntPtr Region;
-        [MarshalAs(UnmanagedType.Bool)]
-        public bool TransitionOnMaximized;
-    }
-
-    [DllImport("dwmapi.dll")]
-    private static extern int DwmEnableBlurBehindWindow(IntPtr window, ref BlurBehind blur);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetClassNameW(IntPtr window, char[] name, int max);

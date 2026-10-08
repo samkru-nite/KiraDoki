@@ -90,7 +90,8 @@ public static class LiftMotion
     /// </summary>
     /// <para>With <paramref name="reserveTall"/> (an adaptive card) the window has room for 3:4 from the start, so a card that grows
     /// while open doesn't move its window (a frame's jump).</para>
-    public static LiftLayout Place(ScreenRect pill, int screenLeft, int screenRight, int taskbarTop, double scale, bool tall, ScreenRect? bar = null, bool reserveTall = false)
+    /// <para>With <paramref name="from"/> (lifted from a pill of the ⋯ list, F3) the window reaches that pill too, however high up.</para>
+    public static LiftLayout Place(ScreenRect pill, int screenLeft, int screenRight, int taskbarTop, double scale, bool tall, ScreenRect? bar = null, bool reserveTall = false, ScreenRect? from = null)
     {
         var w = PillGeometry.Px(Width, scale);
         var h = PillGeometry.Px(tall ? TallHeight : Height, scale);
@@ -105,7 +106,7 @@ public static class LiftMotion
         var cell = bar is null ? 0 : PillGeometry.Px(PillGeometry.Cell + SwapMotion.Overshoot, scale);
         var window = new ScreenRect(
             Math.Min(card.Left - room, Math.Min(pill.Left, reach.Left - cell)),
-            card.Bottom - roomFor - room,
+            Math.Min(card.Bottom - roomFor - room, from is { } f ? f.Top - room : int.MaxValue),
             Math.Max(card.Right + room, Math.Max(pill.Right, reach.Right + cell)),
             Math.Max(Math.Max(pill.Bottom, reach.Bottom), taskbarTop));
         return new LiftLayout(card, window);

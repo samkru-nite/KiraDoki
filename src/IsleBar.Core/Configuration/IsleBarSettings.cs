@@ -96,6 +96,10 @@ public sealed class IsleBarSettings
     /// <summary>How a card lifts out of the big pill: "morph" (default) · "slide" (<see cref="Ui.LiftMotion"/>, TODO 7.9 F, user 10-08).</summary>
     public string LiftAnimation { get; set; } = "morph";
 
+    /// <summary>The ⋯ list: how far apart its pills set off, ms: "20" (default) · "40" (<see cref="Ui.ListMotion"/>; user 10-09 tries
+    /// both, the other goes).</summary>
+    public string ListStagger { get; set; } = "20";
+
     /// <summary>Card text on the big pill (user 10-07): "left" (default) · "group" = icon and text centred together · "text" = only the
     /// text centred, the icon stays. Centred only when it fits; text that has to scroll is left-aligned.</summary>
     public string CardTextAlign { get; set; } = "left";
@@ -219,6 +223,7 @@ public sealed class IsleBarSettings
         SwapAnimation = SwapAnimation,
         Bounce = Bounce,
         LiftAnimation = LiftAnimation,
+        ListStagger = ListStagger,
         CardTextAlign = CardTextAlign,
         AudioBars = AudioBars,
         History = [.. History],

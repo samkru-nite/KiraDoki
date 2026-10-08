@@ -248,11 +248,18 @@ public sealed partial class MainWindow : Window
             }
 
             var source = e.OriginalSource as DependencyObject;
+            if (_list?.IsOpen == true && (IsInside(source, SmallPill) || IsInside(source, PillBody)))
+            {
+                CloseList();   // with the ⋯ list up, a press on the pills only puts it away (TODO 7.9 F3)
+                return;
+            }
+
             if (IsInside(source, SmallPill) && !IsInside(source, BallBox))
             {
                 _cellPress = !_typing && CellTagAt(source) is { } tag && tag != DotsTag ? tag : null;   // swaps on release (below)
+                _dotsPress = !_typing && CellTagAt(source) == DotsTag;   // opens the list on release
 
-                return;   // ⋯ opens the list in step F; the line and the margins do nothing
+                return;   // the line and the margins do nothing
             }
 
             if (IsInside(source, BallBox))
@@ -308,6 +315,15 @@ public sealed partial class MainWindow : Window
                 if (!_typing && CellTagAt(e.OriginalSource as DependencyObject) == pressed)
                 {
                     OnTaskCellClicked(pressed);   // that card and the big pill swap places (TODO 7.3, 10-07) - on release, like the big pill
+                }
+            }
+
+            if (_dotsPress)
+            {
+                _dotsPress = false;
+                if (!_typing && CellTagAt(e.OriginalSource as DependencyObject) == DotsTag)
+                {
+                    ToggleList();
                 }
             }
 
@@ -960,7 +976,8 @@ public sealed partial class MainWindow : Window
             _cards.Update(items, DateTimeOffset.UtcNow);
             _shownCard = _cards.Shown;
             KeepLift();
-            var next = _shownCard is { } shown ? new IslandSnapshot(shown.State, _cards.Cards.Count - 1) : IslandSnapshot.Empty;
+            KeepList();
+            var next =_shownCard is { } shown ? new IslandSnapshot(shown.State, _cards.Cards.Count - 1) : IslandSnapshot.Empty;
             _snapshot = next;
             LoadAlbumArt();
             ExpandIfMessage(items);   // feed EVERY new message notice to the expanded card, not just the primary one (bursts dropped middles — user 09-30)
@@ -1149,8 +1166,11 @@ public sealed partial class MainWindow : Window
         });
         if (_dotsOn)
         {
+            more.PointerEntered += (_, _) => TakeListShotsAhead();   // a click nearly always follows: draw the list's pills now (F3)
             TaskCells.Children.Insert(left ? 0 : TaskCells.Children.Count, more);
         }
+
+        ApplyCellDim();
     }
 
     /// <summary>What a card's cell draws: a timer's turning dial, else its icon (<see cref="IconContent"/>).</summary>
@@ -1457,6 +1477,7 @@ public sealed partial class MainWindow : Window
         SmallSurface.Radius = r;
         GlassBorder.Radius = r;
         GlowRing.Radius = r;
+        DimVeil.Radius = r;
         CloseChip.Radius = round ? 14 : Math.Max(0, r - 2);   // concentric with the pill's end, 2 in
     }
 

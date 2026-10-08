@@ -25,6 +25,12 @@ public sealed partial class MainWindow
 
     private void ToggleLift()
     {
+        if (_list?.IsOpen == true)
+        {
+            CloseList();   // with the list up, the big pill only puts it away (TODO 7.9 F)
+            return;
+        }
+
         if (_lift?.OpenKey is not null)
         {
             _lift.Collapse();
@@ -39,7 +45,7 @@ public sealed partial class MainWindow
             return;
         }
 
-        if (_shownCard is not { } card || _layout.Big is not { } big || !NativeMethods.GetWindowRect(_taskbar.OuterWindow, out var bar))
+        if (_shownCard is not { } card)
         {
             return;
         }
@@ -47,9 +53,32 @@ public sealed partial class MainWindow
         // the pill's text, which the morph fades out where it is: taken when the mouse came onto the pill, so nothing waits now
         var shot = _pillShot.Key == card.Key ? _pillShot.Shot : null;
         _pillShot = default;
+        OpenLift(card, shot);
+    }
+
+    /// <summary>The big pill on screen (pixels), or null while it's hidden.</summary>
+    private ScreenRect? BigPillOnScreen()
+    {
+        if (_layout.Big is not { } big || !NativeMethods.GetWindowRect(_taskbar.OuterWindow, out var bar))
+        {
+            return null;
+        }
 
         // PillRect's right/bottom are one past for the region API; the pill itself ends one pixel earlier
-        var pill = new ScreenRect(bar.Left + big.Left, bar.Top + big.Top, bar.Left + big.Right - 1, bar.Top + big.Bottom - 1);
+        return new ScreenRect(bar.Left + big.Left, bar.Top + big.Top, bar.Left + big.Right - 1, bar.Top + big.Bottom - 1);
+    }
+
+    /// <summary>
+    /// Lifts <paramref name="card"/> (the big pill's) out of the big pill, or — tapped in the ⋯ list (F3) — out of that list pill
+    /// (<paramref name="from"/>, drawn as <paramref name="shot"/>, with its border colour <paramref name="glow"/>).
+    /// </summary>
+    private void OpenLift(Card card, Microsoft.UI.Xaml.Media.ImageSource? shot, ScreenRect? from = null, Windows.UI.Color? glow = null)
+    {
+        if (BigPillOnScreen() is not { } pill || !NativeMethods.GetWindowRect(_taskbar.OuterWindow, out var bar))
+        {
+            return;
+        }
+
         var screen = Microsoft.UI.Windowing.DisplayArea.GetFromRect(
             new Windows.Graphics.RectInt32(pill.Left, pill.Top, pill.Width, pill.Height),
             Microsoft.UI.Windowing.DisplayAreaFallback.Nearest).OuterBounds;
@@ -103,7 +132,9 @@ public sealed partial class MainWindow
             new LiftRider(LiftIcon(card), HasBigLook(look) ? IconContent(look, cover) : null),
             CardSheets.Build(card, DateTimeOffset.UtcNow, _text, _feed.Tails.For(card.State)),
             CoverOf(card)?.Large,
-            _language));
+            _language,
+            from,
+            glow));
     }
 
     /// <summary>The lifted card's colours: Windows 11's popup, the theme's text, the pills' green / orange / red, the system accent for bars.</summary>

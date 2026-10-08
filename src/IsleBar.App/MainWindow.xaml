@@ -196,6 +196,8 @@
         </Grid>
 
         <!-- Pinned card's border, 2 wide inside the edge: pending orange, inform green, temporary warning red (turned on by IslandAnimator). Clicks pass through -->
+        <!-- The ⋯ list is up (F3): the pill's colour over the content dims it — over the content, not on it, so snapshots of CardRow stay bright -->
+        <ui:SmoothBorder x:Name="DimVeil" Radius="16" Opacity="0" IsHitTestVisible="False" />
         <ui:SmoothBorder x:Name="GlowRing" EdgeWidth="2" Radius="16" IsHitTestVisible="False" />
     </Grid>
 

@@ -322,6 +322,12 @@ public sealed class LanguageStrings
 
     public required string LiftAnimSlide { get; init; }
 
+    /// <summary>Settings: how far apart the ⋯ list's pills set off (TODO 7.9 F3).</summary>
+    public required string ListStaggerLabel { get; init; }
+
+    /// <summary>The ⋯ list: beside the card the big pill is showing.</summary>
+    public required string OnBigPill { get; init; }
+
     /// <summary>The close zone on an inform card (TODO 7.3): closes the card ("I've seen it").</summary>
     public required string CloseCard { get; init; }
 

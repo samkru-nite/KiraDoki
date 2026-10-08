@@ -36,6 +36,7 @@ public static class SettingsCodec
     private const string KeySwapAnimation = "swap_animation";
     private const string KeySwapBounce = "swap_bounce";
     private const string KeyLiftAnimation = "lift_animation";
+    private const string KeyListStagger = "list_stagger";
     private const string KeyCardTextAlign = "card_text_align";
     private const string KeyAudioBars = "audio_bars";
     private const string KeyHistory = "history";
@@ -162,6 +163,7 @@ public static class SettingsCodec
         s.SwapAnimation = Ui.SwapMotion.Key(Ui.SwapMotion.Parse(AsString(raw[KeySwapAnimation])));
         s.Bounce = AsBool(raw[KeySwapBounce]) ?? s.Bounce;
         s.LiftAnimation = Ui.LiftMotion.Key(Ui.LiftMotion.Parse(AsString(raw[KeyLiftAnimation])));
+        s.ListStagger = AsString(raw[KeyListStagger]) == "40" ? "40" : "20";
         s.CardTextAlign = AsString(raw[KeyCardTextAlign]) is "group" or "text" ? AsString(raw[KeyCardTextAlign])! : "left";
         if (AsInt(raw[KeyManualOffset]) is { } manualOffset)
         {
@@ -289,6 +291,7 @@ public static class SettingsCodec
         raw[KeySwapAnimation] = s.SwapAnimation;
         raw[KeySwapBounce] = s.Bounce;
         raw[KeyLiftAnimation] = s.LiftAnimation;
+        raw[KeyListStagger] = s.ListStagger;
         raw[KeyCardTextAlign] = s.CardTextAlign;
         raw[KeyAudioBars] = s.AudioBars;
         raw[KeyPomoFocus] = s.PomodoroFocus;

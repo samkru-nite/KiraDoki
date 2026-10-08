@@ -52,6 +52,11 @@ public sealed partial class SmoothBorder : Grid
         get => _edgeWidth;
         set
         {
+            if (value == _edgeWidth)
+            {
+                return;   // set every frame by animations: only a real change redraws
+            }
+
             _edgeWidth = value;
             Redraw(_w, _h);
         }
