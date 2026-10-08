@@ -29,6 +29,22 @@ public static class SpringCurve
         return 1 - (decay * (Math.Cos(damped * seconds) + (dampingRatio * omega / damped * Math.Sin(damped * seconds))));
     }
 
+    /// <summary>When the spring first reaches its end value (seconds) — before any overshoot. An overdamped one never quite does: its settle time.</summary>
+    public static double RiseTime(double response, double dampingRatio)
+    {
+        const double step = 0.001;
+        var settle = SettleTime(response, dampingRatio);
+        for (var t = step; t < settle; t += step)
+        {
+            if (Progress(t, response, dampingRatio) >= 1)
+            {
+                return t;
+            }
+        }
+
+        return settle;
+    }
+
     /// <summary>After this time, the difference from 1 is below <paramref name="tolerance"/> (motion is invisible).</summary>
     public static double SettleTime(double response, double dampingRatio, double tolerance = 0.002)
     {

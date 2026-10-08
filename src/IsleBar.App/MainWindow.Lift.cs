@@ -18,11 +18,22 @@ public sealed partial class MainWindow
     /// <summary>The task cell the left button went down on; it swaps when the button comes back up on it.</summary>
     private string? _cellPress;
 
+    /// <summary>The card is going back because its big pill was clicked: the pill is already springing up, so no press on landing.</summary>
+    private bool _closedByPill;
+
     private void ToggleLift()
     {
         if (_lift?.OpenKey is not null)
         {
             _lift.Collapse();
+            if (PressFeedback.IsHeld(PillBody))
+            {
+                // Timed so the pill is back to full size just as the card lands (user 10-08: held down until landing was a noticeable
+                // wait): start springing when the card's remaining way equals the pill's rise. Today they're about equal (0.22 / 0.23 s).
+                _closedByPill = true;
+                PressFeedback.LetGoAfter(PillBody, LiftMotion.Close - PressFeedback.RiseTime(PillBody));
+            }
+
             return;
         }
 
@@ -57,9 +68,9 @@ public sealed partial class MainWindow
             {
                 // the card lands back in the pill: after a click on the pill, the pill (kept down since) springs up now; after a
                 // click elsewhere it gives one whole press — either way one press per close (user 10-08)
-                if (PressFeedback.IsHeld(PillBody))
+                if (_closedByPill)
                 {
-                    PressFeedback.LetGo(PillBody);
+                    _closedByPill = false;   // its click's press is finishing right now — one press per close
                 }
                 else
                 {

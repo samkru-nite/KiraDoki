@@ -22,6 +22,7 @@ internal static class PressFeedback
     /// <summary>The spring back: small buttons wobble a little (damping 0.55); the big pill springs back with one small overshoot only
     /// (damping 0.8 — at 0.55 it "bounced several times", user 10-08).</summary>
     private const double Damping = 0.55;
+    private const double Response = 0.35;   // the spring's period (s)
     public const double PillDamping = 0.8;
 
     /// <summary>Whether presses animate at all: they are part of the bounce setting (user 10-08: bounce off = no press motion).</summary>
@@ -95,6 +96,25 @@ internal static class PressFeedback
 
     public static bool IsHeld(UIElement element) => Held.Contains(element);
 
+    /// <summary>How long <paramref name="element"/> takes to spring from pressed back to full size (its overshoot comes after).</summary>
+    public static TimeSpan RiseTime(UIElement element) => TimeSpan.FromSeconds(SpringCurve.RiseTime(Response, FeelOf(element).Damping));
+
+    /// <summary>Lets a held element spring back after <paramref name="delay"/>.</summary>
+    public static void LetGoAfter(UIElement element, TimeSpan delay)
+    {
+        if (delay <= TimeSpan.Zero)
+        {
+            LetGo(element);
+            return;
+        }
+
+        var timer = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread().CreateTimer();
+        timer.Interval = delay;
+        timer.IsRepeating = false;
+        timer.Tick += (_, _) => LetGo(element);
+        timer.Start();
+    }
+
     /// <summary>Lets a held element spring back.</summary>
     public static void LetGo(UIElement element)
     {
@@ -136,13 +156,13 @@ internal static class PressFeedback
         var from = feel.Pressed;
         var linear = c.CreateLinearEasingFunction();
         var up = c.CreateVector3KeyFrameAnimation();
-        foreach (var (fraction, progress) in SpringCurve.Sample(0.35, feel.Damping))
+        foreach (var (fraction, progress) in SpringCurve.Sample(Response, feel.Damping))
         {
             var v = from + ((1f - from) * progress);
             up.InsertKeyFrame(fraction, new Vector3(v, v, 1f), linear);
         }
 
-        up.Duration = TimeSpan.FromSeconds(SpringCurve.SettleTime(0.35, feel.Damping));
+        up.Duration = TimeSpan.FromSeconds(SpringCurve.SettleTime(Response, feel.Damping));
         visual.StartAnimation(nameof(Visual.Scale), up);
     }
 }

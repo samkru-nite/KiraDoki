@@ -39,4 +39,13 @@ public sealed class SpringCurveTests
         Assert.Equal((1f, 1f), points[^1]);
         Assert.Equal(41, points.Count);
     }
+
+    [Fact]
+    public void Rise_time_is_when_it_first_reaches_the_end()
+    {
+        var rise = SpringCurve.RiseTime(0.35, 0.8);
+        Assert.InRange(SpringCurve.Progress(rise, 0.35, 0.8), 1, 1.01);
+        Assert.True(SpringCurve.Progress(rise - 0.01, 0.35, 0.8) < 1);
+        Assert.InRange(rise, 0.2, 0.26);   // ≈ the lifted card's closing (0.22 s), which the big pill's press is timed against
+    }
 }
