@@ -238,17 +238,7 @@ internal sealed class IslandAnimator
         try { visual.StopAnimation("Translation.Y"); } catch (ArgumentException) { }   // Translation may not be enabled on this element; never let it throw (it froze the island timer — 09-30)
         visual.Properties.InsertVector3("Translation", Vector3.Zero);
         visual.StartAnimation(nameof(Visual.Scale), SpringVector(0.5f, 1f, PopResponse, PopDamping));
-        // the pop's fade takes over the icon's opacity, which ended the "working" breath for good (review 10-03) — pick it up after
-        var batch = _compositor.CreateScopedBatch(CompositionBatchTypes.Animation);
         visual.StartAnimation(nameof(Visual.Opacity), Scalar(0f, 1f, TimeSpan.FromMilliseconds(120), null));
-        batch.End();
-        batch.Completed += (_, _) =>
-        {
-            if (_breathing)
-            {
-                StartBreath(visual);
-            }
-        };
     }
 
     private static readonly TimeSpan TextDelay = TimeSpan.FromMilliseconds(70);
@@ -278,46 +268,6 @@ internal sealed class IslandAnimator
         fade.DelayTime = TextDelay;
         fade.DelayBehavior = AnimationDelayBehavior.SetInitialValueBeforeDelay;
         visual.StartAnimation(nameof(Visual.Opacity), fade);
-    }
-
-    private bool _breathing;
-
-    /// <summary>
-    /// "Working" breathes: the lead mark slowly grows and fades (1 → 1.08, opacity 1 → 0.65, 1.8 s) while an agent works —
-    /// a calm "in progress" signal. Stops as soon as the work is done.
-    /// </summary>
-    public void Breathe(bool on)
-    {
-        if (on == _breathing)
-        {
-            return;
-        }
-
-        _breathing = on;
-        var icon = _bouncers[0];
-        var visual = ElementCompositionPreview.GetElementVisual(icon);
-        if (!on)
-        {
-            visual.StopAnimation("Opacity");
-            visual.Opacity = 1f;
-            return;
-        }
-
-        visual.CenterPoint = new Vector3((float)icon.ActualWidth / 2, (float)icon.ActualHeight / 2, 0f);
-        StartBreath(visual);
-    }
-
-    private void StartBreath(Visual visual)
-    {
-        var ease = _compositor.CreateCubicBezierEasingFunction(new Vector2(0.37f, 0f), new Vector2(0.63f, 1f));
-        var fade = _compositor.CreateScalarKeyFrameAnimation();
-        fade.InsertKeyFrame(0f, 1f);
-        fade.InsertKeyFrame(0.5f, 0.55f, ease);
-        fade.InsertKeyFrame(1f, 1f, ease);
-        fade.Duration = TimeSpan.FromMilliseconds(1800);
-        fade.IterationBehavior = AnimationIterationBehavior.Forever;
-        fade.DelayTime = TimeSpan.FromMilliseconds(600);   // after the entrance pop settles
-        visual.StartAnimation("Opacity", fade);
     }
 
     private string? _glowKey;
