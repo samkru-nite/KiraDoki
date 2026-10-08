@@ -19,7 +19,6 @@ internal sealed class ToastWatcher(Func<LanguageStrings> strings) : NoticeWatche
     private static readonly TimeSpan Poll = TimeSpan.FromMilliseconds(400);   // check often for low latency; the DB is only opened when its file actually changed
     private static readonly TimeSpan Show = NoticeLengths.Read;   // 4 s was over before a long notice had scrolled to its text
     private readonly CancellationTokenSource _stop = new();
-    private readonly Dictionary<string, string> _names = [];
     private long _lastId = -1;
     private DateTime _lastDbWrite = DateTime.MinValue;
     private Thread? _thread;
@@ -197,70 +196,13 @@ internal sealed class ToastWatcher(Func<LanguageStrings> strings) : NoticeWatche
         return rows;
     }
 
-    /// <summary>App name: the name shown in the Start menu (shell) → otherwise guessed from the app ID. Cached once resolved.</summary>
-    private string AppName(string appId)
-    {
-        if (_names.TryGetValue(appId, out var cached))
-        {
-            return cached;
-        }
-
-        var name = ShellName(appId) ?? ToastText.GuessAppName(appId);
-        _names[appId] = name;
-        return name;
-    }
+    /// <summary>App name: the Start menu's, else the program's own description, else guessed from the id (cached).</summary>
+    private static string AppName(string appId) => Interop.AppNames.For(appId);
 
     /// <summary>How to launch the app when the toast has no deep link: <c>shell:AppsFolder\{AUMID}</c> if the shell can
     /// resolve it (opens the app), otherwise the action center. Opens the app to wherever it was — not necessarily the chat.</summary>
     private static string AppLaunch(string appId)
-        => Resolvable(appId) ? @"shell:AppsFolder\" + appId : "ms-actioncenter:";
-
-    private static bool Resolvable(string appId)
-    {
-        try
-        {
-            var iid = typeof(IShellItem).GUID;
-            if (SHCreateItemFromParsingName(@"shell:AppsFolder\" + appId, IntPtr.Zero, ref iid, out var item) != 0 || item is null)
-            {
-                return false;
-            }
-
-            Marshal.ReleaseComObject(item);
-            return true;
-        }
-        catch (Exception ex) when (ex is COMException or ArgumentException or InvalidCastException)
-        {
-            return false;
-        }
-    }
-
-    private static string? ShellName(string appId)
-    {
-        try
-        {
-            var iid = typeof(IShellItem).GUID;
-            if (SHCreateItemFromParsingName(@"shell:AppsFolder\" + appId, IntPtr.Zero, ref iid, out var item) != 0 || item is null)
-            {
-                return null;
-            }
-
-            try
-            {
-                item.GetDisplayName(0 /* SIGDN_NORMALDISPLAY */, out var pointer);
-                var name = Marshal.PtrToStringUni(pointer);
-                Marshal.FreeCoTaskMem(pointer);
-                return string.IsNullOrWhiteSpace(name) || name.Contains('!', StringComparison.Ordinal) ? null : name;
-            }
-            finally
-            {
-                Marshal.ReleaseComObject(item);
-            }
-        }
-        catch (Exception ex) when (ex is COMException or ArgumentException or InvalidCastException)
-        {
-            return null;
-        }
-    }
+        => Interop.AppNames.InStartMenu(appId) ? @"shell:AppsFolder\" + appId : "ms-actioncenter:";
 
     protected override void Stop()
     {
@@ -271,25 +213,6 @@ internal sealed class ToastWatcher(Func<LanguageStrings> strings) : NoticeWatche
         {
             _stop.Dispose();
         }
-    }
-
-    [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = true)]
-    private static extern int SHCreateItemFromParsingName(string path, IntPtr bindContext, ref Guid iid, [MarshalAs(UnmanagedType.Interface)] out IShellItem? item);
-
-    [ComImport]
-    [Guid("43826d1e-e718-42ee-bc55-a1e261c37bfe")]
-    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    private interface IShellItem
-    {
-        void BindToHandler(IntPtr bindContext, ref Guid handler, ref Guid iid, out IntPtr result);
-
-        void GetParent(out IShellItem parent);
-
-        void GetDisplayName(uint form, out IntPtr name);
-
-        void GetAttributes(uint mask, out uint attributes);
-
-        void Compare(IShellItem other, uint hint, out int order);
     }
 
     /// <summary>The SQLite that ships with Windows (winsqlite3.dll) — nothing extra to install.</summary>

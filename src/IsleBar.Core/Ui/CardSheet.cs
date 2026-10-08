@@ -211,7 +211,7 @@ public static class CardSheets
             ? new SheetProgress(Math.Clamp((double)done / s.Total.Value, 0, 1), Digits(TimeSpan.FromMilliseconds(done)), Digits(TimeSpan.FromMilliseconds(s.Total.Value)))
             : null;
         return new CardSheet(
-            text.CardMusic, playing ? text.CardPlaying : text.Paused, SheetTone.Plain, null, SheetLayout.Media,
+            string.IsNullOrWhiteSpace(s.AppName) ? text.CardMusic : s.AppName, playing ? text.CardPlaying : text.Paused, SheetTone.Plain, null, SheetLayout.Media,
             s.Name, s.Msg is { } artist ? [artist] : [], null, null, null, bar,
             [
                 new(SheetAction.MediaPrevious, null, ""),
@@ -234,24 +234,83 @@ public static class CardSheets
             _ => (copy ? text.CardRunning : text.Downloading, SheetTone.Plain),
         };
 
+        var running = s.RunState == ActivityRunState.Running;
+        var several = !copy && running && s.Downloads is { Count: > 1 };
         var lines = new List<string?>();
-        if (!copy && s.Done is { } bytes && s.Fraction is null && s.RunState == ActivityRunState.Running)
+        if (!copy && s.Done is { } bytes && s.Fraction is null && running && !several)
         {
-            lines.Add(Fill(text.CardDownloaded, Bytes(bytes)) + (s.Speed is { } speed ? $" · {Bytes((long)speed)}/s" : string.Empty));
+            // one download: where from, how much came, how fast (F2b: the source, 10-09)
+            var source = s.Downloads is [{ } only] ? only.Source ?? text.CardBrowser : null;
+            lines.Add((source is null ? string.Empty : source + " · ") + Fill(text.CardDownloaded, Bytes(bytes))
+                      + (s.Speed is { } speed ? $" · {Bytes((long)speed)}/s" : string.Empty));
         }
 
-        SheetProgress? bar = s.Fraction is { } f && s.RunState == ActivityRunState.Running ? new SheetProgress(f, null, $"{f * 100:0}%") : null;
+        SheetProgress? bar = s.Fraction is { } f && running ? new SheetProgress(f, null, $"{f * 100:0}%") : null;
         var name = s.Name ?? (copy ? text.FileTransfer : text.Downloading);
         IReadOnlyList<SheetButton> buttons = card.Type == CardType.Status
             ? copy ? [new(SheetAction.Hide, text.CardHide)] : [new(SheetAction.OpenFolder, text.CardOpenFolder), new(SheetAction.Hide, text.CardHide)]
             : s.Open is not null ? [new(SheetAction.Open, text.MenuOpen), .. close] : close;
-        return Sheet(copy ? text.FileTransfer : text.CardDownloads, state, tone, Ago(Start(s), now, text),
-            s.MoreCount > 0 ? $"{name} +{s.MoreCount}" : name, [.. lines], buttons) with { Progress = bar };
+        var sheet = Sheet(copy ? text.FileTransfer : text.CardDownloads, state, tone, Ago(Start(s), now, text),
+            several ? null : s.MoreCount > 0 ? $"{name} +{s.MoreCount}" : name,
+            several ? [DownloadList(s.Downloads!, text)] : [.. lines], buttons) with { Progress = bar };
+        return several ? sheet with { Markdown = true } : sheet;
     }
 
+    /// <summary>
+    /// Several downloads (F2b, 10-08 "每个来源一行"): per source a grey line with its summed speed ("Edge · 3.2 MB/s", or paused),
+    /// then each of its files — its name when the browser has given it (Chrome/Edge's "Unconfirmed 123" has none) and how much came.
+    /// Written as Markdown so the card lays it out like an answer: section names and a list.
+    /// </summary>
+    private static string DownloadList(IReadOnlyList<DownloadLine> downloads, LanguageStrings text)
+    {
+        var md = new System.Text.StringBuilder();
+        foreach (var group in downloads.GroupBy(d => d.Source ?? text.CardBrowser))
+        {
+            var speeds = group.Where(d => d.Speed is not null).Select(d => d.Speed!.Value).ToList();
+            var how = group.All(d => d.Paused) ? text.Paused : speeds.Count > 0 ? $"{Bytes((long)speeds.Sum())}/s" : null;
+            md.Append("## ").Append(Escape(group.Key)).Append(how is null ? string.Empty : " · " + how).Append('\n');
+            foreach (var d in group)
+            {
+                md.Append("- ").Append(d.Name is { } n ? Escape(n) + " · " : string.Empty).Append(Fill(text.CardDownloaded, Bytes(d.Size)))
+                  .Append(d.Paused && !group.All(x => x.Paused) ? " · " + text.Paused : string.Empty).Append('\n');
+            }
+
+            md.Append('\n');
+        }
+
+        return md.ToString().TrimEnd();
+    }
+
+    /// <summary>A file name as Markdown text: its marks escaped, so "my_*draft*.zip" stays as it is.</summary>
+    private static string Escape(string s)
+    {
+        var sb = new System.Text.StringBuilder(s.Length);
+        foreach (var c in s)
+        {
+            if (c is '\\' or '`' or '*' or '_' or '[' or ']' or '#' or '|' or '~')
+            {
+                sb.Append('\\');
+            }
+
+            sb.Append(c);
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Mic / camera in use: one program — its name is the title; several — one line each, newest first, as a list (F2b, 10-09).
+    /// Adaptive: a long list grows the card instead of being cut.
+    /// </summary>
     private static CardSheet Privacy(ActivityState s, DateTimeOffset now, LanguageStrings text)
-        => Sheet(s.Glyph == NoticeGlyphs.Camera ? text.CardCamera : text.CardMicrophone, text.CardInUse, SheetTone.Plain, Ago(s.UpdatedAt, now, text), s.Name, [],
-            [new(SheetAction.PrivacySettings, text.CardPrivacy), new(SheetAction.Hide, text.CardHide)]) with { Adaptive = false };
+    {
+        var apps = s.Apps is { Count: > 1 } many ? many : null;
+        var sheet = Sheet(s.Glyph == NoticeGlyphs.Camera ? text.CardCamera : text.CardMicrophone, text.CardInUse, SheetTone.Plain,
+            Ago(s.UpdatedAt, now, text), apps is null ? s.Name : null,
+            apps is null ? [] : [string.Join('\n', apps.Select(a => "- " + a))],
+            [new(SheetAction.PrivacySettings, text.CardPrivacy), new(SheetAction.Hide, text.CardHide)]);
+        return sheet with { Markdown = apps is not null };
+    }
 
     // ---------------- parts ----------------
 

@@ -393,6 +393,9 @@ public sealed class LanguageStrings
     public required string CardMusic { get; init; }
     public required string CardSystem { get; init; }
     public required string CardDownloads { get; init; }
+
+    /// <summary>A download's source when several Chromium browsers are open and its temp file can't tell which (F2b).</summary>
+    public required string CardBrowser { get; init; }
     public required string CardMicrophone { get; init; }
     public required string CardCamera { get; init; }
 

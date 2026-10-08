@@ -37,9 +37,10 @@ public static class CardMarkdown
     private static readonly Regex TableSeparator = new(@"^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$", RegexOptions.CultureInvariant);
     private static readonly Regex Fence = new(@"^\s*(```|~~~)", RegexOptions.CultureInvariant);
 
-    private static readonly Regex Link = new(@"!?\[([^\]]*)\]\([^)]*\)", RegexOptions.CultureInvariant);
-    private static readonly Regex Strong = new(@"(\*\*|__)(?=\S)(.+?)(?<=\S)\1", RegexOptions.CultureInvariant);
-    private static readonly Regex Emphasis = new(@"(?<![\w*])\*(?=\S)([^*\n]+?)(?<=\S)\*(?![\w*])", RegexOptions.CultureInvariant);
+    // a mark with a backslash before it is the character itself ("my\_\*draft\*.zip" — a file name on the download card)
+    private static readonly Regex Link = new(@"(?<!\\)!?\[([^\]]*)(?<!\\)\]\([^)]*\)", RegexOptions.CultureInvariant);
+    private static readonly Regex Strong = new(@"(?<!\\)(\*\*|__)(?=\S)(.+?)(?<=[^\s\\])\1", RegexOptions.CultureInvariant);
+    private static readonly Regex Emphasis = new(@"(?<![\w*\\])\*(?=\S)([^*\n]+?)(?<=[^\s\\])\*(?![\w*])", RegexOptions.CultureInvariant);
     private static readonly Regex Strike = new(@"~~(.+?)~~", RegexOptions.CultureInvariant);
     private static readonly Regex InlineCode = new(@"(`+)(.+?)\1", RegexOptions.CultureInvariant);
     private static readonly Regex Escaped = new(@"\\([\\`*_{}\[\]()#+\-.!|>~])", RegexOptions.CultureInvariant);

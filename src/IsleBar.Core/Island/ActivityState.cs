@@ -95,6 +95,18 @@ public sealed class ActivityState
     [JsonIgnore]
     public double? Speed { get; set; }
 
+    /// <summary>The app's own name behind <see cref="AppId"/> ("网易云音乐"), looked up by the App. Not serialized to JSON.</summary>
+    [JsonIgnore]
+    public string? AppName { get; set; }
+
+    /// <summary>Each download under way (the merged download card, F2b), first come first. Not serialized to JSON.</summary>
+    [JsonIgnore]
+    public IReadOnlyList<DownloadLine>? Downloads { get; set; }
+
+    /// <summary>Every app behind the item, when there can be several (mic / camera in use). Not serialized to JSON.</summary>
+    [JsonIgnore]
+    public IReadOnlyList<string>? Apps { get; set; }
+
     /// <summary>How many more items this one stands for ("+2" — other browser downloads). Not serialized to JSON.</summary>
     [JsonIgnore]
     public int MoreCount { get; set; }

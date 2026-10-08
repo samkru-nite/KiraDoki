@@ -156,4 +156,67 @@ public sealed class CardSheetTests
         Assert.Equal("张伟", sheet.Title);
         Assert.Equal(["周五的评审改到下午三点了"], sheet.Body);
     }
+
+    [Fact]
+    public void The_mic_card_lists_every_program_using_it()
+    {
+        ActivityState Mic(params string[] apps) => new()
+        {
+            RawKind = ActivityState.KindNotice, Stage = "privacy", Glyph = IsleBar.Core.SystemWatch.NoticeGlyphs.Microphone,
+            Name = apps[0], Apps = apps, UpdatedAt = Now,
+        };
+
+        var one = CardSheets.Build(Card(CardType.Status, Mic("微信")), Now, Zh);
+        Assert.Equal("微信", one.Title);
+        Assert.False(one.Markdown);
+
+        var two = CardSheets.Build(Card(CardType.Status, Mic("腾讯会议", "微信")), Now, Zh);
+        Assert.Null(two.Title);
+        Assert.True(two.Markdown);
+        Assert.Equal(["- 腾讯会议\n- 微信"], two.Body);
+    }
+
+    [Fact]
+    public void A_download_source_comes_from_its_temp_file()
+    {
+        Assert.Equal("Firefox", DownloadSources.Of(@"C:\d\a.zip.part", []));
+        Assert.Equal("百度网盘", DownloadSources.Of(@"C:\d\a.zip.baiduyun.p.downloading", ["Edge"]));
+        Assert.Equal("Edge", DownloadSources.Of(@"C:\d\a.zip.crdownload", ["Edge"]));
+        Assert.Null(DownloadSources.Of(@"C:\d\a.zip.crdownload", ["Edge", "Chrome"]));   // two Chromium browsers: can't tell
+    }
+
+    [Fact]
+    public void Several_downloads_are_listed_by_source()
+    {
+        var sheet = CardSheets.Build(Card(CardType.Status, new ActivityState
+        {
+            RawKind = ActivityState.KindTransfer, Title = "Download → PC", Name = "report.pdf", Stage = "download", State = "run",
+            Done = 1, MoreCount = 2,
+            Downloads =
+            [
+                new DownloadLine("Edge", "report.pdf", 13 * 1024 * 1024, 2 * 1024 * 1024, false),
+                new DownloadLine("Edge", null, 1024 * 1024, 1024 * 1024, false),
+                new DownloadLine("百度网盘", "my_*draft*.zip", 5 * 1024 * 1024, null, true),
+            ],
+        }), Now, Zh);
+
+        Assert.True(sheet.Markdown);
+        Assert.Null(sheet.Title);
+        var blocks = CardMarkdown.Parse(sheet.Body[0]);
+        Assert.Equal(
+            [(MdKind.Heading, "Edge · 3.0 MB/s"), (MdKind.Bullet, "report.pdf · 已下载 13.0 MB"), (MdKind.Bullet, "已下载 1.0 MB"),
+             (MdKind.Heading, "百度网盘 · 已暂停"), (MdKind.Bullet, "my_*draft*.zip · 已下载 5.0 MB")],
+            blocks.Select(b => (b.Kind, b.Text)));
+    }
+
+    [Fact]
+    public void Music_names_its_player()
+    {
+        var sheet = CardSheets.Build(Card(CardType.Status, new ActivityState
+        {
+            RawKind = ActivityState.KindMusic, Name = "晴天", Stage = "playing", AppName = "网易云音乐",
+        }), Now, Zh);
+
+        Assert.Equal("网易云音乐", sheet.Source);
+    }
 }

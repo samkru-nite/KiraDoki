@@ -120,6 +120,7 @@ internal sealed class ActivityFeed : IDisposable
             RawKind = ActivityState.KindNotice,
             Title = camera ? _text().NoticeCameraInUse : _text().NoticeMicInUse,
             Name = w.PrivacyApp,
+            Apps = w.PrivacyApps,
             Glyph = camera ? NoticeGlyphs.Camera : NoticeGlyphs.Microphone,
             State = "run",
             Stage = stage,

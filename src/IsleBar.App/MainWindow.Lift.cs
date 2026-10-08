@@ -216,9 +216,32 @@ public sealed partial class MainWindow
     {
         var now = DateTimeOffset.UtcNow;
         var cover = CoverOf(card)?.Image;
-        return TimerDial.Of(card.State, card.Type == CardType.Inform, now) is { } dial
+        var plain = TimerDial.Of(card.State, card.Type == CardType.Inform, now) is { } dial
             ? DialContent(dial, IconColorFor(card), card.State.IsPaused)
             : BigIconContent(TaskIcons.For(card, cover is not null, now), cover);
+
+        // music and notifications name their app in the source row, so its own icon goes beside it, as in Windows' notifications
+        // (F2b, 10-09); the usual icon stays until it has loaded, and for good if the app has none to give
+        var s = card.State;
+        if (s.AppId is not { Length: > 0 } app
+            || !(s.Kind == IsleBar.Core.Island.ActivityKind.Music || (s.Kind == IsleBar.Core.Island.ActivityKind.Notice && s.Stage == "expand")))
+        {
+            return plain;
+        }
+
+        var image = new Microsoft.UI.Xaml.Controls.Image
+        {
+            Width = 16, Height = 16, Stretch = Microsoft.UI.Xaml.Media.Stretch.Uniform, VerticalAlignment = Microsoft.UI.Xaml.VerticalAlignment.Center,
+        };
+        var box = new Microsoft.UI.Xaml.Controls.Grid();
+        box.Children.Add(plain);
+        box.Children.Add(image);
+        AppIcon.Resolve(app, source =>
+        {
+            image.Source = source;
+            plain.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
+        });
+        return box;
     }
 
     /// <summary>What the icon is drawn from; a new icon only when this changes.</summary>
@@ -226,7 +249,7 @@ public sealed partial class MainWindow
     {
         var s = card.State;
         var look = TaskIcons.For(card, CoverOf(card) is not null, DateTimeOffset.UtcNow);
-        return $"{card.Key}|{card.Type}|{look}|{s.Due}|{s.Left}|{s.Total}|{s.T0}|{s.Stage}|{IconColorFor(card)}|{CoverOf(card)?.Image.GetHashCode()}";
+        return $"{card.Key}|{card.Type}|{look}|{s.Due}|{s.Left}|{s.Total}|{s.T0}|{s.Stage}|{IconColorFor(card)}|{CoverOf(card)?.Image.GetHashCode()}|{s.AppId}";
     }
 
     private string? _liftIconKey;

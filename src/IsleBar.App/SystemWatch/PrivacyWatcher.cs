@@ -34,7 +34,7 @@ internal sealed class PrivacyWatcher : NoticeWatcher
     private readonly ManualResetEvent _stop = new(false);
     private readonly string? _ownExe = Environment.ProcessPath;
     private Thread? _thread;
-    private volatile State _state = new(null, null);
+    private volatile State _state = new([], []);
 
     public PrivacyWatcher(Func<Core.Localization.LanguageStrings> strings)
         : base(strings)
@@ -42,13 +42,23 @@ internal sealed class PrivacyWatcher : NoticeWatcher
     }
 
     /// <summary>Whether any app is using the microphone now.</summary>
-    public bool MicInUse => _state.Mic is not null;
+    public bool MicInUse => _state.Mic.Count > 0;
 
     /// <summary>Whether any app is using the camera now.</summary>
-    public bool CameraInUse => _state.Camera is not null;
+    public bool CameraInUse => _state.Camera.Count > 0;
 
     /// <summary>Name of the app using it (camera takes priority — in a video call both are the same app). Null if none.</summary>
-    public string? AppName => _state.Camera ?? _state.Mic;
+    public string? AppName => Apps.FirstOrDefault();
+
+    /// <summary>Every app using the camera or the microphone, camera ones first, each newest first (the lifted card lists them, F2b).</summary>
+    public IReadOnlyList<string> Apps
+    {
+        get
+        {
+            var state = _state;
+            return [.. state.Camera.Concat(state.Mic).Distinct(StringComparer.OrdinalIgnoreCase)];
+        }
+    }
 
     public override void Start() => Guard(() =>
     {
@@ -122,25 +132,21 @@ internal sealed class PrivacyWatcher : NoticeWatcher
 
     private void Scan()
     {
-        var mic = FindUser(Microphone);
-        var camera = FindUser(Webcam);
-        var before = _state;
-        _state = new State(mic, camera);
+        _state = new State(FindUsers(Microphone), FindUsers(Webcam));
         // no notice of its own when use starts any more: the status card's debut on the big pill shows it (user 10-07 — the
         // extra 2 s notice came first and the card then showed a second time)
     }
 
-    /// <summary>Name of the app that most recently started using that device. Null if none.</summary>
-    private string? FindUser(string capability)
+    /// <summary>Names of the apps using that device, the one that started last first. Empty if none.</summary>
+    private List<string> FindUsers(string capability)
     {
         using var key = Registry.CurrentUser.OpenSubKey(ConsentStore + "\\" + capability);
         if (key is null)
         {
-            return null;
+            return [];
         }
 
-        string? best = null;
-        long bestStart = 0;
+        var users = new List<(string Name, long Start)>();
 
         void Consider(RegistryKey parent, string child, bool packaged)
         {
@@ -152,7 +158,7 @@ internal sealed class PrivacyWatcher : NoticeWatcher
 
             var start = app.GetValue("LastUsedTimeStart") as long?;
             var stop = app.GetValue("LastUsedTimeStop") as long?;
-            if (!PrivacyRules.IsInUse(start, stop) || start!.Value < bestStart)
+            if (!PrivacyRules.IsInUse(start, stop))
             {
                 return;
             }
@@ -162,8 +168,7 @@ internal sealed class PrivacyWatcher : NoticeWatcher
                 return;
             }
 
-            bestStart = start.Value;
-            best = packaged ? PrivacyRules.FriendlyName(child, packaged: true) : NonPackagedName(child);
+            users.Add((packaged ? PrivacyRules.FriendlyName(child, packaged: true) : NonPackagedName(child), start!.Value));
         }
 
         foreach (var child in key.GetSubKeyNames())
@@ -185,7 +190,7 @@ internal sealed class PrivacyWatcher : NoticeWatcher
             Consider(key, child, packaged: true);
         }
 
-        return best;
+        return [.. users.OrderByDescending(u => u.Start).Select(u => u.Name).Distinct(StringComparer.OrdinalIgnoreCase)];
     }
 
     /// <summary>Regular app name: the exe's "File description" (e.g. "Google Chrome") if present, else the exe name. Cached once resolved.</summary>
@@ -211,7 +216,7 @@ internal sealed class PrivacyWatcher : NoticeWatcher
             return fallback;
         });
 
-    private sealed record State(string? Mic, string? Camera);
+    private sealed record State(IReadOnlyList<string> Mic, IReadOnlyList<string> Camera);
 
     [DllImport("advapi32.dll")]
     private static extern int RegNotifyChangeKeyValue(

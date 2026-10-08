@@ -22,11 +22,14 @@ internal static class AppIcon
     private const uint DIB_RGB_COLORS = 0;
     private const uint BI_RGB = 0;
 
-    private static readonly Dictionary<string, ImageSource?> Cache = new(StringComparer.OrdinalIgnoreCase);
+    // the pixels, not an image source: one SoftwareBitmapSource shown at once in the lifted card's window and in the bar's (the icon
+    // flying along) brought the whole app down in Microsoft.UI.Xaml.dll (0xc000027b) on the second lift of a song (10-09) — each
+    // caller gets a source of its own
+    private static readonly Dictionary<string, SoftwareBitmap?> Cache = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Calls <paramref name="apply"/> with the app's icon once it is ready (immediately if cached). Never throws; if the icon
-    /// can't be had, it simply never calls back and the glyph the caller already showed stays.
+    /// Calls <paramref name="apply"/> with the app's icon once it is ready — a new image source each time, never shared. Never
+    /// throws; if the icon can't be had, it simply never calls back and the glyph the caller already showed stays.
     /// </summary>
     public static async void Resolve(string? aumid, Action<ImageSource> apply)
     {
@@ -35,44 +38,35 @@ internal static class AppIcon
             return;
         }
 
-        if (Cache.TryGetValue(aumid, out var cached))
-        {
-            if (cached is not null)
-            {
-                apply(cached);
-            }
-
-            return;
-        }
-
-        ImageSource? source = null;
         try
         {
-            var bitmap = LoadSoftwareBitmap(aumid);
-            if (bitmap is not null)
+            if (!Cache.TryGetValue(aumid, out var bitmap))
             {
-                var wic = new SoftwareBitmapSource();
-                await wic.SetBitmapAsync(bitmap);
-                bitmap.Dispose();
-                source = wic;
+                bitmap = LoadSoftwareBitmap(aumid);
+                Cache[aumid] = bitmap;
             }
-        }
-        catch (Exception ex) when (ex is COMException or ArgumentException or InvalidCastException or OutOfMemoryException)
-        {
-            source = null;
-        }
 
-        Cache[aumid] = source;
-        if (source is not null)
-        {
+            if (bitmap is null)
+            {
+                return;
+            }
+
+            var source = new SoftwareBitmapSource();
+            await source.SetBitmapAsync(bitmap);
             apply(source);
+        }
+        catch (Exception ex) when (ex is COMException or ArgumentException or InvalidCastException or OutOfMemoryException or ObjectDisposedException)
+        {
+            TaskbarHost.Log($"app icon: {aumid} failed — {ex.Message}");
         }
     }
 
     private static SoftwareBitmap? LoadSoftwareBitmap(string aumid)
     {
+        // a desktop player that reports just its exe ("cloudmusic.exe") isn't in the Start menu under that id: its file's icon (10-09)
+        var target = AppNames.StartMenuId(aumid) is { } id ? @"shell:AppsFolder\" + id : AppNames.ExePath(aumid);
         var factoryIid = typeof(IShellItemImageFactory).GUID;
-        if (SHCreateItemFromParsingName(@"shell:AppsFolder\" + aumid, IntPtr.Zero, ref factoryIid, out var factoryObject) != 0 || factoryObject is null)
+        if (target is null || SHCreateItemFromParsingName(target, IntPtr.Zero, ref factoryIid, out var factoryObject) != 0 || factoryObject is null)
         {
             return null;
         }

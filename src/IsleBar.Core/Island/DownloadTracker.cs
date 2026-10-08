@@ -6,7 +6,11 @@ namespace IsleBar.Core.Island;
 /// <param name="Size">Bytes received so far — the file's size, or for a file reserved at full size up front, a count kept elsewhere.</param>
 /// <param name="LastWrite">When the file was last written.</param>
 /// <param name="Total">Full size when known (a file reserved at full size up front); null = unknown.</param>
-public sealed record PartialDownload(string Path, string? Name, long Size, DateTimeOffset LastWrite, long? Total = null);
+/// <param name="Source">Which program downloads it ("Edge", "Firefox", "百度网盘"); null = a browser, not known which.</param>
+public sealed record PartialDownload(string Path, string? Name, long Size, DateTimeOffset LastWrite, long? Total = null, string? Source = null);
+
+/// <summary>One download under way, for the lifted card's list (F2b): from where, its name if known, how much came, how fast.</summary>
+public sealed record DownloadLine(string? Source, string? Name, long Size, double? Speed, bool Paused);
 
 /// <summary>
 /// Turns the partial files of browser downloads into <b>one</b> island item: the summed speed, the name of the earliest download
@@ -49,6 +53,7 @@ public sealed class DownloadTracker
 
             present.Add(file.Path);
             entry.Name = file.Name;
+            entry.Source = file.Source;
             entry.Total = file.Total is > 0 ? file.Total : null;
             entry.Observe(now, file.Size);
         }
@@ -78,6 +83,8 @@ public sealed class DownloadTracker
             Total = known ? all.Sum(e => e.Value.Total!.Value) : null,
             Speed = speeds.Count > 0 ? speeds.Sum() : null,
             MoreCount = all.Count - 1,
+            Downloads = [.. all.Select(e => new DownloadLine(e.Value.Source, e.Value.Name, e.Value.Size,
+                e.Value.IsPaused(now) ? null : e.Value.Speed(now), e.Value.IsPaused(now)))],
             State = "run",
             SourcePath = "download:" + shown.Key,
             UpdatedAt = shown.Value.FirstSeen,
@@ -90,6 +97,8 @@ public sealed class DownloadTracker
         private DateTimeOffset _lastGrowth = lastGrowth;
 
         public string? Name { get; set; } = name;
+
+        public string? Source { get; set; }
 
         public long? Total { get; set; }
 

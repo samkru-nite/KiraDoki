@@ -230,6 +230,8 @@ internal sealed class MediaWatcher : IDisposable
             State = "run",
             Stage = playing ? "playing" : "paused",
             UpdatedAt = DateTimeOffset.UtcNow.AddMinutes(-10),      // sort behind other items (least urgent)
+            AppId = session.SourceAppUserModelId,                   // the lifted card names the player and shows its icon (F2b)
+            AppName = string.IsNullOrWhiteSpace(session.SourceAppUserModelId) ? null : Interop.AppNames.For(session.SourceAppUserModelId),
         }, props.Thumbnail, $"{session.SourceAppUserModelId}|{props.Title}|{props.AlbumTitle}");
     }
 

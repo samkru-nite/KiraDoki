@@ -135,12 +135,14 @@ internal sealed partial class DownloadWatcher : IDisposable
 
         var baidu = files.Where(f => IsBaidu(f.Path)).Select(f => f.Path).ToList();
         ShareBaiduWrites(now, baidu);
+        var chromium = files.Any(f => f.Path.EndsWith(".crdownload", StringComparison.OrdinalIgnoreCase)) ? RunningChromium() : [];
         var partials = files.Select(f =>
         {
             var written = new DateTimeOffset(f.Info.LastWriteTimeUtc, TimeSpan.Zero);
+            var source = DownloadSources.Of(f.Path, chromium);
             return _baiduReceived.TryGetValue(f.Path, out var received)
-                ? new PartialDownload(f.Path, FinalName(f.Path), (long)received, written, Total: f.Info.Length)
-                : new PartialDownload(f.Path, FinalName(f.Path), f.Info.Length, written);
+                ? new PartialDownload(f.Path, FinalName(f.Path), (long)received, written, Total: f.Info.Length, Source: source)
+                : new PartialDownload(f.Path, FinalName(f.Path), f.Info.Length, written, Source: source);
         }).ToList();
 
         // all downloads under way become one item: summed speed · earliest name · "+N"
@@ -241,6 +243,27 @@ internal sealed partial class DownloadWatcher : IDisposable
         {
             _baiduReceived[path] = _baiduReceived.GetValueOrDefault(path) + share;
         }
+    }
+
+    /// <summary>The Chromium browsers running now (a ".crdownload" is one of theirs — which, only they know).</summary>
+    private static List<string> RunningChromium()
+    {
+        var names = new List<string>();
+        foreach (var (process, name) in DownloadSources.Chromium)
+        {
+            var found = System.Diagnostics.Process.GetProcessesByName(process);
+            if (found.Length > 0)
+            {
+                names.Add(name);
+            }
+
+            foreach (var p in found)
+            {
+                p.Dispose();
+            }
+        }
+
+        return names;
     }
 
     private static bool IsBaidu(string path) => path.EndsWith(BaiduExtension, StringComparison.OrdinalIgnoreCase);

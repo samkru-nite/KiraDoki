@@ -115,6 +115,9 @@ internal sealed class SystemWatchers : IDisposable
     /// <summary>Name of the app using the mic/camera. Null if none.</summary>
     public string? PrivacyApp => _privacy?.AppName;
 
+    /// <summary>Every app using the camera / microphone now (the lifted card lists them).</summary>
+    public IReadOnlyList<string> PrivacyApps => _privacy?.Apps ?? [];
+
     public void Dispose()
     {
         lock (_gate)
