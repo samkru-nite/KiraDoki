@@ -315,6 +315,13 @@ public sealed class LanguageStrings
     /// <summary>Setting: card and icon movements overshoot a little and settle (user 10-07).</summary>
     public required string SwapBounce { get; init; }
 
+    /// <summary>Settings: how a card lifts out of the big pill (TODO 7.9 F).</summary>
+    public required string LiftAnimLabel { get; init; }
+
+    public required string LiftAnimMorph { get; init; }
+
+    public required string LiftAnimSlide { get; init; }
+
     /// <summary>The close zone on an inform card (TODO 7.3): closes the card ("I've seen it").</summary>
     public required string CloseCard { get; init; }
 

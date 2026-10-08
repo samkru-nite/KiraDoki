@@ -84,7 +84,7 @@ public sealed partial class MainWindow
         var phases = new System.Text.StringBuilder();
         void Phase(string name) => phases.Append($" {name} {clock.ElapsedMilliseconds}");
         var style = SwapMotion.Parse(_settings.SwapAnimation);
-        var bounce = _settings.SwapBounce;
+        var bounce = _settings.Bounce;
         var left = _settings.BallSide == "left";
         try
         {
@@ -377,7 +377,7 @@ public sealed partial class MainWindow
             }
             else
             {
-                var bounce = _settings.SwapBounce;
+                var bounce = _settings.Bounce;
                 frames.Add((t, p) =>
                 {
                     var q = SwapMotion.Move(Math.Clamp((t - 0.3) / 0.7, 0, 1), bounce);   // drops in once the old one is leaving
@@ -449,18 +449,21 @@ public sealed partial class MainWindow
     {
         var done = new TaskCompletionSource();
         var clock = System.Diagnostics.Stopwatch.StartNew();
+        var meter = new FrameMeter("swap");
         EventHandler<object>? tick = null;
         var backstop = _ui.CreateTimer();
         void Finish()
         {
             CompositionTarget.Rendering -= tick;
             backstop.Stop();
+            meter.Report();
             done.TrySetResult();
         }
 
         tick = (_, _) =>
         {
             var t = Math.Min(1, clock.Elapsed / length);
+            meter.Frame();
             try
             {
                 frame(t);

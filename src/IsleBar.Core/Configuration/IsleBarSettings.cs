@@ -90,8 +90,11 @@ public sealed class IsleBarSettings
     /// <summary>How a task icon and the big pill swap places: "line" (default) · "arc" · "flip" (<see cref="Ui.SwapMotion"/>).</summary>
     public string SwapAnimation { get; set; } = "line";
 
-    /// <summary>Card and icon movements end with a small bounce (user 10-07).</summary>
-    public bool SwapBounce { get; set; } = true;
+    /// <summary>Card and icon movements end with a small bounce (user 10-07): the swap and, since 10-08, the lifted card. Saved as "swap_bounce".</summary>
+    public bool Bounce { get; set; } = true;
+
+    /// <summary>How a card lifts out of the big pill: "morph" (default) · "slide" (<see cref="Ui.LiftMotion"/>, TODO 7.9 F, user 10-08).</summary>
+    public string LiftAnimation { get; set; } = "morph";
 
     /// <summary>Card text on the big pill (user 10-07): "left" (default) · "group" = icon and text centred together · "text" = only the
     /// text centred, the icon stays. Centred only when it fits; text that has to scroll is left-aligned.</summary>
@@ -214,7 +217,8 @@ public sealed class IsleBarSettings
         PillCorners = PillCorners,
         BallSide = BallSide,
         SwapAnimation = SwapAnimation,
-        SwapBounce = SwapBounce,
+        Bounce = Bounce,
+        LiftAnimation = LiftAnimation,
         CardTextAlign = CardTextAlign,
         AudioBars = AudioBars,
         History = [.. History],

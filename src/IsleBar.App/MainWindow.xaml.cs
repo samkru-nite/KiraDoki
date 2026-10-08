@@ -209,6 +209,8 @@ public sealed partial class MainWindow : Window
         HookCompose();
         HookFileDrop();
         PressFeedback.Attach(BallCell);
+        PressFeedback.Enabled = () => _settings.Bounce;
+        PressFeedback.Attach(PillBody, PressFeedback.PillPressed, PressFeedback.PillDamping);   // the big pill too: half on press, the rest + the card on release (user 10-08)
         Root.Loaded += (_, _) => MeasureInkAsync();   // where the card font's glyphs sit (TODO 7.9 D: centre the ink, not the line box)   // pressing makes it sink in and spring back (09-30 design M5)
         Entry.TextChanged += (_, _) =>
         {
@@ -245,10 +247,7 @@ public sealed partial class MainWindow : Window
             var source = e.OriginalSource as DependencyObject;
             if (IsInside(source, SmallPill) && !IsInside(source, BallBox))
             {
-                if (!_typing && CellTagAt(source) is { } tag && tag != DotsTag)
-                {
-                    OnTaskCellClicked(tag);   // that card and the big pill's swap places (TODO 7.3, 10-07)
-                }
+                _cellPress = !_typing && CellTagAt(source) is { } tag && tag != DotsTag ? tag : null;   // swaps on release (below)
 
                 return;   // ⋯ opens the list in step F; the line and the margins do nothing
             }
@@ -281,9 +280,46 @@ public sealed partial class MainWindow : Window
             if (IsInside(source, CloseZone))
             {
                 CloseCard(_shownCard);   // an inform card is closed only here or from its menu (TODO 7.2)
+                return;
             }
 
-            // the rest of the big pill lifts the card (step F)
+            // the rest of the big pill lifts the card, or puts it back (TODO 7.9 F) — on release: a window that pops up under the
+            // pointer between press and release takes the release, and the pill then waited for it forever and ignored every
+            // later press, right clicks included (10-08)
+            _liftPress = IsInside(source, PillBody);
+            if (_liftPress && _lift?.OpenKey is not null)
+            {
+                PressFeedback.Hold(PillBody);   // this click puts the card back: the pill stays down until it lands (user 10-08)
+            }
+        }), handledEventsToo: true);
+        Root.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler((_, e) =>
+        {
+            if (e.GetCurrentPoint(Root).Properties.PointerUpdateKind != Microsoft.UI.Input.PointerUpdateKind.LeftButtonReleased)
+            {
+                return;
+            }
+
+            if (_cellPress is { } pressed)
+            {
+                _cellPress = null;
+                if (!_typing && CellTagAt(e.OriginalSource as DependencyObject) == pressed)
+                {
+                    OnTaskCellClicked(pressed);   // that card and the big pill swap places (TODO 7.3, 10-07) - on release, like the big pill
+                }
+            }
+
+            if (_liftPress)
+            {
+                _liftPress = false;
+                if (IsInside(e.OriginalSource as DependencyObject, PillBody))
+                {
+                    ToggleLift();
+                }
+                else
+                {
+                    PressFeedback.LetGo(PillBody);   // let go off the pill: nothing happens, the pill just comes back up
+                }
+            }
         }), handledEventsToo: true);
         // Right click = dismiss an island item (cancel a timer, etc.) · turn off the search bar
         // The input box grabs right clicks first (its own copy/paste menu), so receive them with handledEventsToo.
@@ -304,7 +340,11 @@ public sealed partial class MainWindow : Window
         Root.PointerExited += (_, _) => SetHover(false);
         CloseZone.PointerEntered += (_, _) => CloseHover.Opacity = 1;
         CloseZone.PointerExited += (_, _) => CloseHover.Opacity = 0;
-        PillBody.PointerEntered += (_, _) => SetBigHover(true);
+        PillBody.PointerEntered += (_, _) =>
+        {
+            SetBigHover(true);
+            TakePillShotAhead();   // for the lift (TODO 7.9 F): ready before the click comes
+        };
         PillBody.PointerExited += (_, _) => SetBigHover(false);
         BallCell.PointerEntered += (_, _) => BallHover.Opacity = 1;
         BallCell.PointerExited += (_, _) => BallHover.Opacity = 0;
@@ -366,6 +406,8 @@ public sealed partial class MainWindow : Window
         {
             return;
         }
+
+        CloseLift();
 
         var before = Interop.NativeMethods.GetForegroundWindow();
         _previousForeground = before != _taskbar.OuterWindow ? before : IntPtr.Zero;   // window to give focus back to when closed with Esc
@@ -906,6 +948,7 @@ public sealed partial class MainWindow : Window
 
             _cards.Update(items, DateTimeOffset.UtcNow);
             _shownCard = _cards.Shown;
+            KeepLift();
             var next = _shownCard is { } shown ? new IslandSnapshot(shown.State, _cards.Cards.Count - 1) : IslandSnapshot.Empty;
             _snapshot = next;
             LoadAlbumArt();
@@ -1236,6 +1279,7 @@ public sealed partial class MainWindow : Window
         cell.Children.Add(content);
         cell.PointerEntered += (_, _) => hover.Opacity = 1;
         cell.PointerExited += (_, _) => hover.Opacity = 0;
+        PressFeedback.Attach(cell);   // sinks while held, springs back and swaps on release (user 10-08)
         return cell;
     }
 
@@ -1249,11 +1293,12 @@ public sealed partial class MainWindow : Window
         var pill = RealSearchBoxFill();
         if (icon.Cover && cover is { } image)
         {
+            box.Width = box.Height = 18;   // the album cover is 18 (user 10-08): a picture reads smaller than a line glyph of the same size
             box.Children.Add(new Microsoft.UI.Xaml.Shapes.Ellipse { Fill = new ImageBrush { ImageSource = image, Stretch = Stretch.UniformToFill } });
             if (icon.Paused)
             {
                 box.Children.Add(new Microsoft.UI.Xaml.Shapes.Ellipse { Fill = BrushOf(Windows.UI.Color.FromArgb(148, pill.R, pill.G, pill.B)) });
-                box.Children.Add(PauseBars(16, 1.8, 6, 5.4, 8.8));
+                box.Children.Add(PauseBars(18, 2, 6.75, 6.1, 9.9));   // the 16 cover's bars × 18/16, still centred
             }
 
             return box;
@@ -4021,7 +4066,7 @@ public sealed partial class MainWindow : Window
         _foreground?.Dispose();
         // every window closed, so the app ends by itself instead of waiting 4 s for the forced exit (review 10-03) — first, while
         // the meter and timers still exist (closing compose re-renders the pill)
-        foreach (var close in new Action?[] { _settingsWindow is null ? null : _settingsWindow.Close, _expanded is null ? null : _expanded.CloseAll, _preview is null ? null : _preview.Close, _compose is null ? null : _compose.Close })
+        foreach (var close in new Action?[] { _settingsWindow is null ? null : _settingsWindow.Close, _expanded is null ? null : _expanded.CloseAll, _lift is null ? null : _lift.Close, _preview is null ? null : _preview.Close, _compose is null ? null : _compose.Close })
         {
             try
             {

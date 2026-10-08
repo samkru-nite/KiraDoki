@@ -25,13 +25,14 @@ public readonly record struct MotionBox(double X, double Y, double Width, double
 /// </summary>
 public static class SwapMotion
 {
-    public static readonly TimeSpan Duration = TimeSpan.FromSeconds(0.34);
+    /// <summary>The same lengths as the lifted card's opening (user 10-08: one tempo for every card movement; was 0.34 / 0.46).</summary>
+    public static readonly TimeSpan Duration = TimeSpan.FromSeconds(0.28);
 
     /// <summary>Easing: cubic-bezier(.4, 0, .2, 1) — Material's "standard" curve, the one the preview used.</summary>
     public const double X1 = 0.4, Y1 = 0, X2 = 0.2, Y2 = 1;
 
     /// <summary>With the bounce on (setting, user 10-07) movements take a little longer and overshoot by about this share before settling.</summary>
-    public static readonly TimeSpan BounceDuration = TimeSpan.FromSeconds(0.46);
+    public static readonly TimeSpan BounceDuration = TimeSpan.FromSeconds(0.37);
     public const double BounceStrength = 1.2;   // easeOutBack's s: 1.2 ≈ 5% past the end
 
     /// <summary>Room kept right of the pills while things fly, for the bounce to overshoot into (dip).</summary>
