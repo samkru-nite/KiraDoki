@@ -68,6 +68,9 @@ public sealed record CardSheet(
 {
     /// <summary>The body is one Markdown text (an agent's answer), laid out by <see cref="CardMarkdown"/> (F2b, user 10-08).</summary>
     public bool Markdown { get; init; }
+
+    /// <summary>One grey 12 line under the body (an agent at work: its latest step, under what it last said — user 10-09).</summary>
+    public string? Footnote { get; init; }
 }
 
 public static class CardSheets
@@ -112,8 +115,8 @@ public static class CardSheets
     }
 
     /// <summary>
-    /// Every card's inside (user 10-08). Fixed 3:2: timer, music, mic / camera, agent working. Adaptive (3:2 when the middle fits,
-    /// else 3:4): agent done / needs you / stopped, notifications, copied, downloads.
+    /// Every card's inside (user 10-08). Fixed 3:2: timer, music, mic / camera. Adaptive (3:2 when the middle fits, else 3:4):
+    /// agent done / needs you / working (user 10-09: what it says shouldn't be cut) / stopped, notifications, copied, downloads.
     /// </summary>
     /// <param name="tail">An agent's last answer / latest step, read by the App from its session record (F2b); null = none.</param>
     public static CardSheet Build(Card card, DateTimeOffset now, LanguageStrings text, AgentTail? tail = null)
@@ -127,7 +130,7 @@ public static class CardSheets
             ActivityKind.AgentDone => Agent(s, text.Done, SheetTone.Ok, Ago(s.UpdatedAt, now, text), [tail?.Answer ?? s.Msg], [Chat(text), .. close])
                 with { Markdown = tail?.Answer is not null },
             ActivityKind.AgentPermission => Agent(s, Cap(text.NeedsAnswer), SheetTone.Waiting, Ago(s.UpdatedAt, now, text), [tail?.Step ?? s.Msg], [Chat(text), .. close]),
-            ActivityKind.AgentWorking => Agent(s, Cap(text.Working), SheetTone.Plain, Running(s, now, text), [tail?.Step ?? s.Msg], [Chat(text)]) with { Adaptive = false },
+            ActivityKind.AgentWorking => Working(s, now, text, tail),
             ActivityKind.Error or ActivityKind.Notice when s.Agent is not null => AgentStopped(s, now, text, close),
             ActivityKind.Timer => Timer(card, now, text),
             ActivityKind.Music => Music(s, text),
@@ -147,6 +150,15 @@ public static class CardSheets
 
     private static CardSheet Agent(ActivityState s, string state, SheetTone tone, string? time, string?[] body, IReadOnlyList<SheetButton> buttons)
         => Sheet(Maker(s), state, tone, time, s.Name ?? $"{s.AgentLabel} {state}", body, buttons);
+
+    /// <summary>
+    /// At work (user 10-09): what it last said in this turn (Markdown, like an answer), its latest step in grey under it. Nothing
+    /// said yet: just the step.
+    /// </summary>
+    private static CardSheet Working(ActivityState s, DateTimeOffset now, LanguageStrings text, AgentTail? tail)
+        => tail?.Said is { } said
+            ? Agent(s, Cap(text.Working), SheetTone.Plain, Running(s, now, text), [said], [Chat(text)]) with { Markdown = true, Footnote = tail.Step }
+            : Agent(s, Cap(text.Working), SheetTone.Plain, Running(s, now, text), [tail?.Step ?? s.Msg], [Chat(text)]);
 
     /// <summary>Usage limit, stopped, interrupted: the reason is the title, then what it says and which chat.</summary>
     private static CardSheet AgentStopped(ActivityState s, DateTimeOffset now, LanguageStrings text, IReadOnlyList<SheetButton> close)

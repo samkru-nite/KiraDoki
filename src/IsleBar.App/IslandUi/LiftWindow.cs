@@ -508,10 +508,25 @@ internal sealed class LiftWindow : Window
             return;
         }
 
+        // built again (another card, or the same one changed shape): the old card lets go of the icon first, so it can move over
+        _view?.ReleaseIcon();
         _content.Children.Clear();
-        if (r.Icon is FrameworkElement icon && icon.Parent is Panel old)
+        if (r.Icon is FrameworkElement icon && Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(icon) is { } still)
         {
-            old.Children.Remove(icon);   // built again (another card, or the same one changed shape): the icon moves over
+            // checking icon.Parent alone missed it (10-09) — say where it hung if this ever comes back
+            TaskbarHost.Log($"lift: icon still under {still.GetType().Name} ({icon.Parent?.GetType().Name ?? "no logical parent"}) — taken out");
+            switch (still)
+            {
+                case Panel p:
+                    p.Children.Remove(icon);
+                    break;
+                case Border b:
+                    b.Child = null;
+                    break;
+                case ContentControl c:
+                    c.Content = null;
+                    break;
+            }
         }
 
         _view = new SheetView(sheet, r.Icon, r.Cover, r.Palette, r.Language, LiftMotion.Width) { Act = a => Act?.Invoke(a) };

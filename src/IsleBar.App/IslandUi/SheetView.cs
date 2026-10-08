@@ -29,6 +29,7 @@ internal sealed class SheetView
     private readonly Microsoft.UI.Xaml.Shapes.Rectangle _fadeBottom = new() { Height = CardSheets.Fade, VerticalAlignment = VerticalAlignment.Bottom, IsHitTestVisible = false };
     private readonly FrameworkElement _middle;
     private readonly List<TextBlock> _texts = [];   // title, paragraphs, raw — in that order (text layout)
+    private TextBlock? _footnote;
     private TextBlock? _number;
     private TextBlock? _barLeft;
     private TextBlock? _barRight;
@@ -160,6 +161,11 @@ internal sealed class SheetView
             }
         }
 
+        if (_footnote is not null && _footnote.Text != (next.Footnote ?? string.Empty))
+        {
+            _footnote.Text = next.Footnote ?? string.Empty;   // an agent's next step: in place, many a minute
+        }
+
         if (_number is not null)
         {
             SetNumber(_number, next);
@@ -197,7 +203,19 @@ internal sealed class SheetView
     /// <summary>What can't change in place: which pieces of text there are, the buttons, which zones there are.</summary>
     private static string StructureKey(CardSheet s) => string.Join("\u0001",
         s.Layout, s.Source, s.Title is null, s.Body.Count, s.Raw is null, s.Progress is null,
-        s.Progress is { Left: null, Right: null }, s.Buttons.Count, s.Markdown ? string.Join('\n', s.Body) : string.Empty);
+        s.Progress is { Left: null, Right: null }, s.Buttons.Count, s.Markdown ? string.Join('\n', s.Body) : string.Empty, s.Footnote is null);
+
+    /// <summary>
+    /// Takes the source row's icon out, so a card built again can hold it (10-09: working → done while lifted rebuilt the card, and
+    /// adding the icon still sitting in the old row failed every tick — "refresh failed … SourceRow", the card stayed blank).
+    /// </summary>
+    public void ReleaseIcon()
+    {
+        if (_sourceRow is { } row && row.Children.Count > 0)
+        {
+            row.Children.RemoveAt(0);
+        }
+    }
 
     /// <summary>The source row's icon, new (a timer paused or resumed: its hand stops or turns again).</summary>
     public void SetIcon(UIElement icon)
@@ -291,6 +309,15 @@ internal sealed class SheetView
             p.Foreground = Brush(_palette.Hint);
             p.Margin = new Thickness(0, stack.Children.Count == 0 ? 0 : sheet.Title is not null && stack.Children.Count == 1 ? CardSheets.TitleBodyGap : CardSheets.ParagraphGap, 0, 0);
             stack.Children.Add(p);
+        }
+
+        if (sheet.Footnote is { } footnote)
+        {
+            _footnote = MdNote(footnote, _palette.Hint);
+            _footnote.TextWrapping = TextWrapping.NoWrap;
+            _footnote.TextTrimming = TextTrimming.CharacterEllipsis;
+            _footnote.Margin = new Thickness(0, stack.Children.Count == 0 ? 0 : MdGap, 0, 0);
+            stack.Children.Add(_footnote);
         }
 
         if (sheet.Raw is { } raw)

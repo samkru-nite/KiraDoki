@@ -57,6 +57,23 @@ public class AgentTranscriptTests
     }
 
     [Fact]
+    public void Claude_what_was_said_counts_only_from_the_latest_prompt()
+    {
+        var before = string.Join('\n',
+            Claude("m1", """{"type":"text","text":"上一轮的回答"}"""),
+            """{"type":"user","isSidechain":false,"message":{"role":"user","content":"继续"}}""",
+            Claude("m2", """{"type":"tool_use","name":"Read","input":{"file_path":"C:\\a\\TODO.md"}}"""),
+            """{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"..."}]}}""");
+
+        var quiet = AgentTranscript.FromTail(before, AgentKind.Claude);
+        Assert.Null(quiet.Said);   // a tool result is no prompt, but the answer before "继续" isn't this turn's
+        Assert.Equal("上一轮的回答", quiet.Answer);
+
+        var talking = AgentTranscript.FromTail(before + "\n" + Claude("m3", """{"type":"text","text":"找到了对应关系。"}"""), AgentKind.Claude);
+        Assert.Equal("找到了对应关系。", talking.Said);
+    }
+
+    [Fact]
     public void Nothing_readable_gives_nothing()
     {
         Assert.Equal(new AgentTail(null, null), AgentTranscript.FromTail("not json\n{broken", AgentKind.Claude));

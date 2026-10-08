@@ -32,7 +32,7 @@ public sealed class CardSheetTests
     }
 
     [Fact]
-    public void An_agent_at_work_stays_3_by_2_with_no_close_and_counts_its_minutes()
+    public void An_agent_at_work_grows_if_it_must_with_no_close_and_counts_its_minutes()
     {
         var sheet = CardSheets.Build(Card(CardType.Status, new ActivityState
         {
@@ -43,7 +43,23 @@ public sealed class CardSheetTests
         Assert.Equal(SheetTone.Plain, sheet.Tone);   // nobody is waiting on it
         Assert.Equal("已运行 3 分钟", sheet.Time);
         Assert.Equal([SheetAction.OpenChat], sheet.Buttons.Select(b => b.Action));
-        Assert.False(sheet.Adaptive);
+        Assert.True(sheet.Adaptive);   // user 10-09: what it says shouldn't be cut
+    }
+
+    [Fact]
+    public void An_agent_at_work_shows_what_it_said_this_turn_with_its_step_under_it()
+    {
+        var working = Card(CardType.Status, new ActivityState { RawKind = ActivityState.KindAgentWorking, Name = "继续 F2b", T0 = Unix(Now) });
+
+        var talking = CardSheets.Build(working, Now, Zh, new AgentTail("上一轮的回答", "Bash · 构建", "找到了对应关系，接下来确认。"));
+        Assert.True(talking.Markdown);
+        Assert.Equal(["找到了对应关系，接下来确认。"], talking.Body);
+        Assert.Equal("Bash · 构建", talking.Footnote);
+
+        var silent = CardSheets.Build(working, Now, Zh, new AgentTail("上一轮的回答", "Bash · 构建"));
+        Assert.False(silent.Markdown);   // nothing said yet this turn: the step alone, never the turn before's answer
+        Assert.Equal(["Bash · 构建"], silent.Body);
+        Assert.Null(silent.Footnote);
     }
 
     [Fact]

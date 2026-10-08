@@ -71,7 +71,7 @@ internal sealed class AgentTails
             var tail = AgentTranscript.FromTail(reader.ReadToEnd(), s.Agent);
             if (tail != entry.Tail)
             {
-                TaskbarHost.Log($"agent tail: {Path.GetFileName(s.SourcePath)} {s.Kind} · answer {Short(tail.Answer)} · step {Short(tail.Step)} ({Path.GetFileName(record)})");
+                TaskbarHost.Log($"agent tail: {Path.GetFileName(s.SourcePath)} {s.Kind} · answer {Short(tail.Answer)} · step {Short(tail.Step)} · said {Short(tail.Said)} ({Path.GetFileName(record)})");
             }
 
             entry.Tail = tail;

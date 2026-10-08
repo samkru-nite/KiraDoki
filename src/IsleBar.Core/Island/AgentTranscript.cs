@@ -4,8 +4,12 @@ using IsleBar.Core.Launch;
 
 namespace IsleBar.Core.Island;
 
-/// <summary>What a session record's end says: the agent's last answer and its latest step (a tool call). Either may be missing.</summary>
-public sealed record AgentTail(string? Answer, string? Step);
+/// <summary>
+/// What a session record's end says: the agent's last answer, its latest step (a tool call), and what it last said <b>in the
+/// turn under way</b> (<see cref="Said"/>: null until it says something after the latest prompt — never the turn before's answer).
+/// Any may be missing.
+/// </summary>
+public sealed record AgentTail(string? Answer, string? Step, string? Said = null);
 
 /// <summary>
 /// Reads an agent's last answer and latest step from the end of its session record (JSONL) — the lifted card's body
@@ -32,7 +36,7 @@ public static class AgentTranscript
             return new AgentTail(null, null);
         }
 
-        string? answer = null, answerId = null, step = null;
+        string? answer = null, answerId = null, step = null, said = null;
         foreach (var line in text.Split('\n'))
         {
             if (line.Length < 2 || line[0] != '{')
@@ -44,6 +48,14 @@ public static class AgentTranscript
             {
                 using var doc = JsonDocument.Parse(line);
                 var root = doc.RootElement;
+                var before = answer;
+                if (agent == AgentKind.Codex ? CodexPrompt(root) : ClaudePrompt(root))
+                {
+                    said = null;   // a new turn: nothing said in it yet
+                    answerId = null;
+                    continue;
+                }
+
                 if (agent == AgentKind.Codex)
                 {
                     Codex(root, ref answer, ref step);
@@ -52,13 +64,18 @@ public static class AgentTranscript
                 {
                     Claude(root, ref answer, ref answerId, ref step);
                 }
+
+                if (!ReferenceEquals(before, answer))
+                {
+                    said = answer;
+                }
             }
             catch (JsonException)
             {
             }
         }
 
-        return new AgentTail(Clean(answer), step);
+        return new AgentTail(Clean(answer), step, Clean(said));
     }
 
     private static void Claude(JsonElement root, ref string? answer, ref string? answerId, ref string? step)
@@ -86,6 +103,28 @@ public static class AgentTranscript
             }
         }
     }
+
+    /// <summary>A prompt the person typed: a user line with words (a tool's result comes back as a user line too — not a prompt).</summary>
+    private static bool ClaudePrompt(JsonElement root)
+    {
+        if (Str(root, "type") != "user" || IsTrue(root, "isSidechain") || IsTrue(root, "isMeta")
+            || !root.TryGetProperty("message", out var message) || message.ValueKind != JsonValueKind.Object
+            || !message.TryGetProperty("content", out var content))
+        {
+            return false;
+        }
+
+        return content.ValueKind == JsonValueKind.String
+               || (content.ValueKind == JsonValueKind.Array
+                   && content.EnumerateArray().Any(b => Str(b, "type") == "text")
+                   && !content.EnumerateArray().Any(b => Str(b, "type") == "tool_result"));
+    }
+
+    private static bool CodexPrompt(JsonElement root)
+        => Str(root, "type") == "response_item" && root.TryGetProperty("payload", out var p)
+           && Str(p, "type") == "message" && Str(p, "role") == "user";
+
+    private static bool IsTrue(JsonElement e, string key) => e.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.True;
 
     /// <summary>"Edit · CardSheet.cs", or a shell command's own description ("Build the app").</summary>
     private static string? ClaudeStep(JsonElement block)
