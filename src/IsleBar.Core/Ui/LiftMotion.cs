@@ -53,11 +53,6 @@ public static class LiftMotion
     public static readonly TimeSpan OpenBounce = SwapMotion.BounceDuration;   // 0.37
     public static readonly TimeSpan Close = TimeSpan.FromSeconds(0.22);
 
-    /// <summary>The spring: damping ratio (0.75 = one small overshoot of e^(−ζπ/√(1−ζ²)) ≈ 2.8%, no second wobble) and its speed,
-    /// chosen so it has settled (&lt;0.2%) by the end of the animation.</summary>
-    public const double Damping = 0.75;
-    public const double Speed = 8.3;
-
     /// <summary>
     /// The "paper" (user 10-08): the pill is a sheet leaning towards you, face tilted down; lifting stands it up. The sheet starts
     /// this many degrees from upright and turns up around its bottom edge, a hair past upright with the bounce. Kept light — "a
@@ -116,24 +111,10 @@ public static class LiftMotion
     public static TimeSpan OpenLength(bool bounce) => bounce ? OpenBounce : Open;
 
     /// <summary>The share of the way from the pill (0) to the card (1) at time share <paramref name="t"/> while opening (passes 1 a little with the bounce).</summary>
-    public static double Opening(double t, bool bounce) => bounce ? Spring(t) : SwapMotion.Ease(t);
+    public static double Opening(double t, bool bounce) => SwapMotion.Move(t, bounce);   // the swap's curve, one style
 
     /// <summary>The same while closing: the plain opening backwards.</summary>
     public static double Closing(double t) => SwapMotion.Ease(1 - t);
-
-    /// <summary>A damped spring from 0 to 1 (<see cref="Damping"/>, <see cref="Speed"/>), exactly 1 at the end.</summary>
-    public static double Spring(double t)
-    {
-        t = Math.Clamp(t, 0, 1);
-        if (t >= 1)
-        {
-            return 1;
-        }
-
-        var wd = Speed * Math.Sqrt(1 - (Damping * Damping));
-        var decay = Math.Exp(-Damping * Speed * t);
-        return 1 - (decay * (Math.Cos(wd * t) + (Damping * Speed / wd * Math.Sin(wd * t))));
-    }
 
     /// <summary>The sheet's lean at share <paramref name="q"/> (degrees from upright). It never leans back past upright, nor further
     /// forward than the start — only the size and place spring, the angle just follows (the lean overshooting looked fussy).</summary>

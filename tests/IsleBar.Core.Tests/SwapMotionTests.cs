@@ -47,4 +47,14 @@ public sealed class SwapMotionTests
         Assert.Equal(style, SwapMotion.Parse(value));
         Assert.Equal(style, SwapMotion.Parse(SwapMotion.Key(style)));
     }
+
+    [Fact]
+    public void The_bounce_is_one_light_overshoot()
+    {
+        var peak = Enumerable.Range(1, 99).Max(i => SwapMotion.Move(i / 100.0, bounce: true));
+        Assert.InRange(peak, 1.02, 1.035);
+        Assert.Equal(1, SwapMotion.Move(1, bounce: true), 6);
+        var after = Enumerable.Range(1, 99).Select(i => SwapMotion.Move(i / 100.0, bounce: true)).SkipWhile(p => p < peak).ToList();
+        Assert.True(after.All(p => p >= 0.999));   // back to 1 without dipping under: no second wobble
+    }
 }

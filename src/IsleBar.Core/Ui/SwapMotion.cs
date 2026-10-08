@@ -33,7 +33,11 @@ public static class SwapMotion
 
     /// <summary>With the bounce on (setting, user 10-07) movements take a little longer and overshoot by about this share before settling.</summary>
     public static readonly TimeSpan BounceDuration = TimeSpan.FromSeconds(0.37);
-    public const double BounceStrength = 1.2;   // easeOutBack's s: 1.2 ≈ 5% past the end
+
+    /// <summary>The bounce is a soft spring (user 10-08, the lifted card's, liked there): damping ratio 0.75 = one small overshoot of
+    /// e^(−ζπ/√(1−ζ²)) ≈ 2.8%, no second wobble; the speed has it settled (&lt;0.2%) by the end. Was an ease-out-back passing by ~5%.</summary>
+    public const double Damping = 0.75;
+    public const double Speed = 8.3;
 
     /// <summary>Room kept right of the pills while things fly, for the bounce to overshoot into (dip).</summary>
     public const double Overshoot = 16;
@@ -126,19 +130,22 @@ public static class SwapMotion
 
     public static double Lerp(double a, double b, double t) => a + ((b - a) * t);
 
-    /// <summary>
-    /// The movement curve: <see cref="Ease"/>, or with the bounce an ease-out-back that passes the end by ~5% and comes back
-    /// (opacities clamp it; sizes and positions overshoot — that is the bounce).
-    /// </summary>
-    public static double Move(double t, bool bounce)
+    /// <summary>The movement curve: <see cref="Ease"/>, or with the bounce <see cref="Spring"/> (sizes and positions pass the end a
+    /// little and come back — that is the bounce; opacities clamp it).</summary>
+    public static double Move(double t, bool bounce) => bounce ? Spring(t) : Ease(t);
+
+    /// <summary>A damped spring from 0 to 1 (<see cref="Damping"/>, <see cref="Speed"/>), exactly 1 at the end.</summary>
+    public static double Spring(double t)
     {
-        if (!bounce)
+        t = Math.Clamp(t, 0, 1);
+        if (t >= 1)
         {
-            return Ease(t);
+            return 1;
         }
 
-        var u = Math.Clamp(t, 0, 1) - 1;
-        return 1 + ((BounceStrength + 1) * u * u * u) + (BounceStrength * u * u);
+        var wd = Speed * Math.Sqrt(1 - (Damping * Damping));
+        var decay = Math.Exp(-Damping * Speed * t);
+        return 1 - (decay * (Math.Cos(wd * t) + (Damping * Speed / wd * Math.Sin(wd * t))));
     }
 
     public static TimeSpan Length(bool bounce) => bounce ? BounceDuration : Duration;
