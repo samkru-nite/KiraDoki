@@ -64,6 +64,7 @@ public sealed partial class MainWindow
                 }
             };
             _lift.TakeShot = () => Capture(CardRow);
+            _lift.KeepsPress = OnTaskCell;
             _lift.Landed = () =>
             {
                 // the card lands back in the pill: after a click on the pill, the pill (kept down since) springs up now; after a
@@ -80,9 +81,11 @@ public sealed partial class MainWindow
         }
 
         var cover = CoverOf(card)?.Image;
+        var look = TaskIcons.For(card, cover is not null, DateTimeOffset.UtcNow);
         _lift.Open(new LiftRequest(
             card.Key,
             pill,
+            new ScreenRect(bar.Left, bar.Top, bar.Right, bar.Bottom),
             CornerRadiusNow(),
             RealSearchBoxFill(),
             shot,
@@ -94,7 +97,8 @@ public sealed partial class MainWindow
             _settings.Bounce,
             !ThemeColors.FromSystem().Light,
             _theme.Foreground,
-            IconContent(TaskIcons.For(card, cover is not null, DateTimeOffset.UtcNow), cover),
+            BigIconContent(look, cover),   // as on the big pill: an agent's logo in its makers' colours (user 10-08)
+            new LiftRider(BigIconContent(look, cover), HasBigLook(look) ? IconContent(look, cover) : null),
             card.State.Title ?? card.State.Msg ?? card.Key));
     }
 
@@ -110,7 +114,8 @@ public sealed partial class MainWindow
             PressFeedback.LetGo(PillBody);
         }
 
-        if (_lift?.OpenKey is not { } key)
+        // a swap is under way: if it takes the lifted card off the big pill, it sends the card down into its cell itself
+        if (_lift?.OpenKey is not { } key || _flying)
         {
             return;
         }
@@ -125,6 +130,58 @@ public sealed partial class MainWindow
     }
 
     private void CloseLift() => _lift?.Collapse();
+
+    /// <summary>
+    /// A press at this screen point lands on a task cell (not ⋯): it doesn't close the lifted card — the swap it starts on release
+    /// sends the card down into its cell (user 10-08: it went back to where the big pill had been while the pill was elsewhere).
+    /// </summary>
+    private bool OnTaskCell(int x, int y)
+    {
+        if (_typing || !NativeMethods.GetWindowRect(_taskbar.OuterWindow, out var bar))
+        {
+            return false;
+        }
+
+        var s = DpiSetup.Scale;
+        foreach (var cell in TaskCells.Children.OfType<Microsoft.UI.Xaml.Controls.Grid>())
+        {
+            if (cell.Tag is not string tag || tag == DotsTag)
+            {
+                continue;
+            }
+
+            var at = cell.TransformToVisual(Root).TransformPoint(default);
+            var left = bar.Left + (at.X * s);
+            var top = bar.Top + (at.Y * s);
+            if (x >= left && x < left + (cell.ActualWidth * s) && y >= top && y < top + (cell.ActualHeight * s))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>Where the card swapped off the big pill is in its flight (dip, in this window), for the lifted card to follow.</summary>
+    private MotionBox? _oldCardBox;
+
+    /// <summary>Where that card's icon is (its centre, dip, in this window) while it rides down into its cell; null when it doesn't.</summary>
+    private (double X, double Y)? _oldIconCentre;
+
+    /// <summary><see cref="_oldCardBox"/> and <see cref="_oldIconCentre"/> on screen (pixels), or null before the flight has placed it.</summary>
+    private LiftTarget? OldCardOnScreen()
+    {
+        if (_oldCardBox is not { } b || !NativeMethods.GetWindowRect(_taskbar.OuterWindow, out var bar))
+        {
+            return null;
+        }
+
+        var s = DpiSetup.Scale;
+        double X(double dip) => bar.Left + (dip * s);
+        double Y(double dip) => bar.Top + (dip * s);
+        var rect = new ScreenRect((int)Math.Round(X(b.X)), (int)Math.Round(Y(b.Y)), (int)Math.Round(X(b.X + b.Width)), (int)Math.Round(Y(b.Y + b.Height)));
+        return new LiftTarget(rect, b.Radius, _oldIconCentre is { } c ? (X(c.X), Y(c.Y)) : null);
+    }
 
     /// <summary>A picture of the big pill's content taken ahead, when the mouse comes onto it (a click nearly always follows).</summary>
     private (string? Key, Microsoft.UI.Xaml.Media.ImageSource? Shot) _pillShot;

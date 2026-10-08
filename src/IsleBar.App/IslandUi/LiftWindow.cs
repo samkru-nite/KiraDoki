@@ -17,6 +17,7 @@ namespace IsleBar.App.IslandUi;
 internal sealed record LiftRequest(
     string Key,
     ScreenRect Pill,
+    ScreenRect Bar,
     double PillRadius,
     Color PillColor,
     ImageSource? PillShot,
@@ -29,7 +30,17 @@ internal sealed record LiftRequest(
     bool Dark,
     Color Foreground,
     UIElement Icon,
+    LiftRider Rider,
     string Title);
+
+/// <summary>
+/// The card's icon once more, for riding down into its task cell: as on the card (<paramref name="Big"/>) and, when the cell draws
+/// it otherwise (an agent's logo: makers' colours → one colour + green / orange / red), as in the cell (<paramref name="Cell"/>).
+/// </summary>
+internal sealed record LiftRider(UIElement Big, UIElement? Cell);
+
+/// <summary>Where the card being closed into a task cell is on this frame (screen pixels); its icon's centre when it rides down.</summary>
+internal sealed record LiftTarget(ScreenRect Rect, double Radius, (double X, double Y)? Icon);
 
 /// <summary>
 /// The lifted card (TODO 7.9 F1, 10-08): a see-through, never-focused, topmost window spanning the card and the big pill, in which
@@ -65,6 +76,17 @@ internal sealed class LiftWindow : Window
     private bool _firstFrameChecked;
     private IntPtr _foregroundBefore;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _fallback;
+
+    /// <summary>While closing into a moving target (the card flying down into a task cell): where it is now, screen pixels.</summary>
+    private Func<LiftTarget?>? _follow;
+    private bool _followBounce;
+
+    /// <summary>The card's icon riding down into its cell (not tilted, not faded with the card), from where it sat on the card.</summary>
+    private readonly Grid _rider = new() { Width = 24, Height = 24, IsHitTestVisible = false, Visibility = Visibility.Collapsed };
+    private Windows.Foundation.Point _riderFrom;
+
+    /// <summary>A press there is the bar's own (a task cell: its swap closes the card itself) — it doesn't close the card.</summary>
+    public Func<int, int, bool>? KeepsPress { get; set; }
 
     /// <summary>Called once the card has fully gone (after the closing animation).</summary>
     public Action? Gone { get; set; }
@@ -123,6 +145,7 @@ internal sealed class LiftWindow : Window
         _clipper.Children.Add(_stage);
         _root.Children.Add(_clipper);
         _root.Children.Add(_shot);   // the pill's text fades out where it is, flat — words never fly or tilt
+        _root.Children.Add(_rider);
         _root.Transform3D = new PerspectiveTransform3D { Depth = LiftMotion.Depth };
         Content = _root;
 
@@ -135,8 +158,11 @@ internal sealed class LiftWindow : Window
     {
         _request = request;
         _closing = false;
+        _follow = null;
+        _rider.Children.Clear();
+        _rider.Visibility = Visibility.Collapsed;
         _firstFrameChecked = false;
-        _layout = LiftMotion.Place(request.Pill, request.ScreenLeft, request.ScreenRight, request.TaskbarTop, DpiSetup.Scale, request.Tall);
+        _layout = LiftMotion.Place(request.Pill, request.ScreenLeft, request.ScreenRight, request.TaskbarTop, DpiSetup.Scale, request.Tall, request.Bar);
         var win = _layout.Window;
 
         // A picture taken ahead (when the mouse came onto the pill) — waiting for one here held the card back a beat (user 10-08).
@@ -170,8 +196,12 @@ internal sealed class LiftWindow : Window
         TaskbarHost.Log($"lift: open {request.Style} {request.Key} card={_layout.Card.Left},{_layout.Card.Top} {_layout.Card.Width}x{_layout.Card.Height} window={win.Left},{win.Top} {win.Width}x{win.Height} pill={request.Pill.Left},{request.Pill.Top} {request.Pill.Width}x{request.Pill.Height}");
     }
 
-    /// <summary>Puts the card back into the big pill (or the taskbar). Nothing happens when it's not open.</summary>
-    public void Collapse()
+    /// <summary>
+    /// Puts the card back into the big pill (or the taskbar). Nothing happens when it's not open. With <paramref name="follow"/>
+    /// (morph only) it goes down into wherever that is on each frame instead — the card swapped off the big pill flying into its
+    /// task cell (user 10-08) — in the swap's time and curve, so the two land together.
+    /// </summary>
+    public void Collapse(Func<LiftTarget?>? follow = null, bool bounce = false)
     {
         if (_request is null || _closing)
         {
@@ -179,12 +209,31 @@ internal sealed class LiftWindow : Window
         }
 
         _closing = true;
+        _follow = _request.Style == LiftStyle.Morph ? follow : null;
+        _followBounce = bounce;
+        if (_follow is not null && _request.Icon is FrameworkElement icon && icon.ActualWidth > 0)
+        {
+            // the icon leaves the card (which fades) and rides down on its own, turning into the cell's look on the way
+            var at = icon.TransformToVisual(_root).TransformPoint(new Windows.Foundation.Point(icon.ActualWidth / 2, icon.ActualHeight / 2));
+            _riderFrom = at;
+            icon.Opacity = 0;
+            _rider.Children.Clear();
+            foreach (var look in new[] { _request.Rider.Big, _request.Rider.Cell })
+            {
+                if (look is FrameworkElement fe && fe.Parent is null)
+                {
+                    fe.HorizontalAlignment = HorizontalAlignment.Center;
+                    fe.VerticalAlignment = VerticalAlignment.Center;
+                    _rider.Children.Add(fe);
+                }
+            }
+        }
         _ = FetchShot();   // the pill's text may have moved on while the card was up
         _outside.Disarm();
         // a click on the taskbar (the big pill) raised the taskbar over us — the morph has to land on top of it again
         SetWindowRgn(_hwnd, IntPtr.Zero, redraw: true);
         SetWindowPos(_hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-        TaskbarHost.Log($"lift: close {_request.Key}, top at pill = {Describe(TopAt(Centre(_request.Pill)))}");
+        TaskbarHost.Log($"lift: close {_request.Key}{(_follow is null ? string.Empty : " into its task cell")}, top at pill = {Describe(TopAt(Centre(_request.Pill)))}");
         Start();
     }
 
@@ -196,7 +245,7 @@ internal sealed class LiftWindow : Window
         }
 
         // the big pill itself is the bar's (a click there toggles the card); anywhere else but the card closes it
-        if (Inside(_layout.Card, x, y) || Inside(_request.Pill, x, y))
+        if (Inside(_layout.Card, x, y) || Inside(_request.Pill, x, y) || KeepsPress?.Invoke(x, y) == true)
         {
             return;
         }
@@ -231,7 +280,9 @@ internal sealed class LiftWindow : Window
     {
         _meter?.Frame();
         var t = Math.Min(1, _clock.Elapsed.TotalMilliseconds / Length().TotalMilliseconds);
-        Draw(_closing ? LiftMotion.Closing(t) : LiftMotion.Opening(t, _request?.Bounce == true));
+        Draw(!_closing ? LiftMotion.Opening(t, _request?.Bounce == true)
+            : _follow is not null ? 1 - SwapMotion.Move(t, _followBounce)   // the swap's own curve, springing into the cell with it
+            : LiftMotion.Closing(t));
         // The click on the big pill activates the taskbar, which then lifts itself over every topmost window — sometimes after our
         // first frame (log 10-08: "top at pill = Shell_TrayWnd" half the time). So while moving, keep putting ourselves back on top.
         SetWindowPos(_hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
@@ -254,7 +305,9 @@ internal sealed class LiftWindow : Window
         }
     }
 
-    private TimeSpan Length() => _closing ? LiftMotion.Close : LiftMotion.OpenLength(_request?.Bounce == true);
+    private TimeSpan Length() => !_closing ? LiftMotion.OpenLength(_request?.Bounce == true)
+        : _follow is not null ? SwapMotion.Length(_followBounce)
+        : LiftMotion.Close;
 
     private async Task FetchShot()
     {
@@ -285,7 +338,8 @@ internal sealed class LiftWindow : Window
         TaskbarHost.Log($"lift: {(_closing ? "closed" : "opened")} in {_clock.ElapsedMilliseconds} ms");
         if (_closing)
         {
-            var landed = _request?.Style == LiftStyle.Morph;
+            var landed = _request?.Style == LiftStyle.Morph && _follow is null;   // into a task cell: the big pill (another card now) gives no press
+            _follow = null;
             AppWindow.Hide();
             AppWindow.Move(new Windows.Graphics.PointInt32(-32000, -32000));
             _request = null;
@@ -326,13 +380,19 @@ internal sealed class LiftWindow : Window
         var cardColour = CardColor(r.Dark);
         var edgeColour = EdgeColor(r.Dark);
 
+        // closing into a task cell: the end is the card flying there, where it is this frame (its own stand-in draws its look)
+        var follow = _closing ? _follow?.Invoke() : null;
+        var target = follow is not null ? Local(follow.Rect, follow.Radius) : pill;
+        var following = _closing && _follow is not null;
+        Ride(following, follow, q);
+
         MotionBox box;
         double turn, shot, content;
         if (r.Style == LiftStyle.Morph)
         {
-            box = SwapMotion.Between(pill, card, q, 0);
+            box = SwapMotion.Between(target, card, q, 0);
             turn = LiftMotion.Window(q, 0, LiftMotion.ColourTurn);
-            shot = 1 - LiftMotion.Window(q, 0, LiftMotion.PillTextOut);
+            shot = following ? 0 : 1 - LiftMotion.Window(q, 0, LiftMotion.PillTextOut);
             content = LiftMotion.Window(q, LiftMotion.ContentIn, 1);
         }
         else
@@ -355,6 +415,10 @@ internal sealed class LiftWindow : Window
         _tilt.CenterY = bottom;
         _tilt.RotationX = lean;
 
+        // into a task cell: near the end it has the stand-in's shape and gives way to it (else its fill hides the small icon, which
+        // then pops up as the window goes)
+        _stage.Opacity = following ? LiftMotion.Window(q, 0, LiftMotion.FollowFade) : 1;
+
         Canvas.SetLeft(_frame, box.X);
         Canvas.SetTop(_frame, box.Y);
         _frame.Radius = Math.Clamp(box.Radius, 0, Math.Max(0, Math.Min(box.Width, box.Height)) / 2);
@@ -372,6 +436,40 @@ internal sealed class LiftWindow : Window
         Place(_content, card with { X = contentX, Y = contentY });
         _contentClip.Rect = new Windows.Foundation.Rect(box.X - contentX, box.Y - contentY, Math.Max(0, box.Width), Math.Max(0, box.Height));
         _content.Opacity = content;
+    }
+
+    /// <summary>
+    /// Closing into a task cell: the icon rides from its place on the card to the flying card's icon, turning from the card's look
+    /// into the cell's over the second half, on the swap's own schedule (<see cref="SwapMotion.CellLookIn"/>). Without a riding icon
+    /// down there (the flip) the card's icon just fades with the card.
+    /// </summary>
+    private void Ride(bool following, LiftTarget? follow, double q)
+    {
+        if (!following || _request is not { } r || _layout is not { } lay || _rider.Children.Count == 0)
+        {
+            _rider.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        if (follow?.Icon is not { } to)
+        {
+            _rider.Visibility = Visibility.Collapsed;
+            r.Icon.Opacity = 1;
+            return;
+        }
+
+        var s = DpiSetup.Scale;
+        var p = 1 - q;
+        var x = SwapMotion.Lerp(_riderFrom.X, (to.X - lay.Window.Left) / s, p);
+        var y = SwapMotion.Lerp(_riderFrom.Y, (to.Y - lay.Window.Top) / s, p);
+        Canvas.SetLeft(_rider, x - (_rider.Width / 2));
+        Canvas.SetTop(_rider, y - (_rider.Height / 2));
+        _rider.Visibility = Visibility.Visible;
+        if (r.Rider.Cell is { } cell)
+        {
+            r.Rider.Big.Opacity = 1 - SwapMotion.BigLookOut(p);
+            cell.Opacity = SwapMotion.CellLookIn(p);
+        }
     }
 
     private static void Place(FrameworkElement element, MotionBox box)

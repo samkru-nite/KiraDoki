@@ -157,7 +157,15 @@ public sealed partial class MainWindow
 
             FlyLayer.Children.Clear();
             PillRow.Opacity = 0;
+            _oldCardBox = before.BigBox;
+            _oldIconCentre = null;
             var frames = BuildFlight(before, after, style, hoverKey);
+            if (_lift?.OpenKey is { } lifted && lifted == oldBig?.Key && newBig?.Key != lifted)
+            {
+                // the lifted card goes back with its card, not to where the big pill was (user 10-08)
+                _lift.Collapse(OldCardOnScreen, bounce);
+            }
+
             Phase("fly");
             await Animate(SwapMotion.Length(bounce), t =>
             {
@@ -330,18 +338,42 @@ public sealed partial class MainWindow
                 var lit = down.Key == hoverKey;
                 // the card's text fades as it closes (text cut by the closing circle looked like being sliced) while its icon stays
                 // and rides the card down into the cell — fading the small icon in at the end looked like it popped up (user 10-07)
+                // an agent's logo goes from the makers' colours to the cell's one colour over the second half (user 10-08: it
+                // switched at once as the card started down)
+                var look = TaskIcons.For(ac, CoverOf(ac) is not null, DateTimeOffset.UtcNow);
+                var big = HasBigLook(look) ? BigGhost(ac, look) : null;
+                if (big is not null)
+                {
+                    Put(big, 0, row);
+                }
+
                 var icon = CellGhost(down.Key, ac);
                 Put(icon, 0, row);
                 frames.Add((t, p) =>
                 {
+                    if (big is not null)
+                    {
+                        icon.Opacity = SwapMotion.CellLookIn(p);
+                        big.Opacity = 1 - SwapMotion.BigLookOut(p);
+                    }
+
                     var back = 1 - Math.Clamp((p - (1 - turn)) / turn, 0, 1);
                     var x = SwapMotion.ContentX(circle, aBox, a.IconX, 1 - p);
                     var y = row + (lift * Math.Sin(Math.PI * p));
-                    mover.Place(SwapMotion.Between(aBox, circle, p, lift), x, y, a.IconX, 1, 1 - p, lit ? 1 - back : 0,
+                    var box = SwapMotion.Between(aBox, circle, p, lift);
+                    _oldCardBox = box;   // a lifted card follows it down (MainWindow.Lift)
+                    mover.Place(box, x, y, a.IconX, 1, 1 - p, lit ? 1 - back : 0,
                         style == SwapStyle.MorphLine ? SwapMotion.Lerp(1, SwapMotion.FadeTo, Math.Clamp(p, 0, 1)) : 1,
                         content: 1 - Math.Clamp(p / 0.35, 0, 1));
                     Canvas.SetLeft(icon, x + a.IconX - (PillGeometry.Cell / 2));
                     Canvas.SetTop(icon, y);
+                    if (big is not null)
+                    {
+                        Canvas.SetLeft(big, x + a.IconX - (PillGeometry.Cell / 2));
+                        Canvas.SetTop(big, y);
+                    }
+
+                    _oldIconCentre = (x + a.IconX, y + (PillGeometry.Height / 2));   // a lifted card's icon rides down to it
                 });
             }
             else
@@ -350,6 +382,7 @@ public sealed partial class MainWindow
                 {
                     var gone = SwapMotion.EaseIn(t * 2);   // drops out in the first half
                     var y = row + (SwapMotion.FlipDrop * gone);
+                    _oldCardBox = aBox with { Y = y };
                     mover.Place(aBox with { Y = y }, aBox.X, y, a.IconX, 1, 1, 0, 1 - gone);
                 });
             }
@@ -413,6 +446,14 @@ public sealed partial class MainWindow
         }
 
         PillRegion.ApplyShapes(_taskbar.OuterWindow, shapes);
+    }
+
+    /// <summary>A stand-in for a card's icon as the big pill draws it, the size of a cell (lined up with <see cref="CellGhost"/>).</summary>
+    private Grid BigGhost(Card card, TaskIcon look)
+    {
+        var cell = new Grid { Width = PillGeometry.Cell, Height = PillGeometry.Height, IsHitTestVisible = false };
+        cell.Children.Add(BigIconContent(look, CoverOf(card)?.Image));
+        return cell;
     }
 
     /// <summary>A stand-in for one cell: its icon (or ⋯) as the small pill draws it.</summary>

@@ -57,6 +57,16 @@ public static class SwapMotion
     /// </summary>
     public const double BackgroundTurn = 0.4;
 
+    /// <summary>
+    /// An agent's logo in its makers' colour on the big pill (and the lifted card), one colour + green / orange / red in a cell
+    /// (user 10-08): going down into a cell, the cell's look comes in over the second half of the way, on top, while the big
+    /// look under it goes a little later — so the two never both look faint. Shared by the swap and the lifted card going down.
+    /// </summary>
+    public static double CellLookIn(double p) => Math.Clamp((p - 0.45) / 0.4, 0, 1);
+
+    /// <inheritdoc cref="CellLookIn"/>
+    public static double BigLookOut(double p) => Math.Clamp((p - 0.65) / 0.3, 0, 1);
+
     /// <summary>Flip: the old content drops this far while fading; the new comes down from as far above.</summary>
     public const double FlipDrop = 8;
     public static readonly TimeSpan FlipOut = TimeSpan.FromMilliseconds(150);

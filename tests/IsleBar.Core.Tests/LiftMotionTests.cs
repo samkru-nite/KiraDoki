@@ -23,6 +23,20 @@ public sealed class LiftMotionTests
     }
 
     [Fact]
+    public void The_window_reaches_past_the_small_pill_so_the_card_can_go_down_into_a_task_cell()
+    {
+        // big pill 1000–1440, small pill to its right up to 1800: the window spans it plus a cell and the overshoot (24 + 16 dip)
+        var pill = new ScreenRect(1000, 1359, 1440, 1423);
+        var bar = new ScreenRect(1000, 1345, 1800, 1437);
+        var lift = LiftMotion.Place(pill, 0, 2560, TaskbarTop, Scale, tall: false, bar);
+
+        Assert.Equal(1800 + 80, lift.Window.Right);
+        Assert.Equal(lift.Card.Left - 48, lift.Window.Left);   // on the left the card (300 on a 220 pill) and its room reach further
+        Assert.Equal(1437, lift.Window.Bottom);
+        Assert.Equal(LiftMotion.Place(pill, 0, 2560, TaskbarTop, Scale, tall: false).Card, lift.Card);   // the card itself doesn't move
+    }
+
+    [Fact]
     public void A_long_card_is_square()
     {
         var lift = LiftMotion.Place(new ScreenRect(1000, 1359, 1440, 1423), 0, 2560, TaskbarTop, Scale, tall: true);

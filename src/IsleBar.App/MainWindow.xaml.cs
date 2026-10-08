@@ -1134,25 +1134,13 @@ public sealed partial class MainWindow : Window
         }
 
         _cellsSig = sig;
-        if (!_cellCards.Any(c => c.State.Stage == "privacy"))
-        {
-            _privacyLanded = null;
-        }
-
         _renderedCells.Clear();
         _renderedCells.AddRange(_cellCards);
         TaskCells.Children.Clear();
+        // nothing breathes — not AI, not mic / camera (user 10-08: only what waits for you may move; it is all or none)
         foreach (var (key, icon, card) in icons)
         {
-            var content = CellContent(card, icon, now);
-            if (_cellCards.FirstOrDefault(c => c.Key == key)?.State.Stage == "privacy")
-            {
-                // mic / camera in use: plainly breathing, so it isn't forgotten; solid for a moment after it lands (user 10-07)
-                _privacyLanded ??= now;
-                Breathe(content, _privacyLanded.Value + TimeSpan.FromSeconds(1.5) - now);
-            }
-
-            TaskCells.Children.Add(MakeCell(key, content));
+            TaskCells.Children.Add(MakeCell(key, CellContent(card, icon, now)));
         }
 
         var more = MakeCell(DotsTag, new Microsoft.UI.Xaml.Controls.FontIcon
@@ -1257,57 +1245,6 @@ public sealed partial class MainWindow : Window
 
     private string? _leadDialKey;
 
-    /// <summary>
-    /// A slow, clear breath on the compositor, for as long as the element lives, after <paramref name="delay"/>. Every 2.5 s: from
-    /// rest (full size, full strength) it swells by <see cref="BreathGrow"/> at full strength, then shrinks by <see cref="BreathShrink"/>
-    /// while dimming to 30%, then back to rest — so the loop has no seam. User 10-08: shrinking 10% only was too much, and it must
-    /// grow as well as shrink; a 16 icon at +3% is 16.5, well inside its 24 cell.
-    /// </summary>
-    private static void Breathe(UIElement element, TimeSpan delay)
-    {
-        var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(element);
-        var c = visual.Compositor;
-        if (element is FrameworkElement fe)
-        {
-            var w = double.IsNaN(fe.Width) ? fe.ActualWidth : fe.Width;
-            var h = double.IsNaN(fe.Height) ? fe.ActualHeight : fe.Height;
-            visual.CenterPoint = new System.Numerics.Vector3((float)w / 2, (float)h / 2, 0f);
-        }
-
-        var ease = c.CreateCubicBezierEasingFunction(new System.Numerics.Vector2(0.37f, 0f), new System.Numerics.Vector2(0.63f, 1f));   // sine-like in and out
-        var breath = c.CreateScalarKeyFrameAnimation();
-        breath.InsertKeyFrame(0f, 1f);
-        breath.InsertKeyFrame(0.25f, 1f);
-        breath.InsertKeyFrame(0.75f, 0.3f, ease);
-        breath.InsertKeyFrame(1f, 1f, ease);
-        var size = c.CreateVector3KeyFrameAnimation();
-        var big = (float)(1 + BreathGrow);
-        var small = (float)(1 - BreathShrink);
-        size.InsertKeyFrame(0f, System.Numerics.Vector3.One);
-        size.InsertKeyFrame(0.25f, new System.Numerics.Vector3(big, big, 1f), ease);
-        size.InsertKeyFrame(0.75f, new System.Numerics.Vector3(small, small, 1f), ease);
-        size.InsertKeyFrame(1f, System.Numerics.Vector3.One, ease);
-        foreach (var a in new Microsoft.UI.Composition.KeyFrameAnimation[] { breath, size })
-        {
-            a.Duration = TimeSpan.FromSeconds(2.5);
-            a.IterationBehavior = Microsoft.UI.Composition.AnimationIterationBehavior.Forever;
-            if (delay > TimeSpan.Zero)
-            {
-                a.DelayTime = delay;
-            }
-        }
-
-        visual.StartAnimation("Opacity", breath);
-        visual.StartAnimation("Scale", size);
-    }
-
-    /// <summary>How much the mic / camera icon swells and shrinks in its breath (user 10-08: +3% / −4%).</summary>
-    private const double BreathGrow = 0.03;
-    private const double BreathShrink = 0.04;
-
-    /// <summary>When the mic / camera icon first sat in its cell this time (its breath starts a moment later); null while there is none.</summary>
-    private DateTimeOffset? _privacyLanded;
-
     /// <summary>Tag of the ⋯ cell (task cells carry their card's key).</summary>
     private const string DotsTag = "\u0001dots";
 
@@ -1365,6 +1302,33 @@ public sealed partial class MainWindow : Window
 
         return box;
     }
+
+    /// <summary>
+    /// The icon as the big pill draws it: an agent's logo in its makers' colours (as <see cref="ShowAgentMark"/>), anything else
+    /// as its small icon (the same look: <see cref="HasBigLook"/> is false).
+    /// </summary>
+    private UIElement BigIconContent(TaskIcon icon, Microsoft.UI.Xaml.Media.Imaging.BitmapImage? cover)
+    {
+        if (BrandLogo(icon) is not { } brand)
+        {
+            return IconContent(icon, cover);
+        }
+
+        var box = new Microsoft.UI.Xaml.Controls.Grid { Width = 16, Height = 16, IsHitTestVisible = false };
+        var size = icon.Logo == "codex" ? 19 : 20;   // the same padding as the big pill's images
+        box.Children.Add(new Microsoft.UI.Xaml.Controls.Image { Source = brand, Width = size, Height = size, Margin = new Thickness((16 - size) / 2.0) });
+        return box;
+    }
+
+    /// <summary>The big pill draws this icon otherwise than its cell (an agent's logo in its makers' colours).</summary>
+    private bool HasBigLook(TaskIcon icon) => BrandLogo(icon) is not null;
+
+    private ImageSource? BrandLogo(TaskIcon icon) => icon.Logo switch
+    {
+        "claude" => _claudeGlyph,
+        "codex" => _codexBrand,
+        _ => null,
+    };
 
     /// <summary>Paused: a pill-coloured disc cuts the icon's bottom-right corner and the two bars sit in it.</summary>
     private void AddPauseNotch(Microsoft.UI.Xaml.Controls.Grid box)

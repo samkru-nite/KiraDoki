@@ -70,6 +70,10 @@ public static class LiftMotion
     public const double PillTextOut = 0.3;
     public const double ContentIn = 0.5;
 
+    /// <summary>Closing into a task cell (a swap while the card is up): over this last share of the way the card fades into the
+    /// card flying there underneath, which by then has its shape.</summary>
+    public const double FollowFade = 0.4;
+
     /// <summary>Morph: the share of the way over which the frame turns from the pill's colour to the card's.</summary>
     public const double ColourTurn = 0.4;
 
@@ -88,9 +92,11 @@ public static class LiftMotion
     /// <summary>
     /// The card centred on the big pill, pushed back in when it would come closer than <see cref="ScreenMargin"/> to a screen side,
     /// its bottom <see cref="TaskbarGap"/> above the taskbar. The window spans the card and the big pill (the morph starts on the pill;
-    /// the slide comes out of the taskbar's top edge).
+    /// the slide comes out of the taskbar's top edge). With <paramref name="bar"/> (both pills) it spans them too, a cell wider each
+    /// side: a swap while the card is up sends the card down into a task cell (user 10-08), and the window can't grow mid-flight
+    /// without a jump.
     /// </summary>
-    public static LiftLayout Place(ScreenRect pill, int screenLeft, int screenRight, int taskbarTop, double scale, bool tall)
+    public static LiftLayout Place(ScreenRect pill, int screenLeft, int screenRight, int taskbarTop, double scale, bool tall, ScreenRect? bar = null)
     {
         var w = PillGeometry.Px(Width, scale);
         var h = PillGeometry.Px(tall ? TallHeight : Height, scale);
@@ -100,11 +106,13 @@ public static class LiftMotion
         var bottom = taskbarTop - PillGeometry.Px(TaskbarGap, scale);
         var card = new ScreenRect(left, bottom - h, left + w, bottom);
         var room = PillGeometry.Px(Room, scale);
+        var reach = bar is { } b ? b : pill;
+        var cell = bar is null ? 0 : PillGeometry.Px(PillGeometry.Cell + SwapMotion.Overshoot, scale);
         var window = new ScreenRect(
-            Math.Min(card.Left - room, pill.Left),
+            Math.Min(card.Left - room, Math.Min(pill.Left, reach.Left - cell)),
             card.Top - room,
-            Math.Max(card.Right + room, pill.Right),
-            Math.Max(pill.Bottom, taskbarTop));
+            Math.Max(card.Right + room, Math.Max(pill.Right, reach.Right + cell)),
+            Math.Max(Math.Max(pill.Bottom, reach.Bottom), taskbarTop));
         return new LiftLayout(card, window);
     }
 
