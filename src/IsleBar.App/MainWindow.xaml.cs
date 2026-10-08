@@ -341,8 +341,16 @@ public sealed partial class MainWindow : Window
         }), handledEventsToo: true);
         Root.PointerEntered += (_, _) => SetHover(true);
         Root.PointerExited += (_, _) => SetHover(false);
-        CloseZone.PointerEntered += (_, _) => CloseHover.Opacity = 1;
-        CloseZone.PointerExited += (_, _) => CloseHover.Opacity = 0;
+        CloseZone.PointerEntered += (_, _) =>
+        {
+            _closeHover = true;
+            PaintFill();
+        };
+        CloseZone.PointerExited += (_, _) =>
+        {
+            _closeHover = false;
+            PaintFill();
+        };
         PillBody.PointerEntered += (_, _) =>
         {
             SetBigHover(true);
@@ -1481,11 +1489,11 @@ public sealed partial class MainWindow : Window
     private void ApplyCorners(bool round)
     {
         var r = round ? BaseHeight / 2.0 : PillGeometry.SmallCorner;
-        PillSurface.CornerRadius = new CornerRadius(r);
-        SmallSurface.CornerRadius = new CornerRadius(r);
-        GlassBorder.CornerRadius = new CornerRadius(r);
-        GlowRing.CornerRadius = new CornerRadius(r);
-        CloseHover.CornerRadius = new CornerRadius(r, 0, 0, r);   // the close zone's hover follows the pill's round left end (user 10-07)
+        PillSurface.Radius = r;
+        SmallSurface.Radius = r;
+        GlassBorder.Radius = r;
+        GlowRing.Radius = r;
+        CloseChip.Radius = round ? 14 : Math.Max(0, r - 2);   // concentric with the pill's end, 2 in
     }
 
     private DateTimeOffset _lastAttachTry = DateTimeOffset.MinValue;
@@ -1624,8 +1632,8 @@ public sealed partial class MainWindow : Window
             MarqueePanel.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
             var width = MarqueePanel.DesiredSize.Width;
             var area = AvailableTextWidth();
-            var areaLeft = (CloseZone.Visibility == Visibility.Visible ? CloseZone.Width : 0) + TextStart;
-            var middle = ((areaLeft - TextStart) + BaseWidth) / 2;
+            var areaLeft = TextStart;
+            var middle = (BaseWidth - (CloseZone.Visibility == Visibility.Visible ? CloseZone.Width + CloseZone.Margin.Right : 0)) / 2;   // the card's middle, short of the close button
             var start = mode == "group"
                 ? middle - ((TextStart - IconStart + width) / 2) + (TextStart - IconStart)   // where the text starts when the group is centred
                 : middle - (width / 2);
@@ -2098,7 +2106,7 @@ public sealed partial class MainWindow : Window
     private void SetMarqueeFade(bool on)
     {
         FadeLeft.Visibility = FadeRight.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
-        if (!on || PillSurface.Background is not SolidColorBrush fill)
+        if (!on || PillSurface.Fill is not SolidColorBrush fill)
         {
             return;
         }
@@ -2316,7 +2324,7 @@ public sealed partial class MainWindow : Window
                 new Windows.Graphics.Imaging.BitmapTransform { ScaledWidth = 16, ScaledHeight = 16 },
                 Windows.Graphics.Imaging.ExifOrientationMode.IgnoreExifOrientation,
                 Windows.Graphics.Imaging.ColorManagementMode.DoNotColorManage);
-            var light = PillSurface.Background is SolidColorBrush fill && ((fill.Color.R * 0.3) + (fill.Color.G * 0.59) + (fill.Color.B * 0.11)) > 128;
+            var light = PillSurface.Fill is SolidColorBrush fill && ((fill.Color.R * 0.3) + (fill.Color.G * 0.59) + (fill.Color.B * 0.11)) > 128;
             return IsleBar.Core.Ui.AlbumTint.Pick(pixels.DetachPixelData(), light) is { } c
                 ? Windows.UI.Color.FromArgb(255, c.R, c.G, c.B)
                 : null;
@@ -2578,7 +2586,7 @@ public sealed partial class MainWindow : Window
         var playing = state.Kind == ActivityKind.Music && state.Stage != "paused";
         var hasCover = state.Kind == ActivityKind.Music && CoverOf(_shownCard) is not null;
         LeadSlot.Margin = new Thickness(8, 0, hasCover ? 11 : 8, 0);
-        IslandContent.Margin = new Thickness(0, 0, playing ? 8 : 12, 0);
+        IslandContent.Margin = new Thickness(0, 0, playing || _shownCard is { Type: CardType.Inform } ? 8 : 12, 0);   // 8 before the bars or the close button
         // compressing: the document outline gets zipper teeth (the drop hint uses the same outline without them)
         ZipTeeth.Opacity = state.Stage == "copy" && state.RunState == ActivityRunState.Running
                            && state.Glyph == Media.FileOperationWatcher.CompressGlyph ? 1 : 0;
@@ -3050,17 +3058,15 @@ public sealed partial class MainWindow : Window
     {
         var background = RealSearchBoxFill();
         _theme = ThemeColors.ForActualBackground(background, ThemeColors.AccentColor());
-        PillSurface.Background = BrushOf(background);
+        PillSurface.Fill = BrushOf(background);
         Root.Background = BrushOf(TaskbarColorBeside());   // outside the pill (the stair-steps of the clip edge sit on this color and become invisible)
         LeadIcon.Foreground = BrushOf(_theme.Icon);
         Entry.Foreground = BrushOf(_theme.Foreground);
         BallRing.Stroke = BrushOf(_theme.Icon);
         CloseLabel.Text = _text.CloseCard;
         CloseLabel.Foreground = BrushOf(_theme.Foreground);
-        CloseRule.Fill = BrushOf(ThemeColors.FromSystem().Light ? Windows.UI.Color.FromArgb(255, 0xD6, 0xD6, 0xD6) : Windows.UI.Color.FromArgb(255, 0x46, 0x46, 0x46));
-        SmallRule.Fill = CloseRule.Fill;
+        SmallRule.Fill = BrushOf(ThemeColors.FromSystem().Light ? Windows.UI.Color.FromArgb(255, 0xD6, 0xD6, 0xD6) : Windows.UI.Color.FromArgb(255, 0x46, 0x46, 0x46));
         BallHover.Fill = BrushOf(HoverColor());
-        CloseHover.Background = BrushOf(HoverColor());
         PaintFill();
     }
 
@@ -3076,6 +3082,9 @@ public sealed partial class MainWindow : Window
 
     private bool _hovering;
 
+    /// <summary>The pointer is on the close button.</summary>
+    private bool _closeHover;
+
 
     /// <summary>
     /// Apply preferences: re-apply colors the moment the black background toggles (text color follows actual background brightness);
@@ -3090,11 +3099,11 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        var dark = !(PillSurface.Background is SolidColorBrush fill && ((fill.Color.R * 0.3) + (fill.Color.G * 0.59) + (fill.Color.B * 0.11)) > 128);
+        var dark = !(PillSurface.Fill is SolidColorBrush fill && ((fill.Color.R * 0.3) + (fill.Color.G * 0.59) + (fill.Color.B * 0.11)) > 128);
         var edge = _snapshot.IsActive && _snapshot.Primary?.Kind == ActivityKind.Music && _albumTint is { } tint
             ? Windows.UI.Color.FromArgb(140, tint.R, tint.G, tint.B)
             : dark ? Windows.UI.Color.FromArgb(26, 255, 255, 255) : Windows.UI.Color.FromArgb(22, 0, 0, 0);
-        GlassBorder.BorderBrush = BrushOf(edge);
+        GlassBorder.Edge = BrushOf(edge);
         GlassShine.Visibility = dark ? Visibility.Visible : Visibility.Collapsed;   // the white shine line isn't visible on light backgrounds
     }
 
@@ -3104,10 +3113,15 @@ public sealed partial class MainWindow : Window
         var rest = RealSearchBoxFill();
         var lift = _hoverBig || _typing;
         var light = ThemeColors.FromSystem().Light;
-        PillSurface.Background = BrushOf(!lift ? rest
+        PillSurface.Fill = BrushOf(!lift ? rest
             : light ? Blend(rest, Windows.UI.Color.FromArgb(255, 255, 255, 255), 0.55)
             : Blend(rest, Windows.UI.Color.FromArgb(255, 255, 255, 255), 0.05));
-        SmallSurface.Background = BrushOf(rest);   // the small pill lifts only its circle cell (BallHover)
+        SmallSurface.Fill = BrushOf(rest);   // the small pill lifts only its circle cell (BallHover)
+        // the close button: a step off the pill's colour, one more under the pointer (user 10-08, B5)
+        var lifted = PillSurface.Fill is SolidColorBrush now ? now.Color : rest;
+        CloseChip.Fill = BrushOf(light
+            ? Blend(lifted, Windows.UI.Color.FromArgb(255, 0, 0, 0), _closeHover ? 0.12 : 0.07)
+            : Blend(lifted, Windows.UI.Color.FromArgb(255, 255, 255, 255), _closeHover ? 0.16 : 0.10));
         if (_marqueeRunning)
         {
             SetMarqueeFade(true);   // the scrolling text's end fades are the pill colour: repaint them when it lifts (hover) — they showed as dark blocks (user 10-07)
@@ -3119,11 +3133,11 @@ public sealed partial class MainWindow : Window
     /// <summary>Thin line around the pill edge (like the real search box border) — a faint line matched to background brightness.</summary>
     private void PaintEdge()
     {
-        var light = PillSurface.Background is SolidColorBrush fill && ((fill.Color.R * 0.3) + (fill.Color.G * 0.59) + (fill.Color.B * 0.11)) > 128;
-        PillSurface.BorderBrush = BrushOf(light
+        var light = PillSurface.Fill is SolidColorBrush fill && ((fill.Color.R * 0.3) + (fill.Color.G * 0.59) + (fill.Color.B * 0.11)) > 128;
+        PillSurface.Edge = BrushOf(light
             ? Windows.UI.Color.FromArgb(34, 0, 0, 40)
             : Windows.UI.Color.FromArgb(30, 255, 255, 255));
-        SmallSurface.BorderBrush = PillSurface.BorderBrush;
+        SmallSurface.Edge = PillSurface.Edge;
     }
 
     /// <summary>The faint darkening / lightening under the pointer (the circle's cell, the close zone).</summary>
@@ -3177,14 +3191,14 @@ public sealed partial class MainWindow : Window
         SetMarqueeFade(_marqueeRunning);
     }
 
-    /// <summary>An inform card shows its close zone on the left (TODO 7.3, A4); every other card and typing don't.</summary>
+    /// <summary>An inform card shows its close button on the right (TODO 7.3, A4; moved right 10-08); every other card and typing don't.</summary>
     private void ShowCloseZone()
     {
         var show = !_typing && !_dropHover && _compose is null && _shownCard is { Type: CardType.Inform };
         CloseZone.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         if (!show)
         {
-            CloseHover.Opacity = 0;
+            _closeHover = false;
         }
         else if (_closeInkFor != CloseLabel.Text)
         {

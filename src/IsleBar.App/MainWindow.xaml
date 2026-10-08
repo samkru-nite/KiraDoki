@@ -10,6 +10,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:ui="using:IsleBar.App.IslandUi"
     mc:Ignorable="d">
 
     <!-- Root's background is the taskbar colour sampled beside the bar: the pills draw their round edges on it (the clip is rectangles) -->
@@ -29,12 +30,13 @@
          Card layout = TODO 7.9 D final sizes (E2): icon 16 at 8 (centre x 16), text from x 32 to 208 (right margin 12), left-aligned;
          an inform card puts a 68 close zone first. Music: album art 22, then the now-playing bars before the right margin -->
     <Grid x:Name="PillBody" Width="220">
-        <!-- The pill itself: background + thin border drawn with soft edges, on the taskbar colour (Root) — the window clip is a rectangle -->
-        <Border x:Name="PillSurface" BorderThickness="1" CornerRadius="16" IsHitTestVisible="False" />
+        <!-- The pill itself: background + thin border drawn with soft edges, on the taskbar colour (Root) — the window clip is a rectangle.
+             Smooth corners (SmoothBorder, user 10-08), as everything rounded below -->
+        <ui:SmoothBorder x:Name="PillSurface" EdgeWidth="1" Radius="16" IsHitTestVisible="False" />
 
         <!-- Preference C1 (setting "glow border"): faint border + a 1px shine line brightest at top center — adds depth (PILLAR technique, 09-30 design) -->
         <Grid x:Name="GlassEdge" IsHitTestVisible="False" Visibility="Collapsed">
-            <Border x:Name="GlassBorder" Margin="0" BorderThickness="1" CornerRadius="16" />
+            <ui:SmoothBorder x:Name="GlassBorder" EdgeWidth="1" Radius="16" />
             <Rectangle x:Name="GlassShine" Height="1" Margin="70,0.5,70,0" VerticalAlignment="Top">
                 <Rectangle.Fill>
                     <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
@@ -56,18 +58,19 @@
                 <ColumnDefinition Width="Auto" />   <!-- icon -->
                 <ColumnDefinition Width="*" />      <!-- text / input box -->
                 <ColumnDefinition Width="Auto" />   <!-- now-playing bars, Tab hint -->
+                <ColumnDefinition Width="Auto" />   <!-- close button (inform cards only) -->
             </Grid.ColumnDefinitions>
 
-            <!-- Inform card: "Close" always shown on the left (TODO 7.3, A4). Moved 1.5 right of the geometric centre: the round left end makes
-                 the zone's visual weight sit right of its middle (area centroid, 10-06). Hover darkens it; a 1×16 line separates it -->
-            <Grid x:Name="CloseZone" Width="68" Background="Transparent" Visibility="Collapsed">
-                <Border x:Name="CloseHover" Opacity="0" IsHitTestVisible="False" />
-                <TextBlock x:Name="CloseLabel" FontSize="13" Opacity="0.85" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
+            <!-- Inform card: a "Close" button on the right (user 10-08, B5): 72×28, 2 in from the pill's edge so its round right end is
+                 concentric with the pill's, the left end the mirror of it; smooth corners; "Close" centred by its glyphs both ways.
+                 Its colour is a step off the pill's (PaintFill), a step more under the pointer -->
+            <Grid x:Name="CloseZone" Grid.Column="4" Width="72" Height="28" Margin="0,0,2,0" VerticalAlignment="Center" Background="Transparent" Visibility="Collapsed">
+                <ui:SmoothBorder x:Name="CloseChip" Radius="14" IsHitTestVisible="False" />
+                <TextBlock x:Name="CloseLabel" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
                     <TextBlock.RenderTransform>
-                        <TranslateTransform x:Name="CloseShift" X="1.5" />
+                        <TranslateTransform x:Name="CloseShift" />
                     </TextBlock.RenderTransform>
                 </TextBlock>
-                <Rectangle x:Name="CloseRule" Width="1" Height="16" HorizontalAlignment="Right" VerticalAlignment="Center" IsHitTestVisible="False" />
             </Grid>
 
             <!-- Left icon 16. Glyphs are Segoe Fluent Icons (part of Windows; no third-party icon sets) -->
@@ -193,14 +196,14 @@
         </Grid>
 
         <!-- Pinned card's border, 2 wide inside the edge: pending orange, inform green, temporary warning red (turned on by IslandAnimator). Clicks pass through -->
-        <Border x:Name="GlowRing" BorderThickness="2" CornerRadius="16" IsHitTestVisible="False" />
+        <ui:SmoothBorder x:Name="GlowRing" EdgeWidth="2" Radius="16" IsHitTestVisible="False" />
     </Grid>
 
     <!-- Small pill (TODO 7.9 D): task icons + ⋯ │ circle (or circle │ ⋯ + task icons when it sits left — code swaps the columns).
          Task cells are 24 (icon 16) after a 4 margin, the line is 1×16, the circle's box is 32 (cell 24 with 4 either side). The
          hover background of every cell is a 24 circle. No task cells → only the circle, and no line -->
     <Grid x:Name="SmallPill" Grid.Column="2" Height="32">
-        <Border x:Name="SmallSurface" BorderThickness="1" CornerRadius="16" IsHitTestVisible="False" />
+        <ui:SmoothBorder x:Name="SmallSurface" EdgeWidth="1" Radius="16" IsHitTestVisible="False" />
         <Grid x:Name="SmallRow">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />

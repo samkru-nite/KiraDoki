@@ -45,7 +45,7 @@ internal sealed class LiftWindow : Window
     private readonly Canvas _clipper = new();  // the slide's cut at the taskbar's top edge (flat, so the cut stays straight)
     private readonly Canvas _stage = new();    // the sheet: frame + content, tilting around its bottom edge
     private readonly CompositeTransform3D _tilt = new();
-    private readonly Border _frame = new() { BorderThickness = new Thickness(1) };
+    private readonly SmoothBorder _frame = new() { EdgeWidth = 1 };   // smooth corners, like the pills (user 10-08)
     private readonly Image _shot = new() { Stretch = Stretch.Fill, IsHitTestVisible = false };
     private readonly Canvas _content = new();
     private readonly RectangleGeometry _contentClip = new();
@@ -114,8 +114,8 @@ internal sealed class LiftWindow : Window
         TaskbarHost.Log($"lift: window made, style={Unsigned32(GetWindowLong(_hwnd, GWL_STYLE)):X} dwm border={hrBorder:X} corner={hrCorner:X}");
         AppWindow.Move(new Windows.Graphics.PointInt32(-32000, -32000));
 
-        _frame.Background = _fill;
-        _frame.BorderBrush = _edge;
+        _frame.Fill = _fill;
+        _frame.Edge = _edge;
         _content.Clip = _contentClip;
         _stage.Children.Add(_frame);
         _stage.Children.Add(_content);
@@ -355,8 +355,10 @@ internal sealed class LiftWindow : Window
         _tilt.CenterY = bottom;
         _tilt.RotationX = lean;
 
-        Place(_frame, box);
-        _frame.CornerRadius = new CornerRadius(box.Radius);
+        Canvas.SetLeft(_frame, box.X);
+        Canvas.SetTop(_frame, box.Y);
+        _frame.Radius = Math.Clamp(box.Radius, 0, Math.Max(0, Math.Min(box.Width, box.Height)) / 2);
+        _frame.SetSize(Math.Max(0, box.Width), Math.Max(0, box.Height));   // the shape in this frame, not after layout
         _fill.Color = Mix(r.PillColor, cardColour, turn);
         _edge.Color = Color.FromArgb((byte)(edgeColour.A * turn), edgeColour.R, edgeColour.G, edgeColour.B);
 

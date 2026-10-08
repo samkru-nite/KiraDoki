@@ -1,4 +1,5 @@
 using IsleBar.App.Interop;
+using IsleBar.App.IslandUi;
 using IsleBar.App.Tracking;
 using IsleBar.Core.Island;
 using IsleBar.Core.Ui;
@@ -261,10 +262,10 @@ public sealed partial class MainWindow
         var radius = CornerRadiusNow();
 
         // the small pill's own surface, the line and the circle
-        var surface = new Border
+        var surface = new SmoothBorder
         {
-            Height = PillGeometry.Height, CornerRadius = new CornerRadius(radius), BorderThickness = new Thickness(1),
-            Background = BrushOf(RealSearchBoxFill()), BorderBrush = SmallSurface.BorderBrush, Tag = radius,
+            Height = PillGeometry.Height, Radius = radius, EdgeWidth = 1,
+            Fill = BrushOf(RealSearchBoxFill()), Edge = SmallSurface.Edge, Tag = radius,
         };
         Put(surface, a.SmallX, row);
         var rule = new Rectangle { Width = 1, Height = 16, Fill = SmallRule.Fill };
@@ -274,7 +275,7 @@ public sealed partial class MainWindow
         frames.Add((t, p) =>
         {
             Canvas.SetLeft(surface, SwapMotion.Lerp(a.SmallX, b.SmallX, p));
-            surface.Width = Math.Max(PillGeometry.BallBox, SwapMotion.Lerp(a.SmallWidth, b.SmallWidth, p));
+            surface.SetSize(Math.Max(PillGeometry.BallBox, SwapMotion.Lerp(a.SmallWidth, b.SmallWidth, p)), PillGeometry.Height);
             Canvas.SetLeft(rule, SwapMotion.Lerp(a.RuleX ?? b.RuleX ?? 0, b.RuleX ?? a.RuleX ?? 0, p));
             rule.Opacity = SwapMotion.Lerp(a.RuleX is null ? 0 : 1, b.RuleX is null ? 0 : 1, Math.Clamp(p, 0, 1));
             Canvas.SetLeft(ring, SwapMotion.Lerp(a.BallX, b.BallX, p) - 4.2);
@@ -494,11 +495,11 @@ public sealed partial class MainWindow
     private sealed class Mover
     {
         private readonly Grid _box = new() { IsHitTestVisible = false };
-        private readonly Border _back = new();   // the rounded fill (a Grid's own background ignored its corner radius: square slabs, user 10-07)
+        private readonly SmoothBorder _back = new();   // the rounded fill (a Grid's own background ignored its corner radius: square slabs, user 10-07)
         private readonly Canvas _inside = new();
         private readonly Image _image;
         private readonly Ellipse _disc;
-        private readonly Border _ring;
+        private readonly SmoothBorder _ring;
         private readonly SolidColorBrush _fill;
         private readonly Windows.UI.Color _pill;
 
@@ -506,13 +507,13 @@ public sealed partial class MainWindow
         {
             _pill = window.RealSearchBoxFill();
             _fill = new SolidColorBrush(_pill);
-            _back.Background = _fill;
+            _back.Fill = _fill;
             _image = window.Snapshot(shot);
             _disc = new Ellipse { Width = SwapMotion.Circle, Height = SwapMotion.Circle, Fill = new SolidColorBrush(HoverColor()) };
-            _ring = new Border
+            _ring = new SmoothBorder
             {
-                BorderThickness = new Thickness(glow is null ? 0 : 2),
-                BorderBrush = new SolidColorBrush(glow ?? Windows.UI.Color.FromArgb(0, 0, 0, 0)),
+                EdgeWidth = glow is null ? 0 : 2,
+                Edge = new SolidColorBrush(glow ?? Windows.UI.Color.FromArgb(0, 0, 0, 0)),
             };
             _inside.Children.Add(_disc);
             _inside.Children.Add(_image);
@@ -537,10 +538,12 @@ public sealed partial class MainWindow
             Canvas.SetTop(_box, box.Y);
             _box.Width = w;
             _box.Height = h;
-            _box.CornerRadius = new CornerRadius(Math.Clamp(box.Radius, 0, h / 2));
-            _box.Tag = _box.CornerRadius.TopLeft;   // the window is clipped to this shape (ClipToFlying)
-            _ring.CornerRadius = _box.CornerRadius;
-            _back.CornerRadius = _box.CornerRadius;
+            var radius = Math.Clamp(box.Radius, 0, h / 2);
+            _box.Tag = radius;   // the window is clipped to this shape (ClipToFlying)
+            _ring.Radius = radius;
+            _back.Radius = radius;
+            _ring.SetSize(w, h);   // in this frame, not after the next layout pass
+            _back.SetSize(w, h);
             _box.Opacity = Math.Clamp(opacity, 0, 1);
             _fill.Color = Windows.UI.Color.FromArgb((byte)Math.Round(255 * Math.Clamp(background, 0, 1)), _pill.R, _pill.G, _pill.B);
             _ring.Opacity = Math.Clamp(ring, 0, 1);

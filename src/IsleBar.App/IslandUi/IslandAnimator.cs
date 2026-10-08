@@ -295,9 +295,9 @@ internal sealed class IslandAnimator
             return;
         }
 
-        if (_glow is Microsoft.UI.Xaml.Controls.Border border)
+        if (_glow is SmoothBorder ring)
         {
-            border.BorderBrush = new Microsoft.UI.Xaml.Media.SolidColorBrush(color);
+            ring.Edge = new Microsoft.UI.Xaml.Media.SolidColorBrush(color);
         }
 
         Glow();
