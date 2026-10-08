@@ -208,6 +208,9 @@ public sealed partial class MainWindow : Window
         Entry.PreviewKeyDown += OnEntryKeyDown;
         HookCompose();
         HookFileDrop();
+        // the title's scroll moves by "Translation", which must be switched on before anything stops or sets it: since the lap holds
+        // first (10-08), a card swap during that hold stopped it while still off → "parameter error", every swap a hard cut (user 10-08)
+        Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.SetIsTranslationEnabled(MarqueePanel, true);
         PressFeedback.Attach(BallCell);
         PressFeedback.Enabled = () => _settings.Bounce;
         PressFeedback.Attach(PillBody, PressFeedback.PillPressed, PressFeedback.PillDamping);   // the big pill too: half on press, the rest + the card on release (user 10-08)
@@ -2024,13 +2027,38 @@ public sealed partial class MainWindow : Window
             ? Windows.UI.Color.FromArgb(255, 0xC4, 0x2B, 0x1C)
             : Windows.UI.Color.FromArgb(255, 0xFF, 0x5F, 0x57);   // Windows' own dark-theme critical (FF99A4) read as pink on the pill (10-01)
 
+    /// <summary>
+    /// One lap. It first holds with the resting look ("…", no fades), the same as when it stands still — and as the swap's snapshot
+    /// shows it, so nothing changes as a card lands (it switched from "…" to the lap's look right then: the "…", the fade flashed,
+    /// user 10-08). The whole title and the fades come in as it starts to move.
+    /// </summary>
     private void StartMarquee()
     {
-        SetStyledText(IslandText, _marqueePrefix, _marqueeName);
-        SetStyledText(IslandTextCopy, _marqueePrefix, _marqueeName);
-        IslandTextCopy.Visibility = Visibility.Visible;
-        IslandText.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
-        RunMarquee(IslandText.DesiredSize.Width + MarqueeGap);
+        var myRun = ++_marqueeRun;
+        _marqueeRunning = true;
+        SetMarqueeFade(false);
+        var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(MarqueePanel);
+        visual.StopAnimation("Translation.X");
+        visual.Properties.InsertVector3("Translation", System.Numerics.Vector3.Zero);
+        ShowMarqueeRest();
+        var hold = _ui.CreateTimer();
+        hold.Interval = _snapshot.Primary?.Kind == ActivityKind.Notice ? TimeSpan.FromSeconds(1) : MarqueeHold;   // short notices can't wait 2 s
+        hold.IsRepeating = false;
+        hold.Tick += (_, _) =>
+        {
+            if (myRun != _marqueeRun || !_marqueeRunning || _marqueeText is null)
+            {
+                return;   // stopped, rested for a flight, or another lap took over
+            }
+
+            SetStyledText(IslandText, _marqueePrefix, _marqueeName);
+            SetStyledText(IslandTextCopy, _marqueePrefix, _marqueeName);
+            IslandTextCopy.Visibility = Visibility.Visible;
+            IslandText.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+            PlaceText();
+            RunMarquee(myRun, IslandText.DesiredSize.Width + MarqueeGap);
+        };
+        hold.Start();
     }
 
     /// <summary>
@@ -2061,12 +2089,10 @@ public sealed partial class MainWindow : Window
 
     private int _marqueeRun;
 
-    private void RunMarquee(double distance)
+    private void RunMarquee(int myRun, double distance)
     {
-        // Number each lap — stopping an earlier lap (e.g. a scrolling music title) delivered its completion signal late
+        // Each lap has a number — stopping an earlier lap (e.g. a scrolling music title) delivered its completion signal late
         // and stopped the new lap (a done alert) instead (measured on PC 09-30). Only react to completion of our own number.
-        var myRun = ++_marqueeRun;
-        _marqueeRunning = true;
         SetMarqueeFade(true);
         Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.SetIsTranslationEnabled(MarqueePanel, true);
         var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(MarqueePanel);
@@ -2074,15 +2100,12 @@ public sealed partial class MainWindow : Window
         visual.StopAnimation("Translation.X");
         visual.Properties.InsertVector3("Translation", System.Numerics.Vector3.Zero);
 
-        // One lap = pause (first character at the front) → scroll → ends when the next copy's first character reaches the front.
-        // The end and start positions look identical, so the jump back is invisible and the pause follows immediately
+        // The scroll (the pause before it is StartMarquee's) → ends when the next copy's first character reaches the front.
+        // The end and start positions look identical, so the jump back is invisible
         // (user feedback 09-30: Galaxy scrolls and stops when the first character comes back to the front).
-        var run = TimeSpan.FromSeconds(distance / MarqueeSpeed);
-        var hold = _snapshot.Primary?.Kind == ActivityKind.Notice ? TimeSpan.FromSeconds(1) : MarqueeHold;   // short notices can't wait 2 s
-        var total = hold + run;
+        var total = TimeSpan.FromSeconds(distance / MarqueeSpeed);
         var slide = compositor.CreateScalarKeyFrameAnimation();
         slide.InsertKeyFrame(0f, 0f);
-        slide.InsertKeyFrame((float)(hold / total), 0f);
         slide.InsertKeyFrame(1f, (float)-distance, compositor.CreateLinearEasingFunction());
         slide.Duration = total;
         // Only one lap — scroll once when a track first appears, then stay still once the first character is back at the front (Galaxy style,
@@ -2093,11 +2116,9 @@ public sealed partial class MainWindow : Window
         // and made it look clipped (user feedback 09-30: the first character was still cut off when a title first appeared).
         var fadeVisual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(FadeLeft);
         var edge = (float)Math.Min(0.4 / total.TotalSeconds, 0.05);
-        var holdEnd = (float)(hold / total);
         var fadeIn = compositor.CreateScalarKeyFrameAnimation();
         fadeIn.InsertKeyFrame(0f, 0f);
-        fadeIn.InsertKeyFrame(holdEnd, 0f);
-        fadeIn.InsertKeyFrame(Math.Min(holdEnd + edge, 1f - edge), 1f);
+        fadeIn.InsertKeyFrame(Math.Min(edge, 0.5f), 1f);
         fadeIn.InsertKeyFrame(1f - edge, 1f);
         fadeIn.InsertKeyFrame(1f, 0f);
         fadeIn.Duration = total;
@@ -2522,10 +2543,13 @@ public sealed partial class MainWindow : Window
         LeadIcon.Glyph = state.IsPaused ? "\uE769" : GlyphFor(state);   // paused timer = pause icon
         LeadIcon.Foreground = BrushOf(_dropHover ? _theme.Icon : IconColorFor(_shownCard));
         ShowLeadDial(_dropHover ? null : state, IconColorFor(_shownCard));
-                // music: the text ends as far from the now-playing bars as it starts from the cover (5 each side, user 10-07; 8 looked
-        // lopsided), 8 with the plain note glyph (its gap on the left is 8 too); else 12 to the pill's edge (TODO 7.9 D)
+        // Gaps like every other card (user 10-08): 8 between the icon and the text, 8 between the text and the now-playing bars.
+        // The cover is 22, 3 past the 16 icon slot on each side, so with a cover the text starts 3 later (it sat 5 from the cover);
+        // the bars get 8 too (was 5, to match that 5). Else 12 to the pill's edge (TODO 7.9 D).
         var playing = state.Kind == ActivityKind.Music && state.Stage != "paused";
-        IslandContent.Margin = new Thickness(0, 0, !playing ? 12 : CoverOf(_shownCard) is not null ? 5 : 8, 0);
+        var hasCover = state.Kind == ActivityKind.Music && CoverOf(_shownCard) is not null;
+        LeadSlot.Margin = new Thickness(8, 0, hasCover ? 11 : 8, 0);
+        IslandContent.Margin = new Thickness(0, 0, playing ? 8 : 12, 0);
         // compressing: the document outline gets zipper teeth (the drop hint uses the same outline without them)
         ZipTeeth.Opacity = state.Stage == "copy" && state.RunState == ActivityRunState.Running
                            && state.Glyph == Media.FileOperationWatcher.CompressGlyph ? 1 : 0;

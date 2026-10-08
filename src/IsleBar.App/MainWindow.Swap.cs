@@ -171,7 +171,7 @@ public sealed partial class MainWindow
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            TaskbarHost.Log($"transition failed: {ex.Message}");   // async: never let it take the bar down
+            TaskbarHost.Log($"transition failed: {ex.ToString().Replace(Environment.NewLine, " | ")}");   // async: never let it take the bar down
         }
         finally
         {

@@ -178,17 +178,18 @@
                 </StackPanel>
 
             </StackPanel>
-        </Grid>
 
-        <!-- Progress: a 2 high track on the bottom edge, 16 in from each end (188 long); the filled part on top -->
-        <Rectangle x:Name="ProgressTrackBar" Height="2" Margin="16,0,16,0" RadiusX="1" RadiusY="1" VerticalAlignment="Bottom"
-                   IsHitTestVisible="False" Visibility="Collapsed" />
-        <Border x:Name="ProgressLine" Height="2" Width="0" CornerRadius="1" Margin="16,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Bottom"
-                IsHitTestVisible="False" />
+            <!-- Progress: a 2 high track on the bottom edge, 16 in from each end (188 long); the filled part on top. Inside CardRow so the
+                 swap's snapshot of the card carries it (it popped in on landing, user 10-08) -->
+            <Rectangle x:Name="ProgressTrackBar" Grid.ColumnSpan="4" Height="2" Margin="16,0,16,0" RadiusX="1" RadiusY="1" VerticalAlignment="Bottom"
+                       IsHitTestVisible="False" Visibility="Collapsed" />
+            <Border x:Name="ProgressLine" Grid.ColumnSpan="4" Height="2" Width="0" CornerRadius="1" Margin="16,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                    IsHitTestVisible="False" />
 
-        <!-- Flowing bar (transfer with unknown size): a quarter-length piece slides along the track, animated by the compositor -->
-        <Grid x:Name="FlowTrack" Height="2" Margin="16,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Bottom" Visibility="Collapsed" IsHitTestVisible="False">
-            <Border x:Name="FlowPiece" HorizontalAlignment="Left" CornerRadius="1" />
+            <!-- Flowing bar (transfer with unknown size): a quarter-length piece slides along the track, animated by the compositor -->
+            <Grid x:Name="FlowTrack" Grid.ColumnSpan="4" Height="2" Margin="16,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Bottom" Visibility="Collapsed" IsHitTestVisible="False">
+                <Border x:Name="FlowPiece" HorizontalAlignment="Left" CornerRadius="1" />
+            </Grid>
         </Grid>
 
         <!-- Pinned card's border, 2 wide inside the edge: pending orange, inform green, temporary warning red (turned on by IslandAnimator). Clicks pass through -->
