@@ -127,7 +127,11 @@ internal sealed class SheetView
                 words.Add(title);
             }
 
-            words.AddRange(next.Body);
+            if (!next.Markdown)
+            {
+                words.AddRange(next.Body);   // an answer in Markdown is many blocks: a new answer builds the card again (StructureKey)
+            }
+
             if (next.Raw is { } raw)
             {
                 words.Add(raw);
@@ -193,7 +197,7 @@ internal sealed class SheetView
     /// <summary>What can't change in place: which pieces of text there are, the buttons, which zones there are.</summary>
     private static string StructureKey(CardSheet s) => string.Join("\u0001",
         s.Layout, s.Source, s.Title is null, s.Body.Count, s.Raw is null, s.Progress is null,
-        s.Progress is { Left: null, Right: null }, s.Buttons.Count);
+        s.Progress is { Left: null, Right: null }, s.Buttons.Count, s.Markdown ? string.Join('\n', s.Body) : string.Empty);
 
     /// <summary>The source row's icon, new (a timer paused or resumed: its hand stops or turns again).</summary>
     public void SetIcon(UIElement icon)
@@ -275,7 +279,12 @@ internal sealed class SheetView
             stack.Children.Add(t);
         }
 
-        foreach (var paragraph in sheet.Body)
+        if (sheet.Markdown)
+        {
+            AddMarkdown(stack, sheet.Body.Count > 0 ? sheet.Body[0] : null);
+        }
+
+        foreach (var paragraph in sheet.Markdown ? Array.Empty<string>() : sheet.Body)
         {
             var p = Text(paragraph, strong: false);
             _texts.Add(p);
@@ -328,6 +337,195 @@ internal sealed class SheetView
         box.Children.Add(_fadeTop);
         box.Children.Add(_fadeBottom);
         return box;
+    }
+
+    // ---------------- an answer in Markdown (F2b, user 10-08) ----------------
+
+    private const double MdGap = 6, MdHeadingExtra = 4, MdItemGap = 2, MdMarker = 14, MdNumberMarker = 18, MdCellGap = 12, MdCellPad = 4;
+
+    /// <summary>
+    /// The answer's blocks under the title (preview https://claude.ai/artifact/XwYwmoxSbDXue1NH2kpXNL): paragraphs 14 in the main
+    /// colour 6 apart; section names 12 grey; list items 2 apart with "•" / "1." hanging; code monospace 12 grey on a faint box,
+    /// scrolling sideways (never wrapped: indents stay); tables 12 with a grey header and a hairline under each row.
+    /// </summary>
+    private void AddMarkdown(StackPanel stack, string? markdown)
+    {
+        MdKind? last = null;
+        foreach (var block in CardMarkdown.Parse(markdown))
+        {
+            FrameworkElement element = block.Kind switch
+            {
+                MdKind.Heading => MdNote(block.Text, _palette.Hint),
+                MdKind.Bullet or MdKind.Number => MdItem(block),
+                MdKind.Code => MdCode(block.Text),
+                MdKind.Table => MdTable(block.Rows!),
+                _ => MdText(block.Text),
+            };
+            var listRun = block.Kind is MdKind.Bullet or MdKind.Number && last is MdKind.Bullet or MdKind.Number;
+            var top = stack.Children.Count == 0 ? 0
+                : last is null ? CardSheets.TitleBodyGap   // right under the title
+                : listRun ? MdItemGap
+                : block.Kind == MdKind.Heading ? MdGap + MdHeadingExtra
+                : MdGap;
+            element.Margin = new Thickness(element.Margin.Left, top, 0, 0);
+            stack.Children.Add(element);
+            last = block.Kind;
+        }
+    }
+
+    private TextBlock MdText(string text)
+    {
+        var t = Text(text, strong: false);
+        t.TextWrapping = TextWrapping.Wrap;   // breaks a long path anywhere — the middle never scrolls sideways
+        return t;
+    }
+
+    private TextBlock MdNote(string text, Color color)
+    {
+        var t = Note();
+        t.Text = text;
+        t.FontFamily = Fonts(text).Normal;
+        t.Foreground = Brush(color);
+        t.TextWrapping = TextWrapping.Wrap;
+        t.VerticalAlignment = VerticalAlignment.Top;
+        return t;
+    }
+
+    /// <summary>"•" / "1." in grey, the words beside it; a second line starts under the words, not under the marker.</summary>
+    private Grid MdItem(MdBlock block)
+    {
+        var marker = block.Kind == MdKind.Number ? MdNumberMarker : MdMarker;
+        var row = new Grid { Margin = new Thickness(block.Level * MdMarker, 0, 0, 0) };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(marker) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        var mark = Text(block.Marker ?? "•", strong: false);
+        mark.Foreground = Brush(_palette.Hint);
+        mark.TextWrapping = TextWrapping.NoWrap;
+        row.Children.Add(mark);
+        var words = MdText(block.Text);
+        Grid.SetColumn(words, 1);
+        row.Children.Add(words);
+        return row;
+    }
+
+    /// <summary>Monospace 12 grey on a faint box (black 4.5% light / white 7% dark, user 10-08); a long line scrolls inside the box.</summary>
+    private Border MdCode(string code)
+    {
+        var text = new TextBlock
+        {
+            Text = code, FontFamily = AppFonts.Family(Mono), FontSize = CardSheets.NoteSize, LineHeight = CardSheets.NoteLine,
+            LineStackingStrategy = LineStackingStrategy.BlockLineHeight, TextWrapping = TextWrapping.NoWrap, Foreground = Brush(_palette.Hint),
+            IsTextSelectionEnabled = false,
+        };
+        return new Border
+        {
+            CornerRadius = new CornerRadius(4),
+            Background = Brush(Faint(_palette.Fore, _palette.Dark ? 0.07 : 0.045)),
+            Child = new ScrollViewer
+            {
+                Content = text,
+                // the baseline sits low in the 16 line: top 8 left 12.5 above the ink, 10 below — top 6 makes ink-to-edge ~10 on all
+                // four sides (measured from the user's screenshot, 10-09)
+                Padding = new Thickness(10, 6, 10, 8),
+                HorizontalScrollMode = ScrollMode.Enabled,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+                VerticalScrollMode = ScrollMode.Disabled,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            },
+        };
+    }
+
+    /// <summary>A real table (user 10-08): header 12 grey, cells 12 in the main colour, a hairline under every row, columns 12 apart.</summary>
+    private Grid MdTable(IReadOnlyList<IReadOnlyList<string>> rows)
+    {
+        var columns = rows.Count == 0 ? 0 : rows[0].Count;
+        var grid = new Grid { ColumnSpacing = MdCellGap };
+        var cells = new TextBlock[rows.Count, columns];
+        for (var r = 0; r < rows.Count; r++)
+        {
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            for (var c = 0; c < columns; c++)
+            {
+                var cell = MdNote(c < rows[r].Count ? rows[r][c] : string.Empty, r == 0 ? _palette.Hint : _palette.Fore);
+                cell.Margin = new Thickness(0, MdCellPad, 0, MdCellPad);
+                Grid.SetRow(cell, r);
+                Grid.SetColumn(cell, c);
+                grid.Children.Add(cell);
+                cells[r, c] = cell;
+            }
+
+            var line = new Microsoft.UI.Xaml.Shapes.Rectangle
+            {
+                Height = 1, VerticalAlignment = VerticalAlignment.Bottom, Fill = Brush(_palette.Track), IsHitTestVisible = false,
+            };
+            Grid.SetRow(line, r);
+            Grid.SetColumnSpan(line, Math.Max(1, columns));
+            grid.Children.Add(line);
+        }
+
+        foreach (var width in ColumnWidths(cells, rows.Count, columns))
+        {
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = width });
+        }
+
+        return grid;
+    }
+
+    /// <summary>
+    /// How wide each column is (user 10-08: a long name in the first column shouldn't squeeze every row). Two columns: every width
+    /// that fits one of the first column's cells on one line is tried, and the one giving the lowest table wins (a long name wraps
+    /// so the rest get room). More columns: each as wide as its longest cell if they all fit, else in proportion to that.
+    /// </summary>
+    private List<GridLength> ColumnWidths(TextBlock[,] cells, int rows, int columns)
+    {
+        var free = Math.Max(0, _width - (MdCellGap * Math.Max(0, columns - 1)));
+        var natural = new double[columns];
+        for (var c = 0; c < columns; c++)
+        {
+            for (var r = 0; r < rows; r++)
+            {
+                natural[c] = Math.Max(natural[c], Measure(cells[r, c], double.PositiveInfinity).Width);
+            }
+        }
+
+        if (columns <= 1 || natural.Sum() <= free)
+        {
+            return [.. natural.Select((w, c) => c == columns - 1 ? new GridLength(1, GridUnitType.Star) : new GridLength(Math.Ceiling(w)))];
+        }
+
+        if (columns == 2)
+        {
+            var best = -1.0;
+            var lowest = double.MaxValue;
+            var tried = Enumerable.Range(0, rows).Select(r => Math.Ceiling(Measure(cells[r, 0], double.PositiveInfinity).Width))
+                .Where(w => w > 0 && w <= free * 0.6).Distinct().OrderByDescending(w => w);
+            foreach (var w in tried)
+            {
+                var height = 0.0;
+                for (var r = 0; r < rows; r++)
+                {
+                    height += Math.Max(Measure(cells[r, 0], w).Height, Measure(cells[r, 1], free - w).Height);
+                }
+
+                if (height < lowest - 0.5)   // a tie keeps the wider first column (fewer names broken)
+                {
+                    lowest = height;
+                    best = w;
+                }
+            }
+
+            var first = best > 0 ? best : Math.Min(natural[0], free * 0.45);
+            return [new GridLength(first), new GridLength(1, GridUnitType.Star)];
+        }
+
+        var total = natural.Sum();
+        return [.. natural.Select(w => new GridLength(Math.Max(1, w / total), GridUnitType.Star))];
+    }
+
+    private static Windows.Foundation.Size Measure(TextBlock block, double width)
+    {
+        block.Measure(new Windows.Foundation.Size(width, double.PositiveInfinity));
+        return block.DesiredSize;
     }
 
     /// <summary>The fades only on a side that still has more to scroll (user 10-08).</summary>

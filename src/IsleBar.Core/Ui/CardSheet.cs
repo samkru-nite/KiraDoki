@@ -64,7 +64,11 @@ public sealed record CardSheet(
     string? NumberCaption,
     SheetProgress? Progress,
     IReadOnlyList<SheetButton> Buttons,
-    bool Adaptive);
+    bool Adaptive)
+{
+    /// <summary>The body is one Markdown text (an agent's answer), laid out by <see cref="CardMarkdown"/> (F2b, user 10-08).</summary>
+    public bool Markdown { get; init; }
+}
 
 public static class CardSheets
 {
@@ -120,7 +124,8 @@ public static class CardSheets
         var close = CloseFor(card, text);
         return s.Kind switch
         {
-            ActivityKind.AgentDone => Agent(s, text.Done, SheetTone.Ok, Ago(s.UpdatedAt, now, text), [tail?.Answer ?? s.Msg], [Chat(text), .. close]),
+            ActivityKind.AgentDone => Agent(s, text.Done, SheetTone.Ok, Ago(s.UpdatedAt, now, text), [tail?.Answer ?? s.Msg], [Chat(text), .. close])
+                with { Markdown = tail?.Answer is not null },
             ActivityKind.AgentPermission => Agent(s, Cap(text.NeedsAnswer), SheetTone.Waiting, Ago(s.UpdatedAt, now, text), [tail?.Step ?? s.Msg], [Chat(text), .. close]),
             ActivityKind.AgentWorking => Agent(s, Cap(text.Working), SheetTone.Plain, Running(s, now, text), [tail?.Step ?? s.Msg], [Chat(text)]) with { Adaptive = false },
             ActivityKind.Error or ActivityKind.Notice when s.Agent is not null => AgentStopped(s, now, text, close),
