@@ -101,7 +101,7 @@ public sealed partial class MainWindow
             SheetColors(),
             LiftIcon(card),   // as on the big pill: an agent's logo in its makers' colours, a timer's turning dial (user 10-08)
             new LiftRider(LiftIcon(card), HasBigLook(look) ? IconContent(look, cover) : null),
-            CardSheets.Build(card, DateTimeOffset.UtcNow, _text),
+            CardSheets.Build(card, DateTimeOffset.UtcNow, _text, _feed.Tails.For(card.State)),
             CoverOf(card)?.Large,
             _language));
     }
@@ -171,8 +171,8 @@ public sealed partial class MainWindow
                 Engine.FileActions.Open(state.Glyph == IsleBar.Core.SystemWatch.NoticeGlyphs.Camera ? "ms-settings:privacy-webcam" : "ms-settings:privacy-microphone", revealInFolder: false);
                 break;
             case SheetAction.OpenChat:
-                // F2b: find that chat's window in the Claude / ChatGPT app (TODO 7.9 F2) — not yet
-                TaskbarHost.Log("lift: open chat — not built yet (F2b)");
+                _lift?.Collapse();
+                Engine.ChatOpener.Open(state, _feed.Tails.RecordPath(state));
                 break;
         }
     }
@@ -206,7 +206,7 @@ public sealed partial class MainWindow
         var iconKey = LiftIconKey(_shownCard);
         var icon = iconKey == _liftIconKey ? null : LiftIcon(_shownCard);
         _liftIconKey = iconKey;
-        _lift.Refresh(CardSheets.Build(_shownCard, DateTimeOffset.UtcNow, _text), icon, CoverOf(_shownCard)?.Large);
+        _lift.Refresh(CardSheets.Build(_shownCard, DateTimeOffset.UtcNow, _text, _feed.Tails.For(_shownCard.State)), icon, CoverOf(_shownCard)?.Large);
     }
 
     private void CloseLift() => _lift?.Collapse();

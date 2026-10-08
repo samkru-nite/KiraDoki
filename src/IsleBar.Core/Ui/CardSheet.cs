@@ -111,7 +111,8 @@ public static class CardSheets
     /// Every card's inside (user 10-08). Fixed 3:2: timer, music, mic / camera, agent working. Adaptive (3:2 when the middle fits,
     /// else 3:4): agent done / needs you / stopped, notifications, copied, downloads.
     /// </summary>
-    public static CardSheet Build(Card card, DateTimeOffset now, LanguageStrings text)
+    /// <param name="tail">An agent's last answer / latest step, read by the App from its session record (F2b); null = none.</param>
+    public static CardSheet Build(Card card, DateTimeOffset now, LanguageStrings text, AgentTail? tail = null)
     {
         ArgumentNullException.ThrowIfNull(card);
         ArgumentNullException.ThrowIfNull(text);
@@ -119,9 +120,9 @@ public static class CardSheets
         var close = CloseFor(card, text);
         return s.Kind switch
         {
-            ActivityKind.AgentDone => Agent(s, text.Done, SheetTone.Ok, Ago(s.UpdatedAt, now, text), [s.Msg], [Chat(text), .. close]),
-            ActivityKind.AgentPermission => Agent(s, Cap(text.NeedsAnswer), SheetTone.Waiting, Ago(s.UpdatedAt, now, text), [s.Msg], [Chat(text), .. close]),
-            ActivityKind.AgentWorking => Agent(s, Cap(text.Working), SheetTone.Plain, Running(s, now, text), [s.Msg], [Chat(text)]) with { Adaptive = false },
+            ActivityKind.AgentDone => Agent(s, text.Done, SheetTone.Ok, Ago(s.UpdatedAt, now, text), [tail?.Answer ?? s.Msg], [Chat(text), .. close]),
+            ActivityKind.AgentPermission => Agent(s, Cap(text.NeedsAnswer), SheetTone.Waiting, Ago(s.UpdatedAt, now, text), [tail?.Step ?? s.Msg], [Chat(text), .. close]),
+            ActivityKind.AgentWorking => Agent(s, Cap(text.Working), SheetTone.Plain, Running(s, now, text), [tail?.Step ?? s.Msg], [Chat(text)]) with { Adaptive = false },
             ActivityKind.Error or ActivityKind.Notice when s.Agent is not null => AgentStopped(s, now, text, close),
             ActivityKind.Timer => Timer(card, now, text),
             ActivityKind.Music => Music(s, text),

@@ -82,7 +82,7 @@ public static class AgentHook
                 T0 = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0,
                 Transcript = Text(root, "transcript_path"),
             }, OnlyOver: ActivityKind.AgentPermission),
-            "Stop" => new HookAction(id, Done(AgentKind.Claude, title)),
+            "Stop" => new HookAction(id, Done(AgentKind.Claude, title, Text(root, "transcript_path"))),   // the lifted card reads the last answer (F2b)
             // the turn failed: the usage limit (red until it resets) or another error (login, billing, busy servers…) — user 10-03
             "StopFailure" => new HookAction(id, AgentNotices.ClaudeReason(Text(root, "error_type")) is { } reason
                 ? AgentNotices.Stopped(AgentKind.Claude, reason, text, DateTimeOffset.UtcNow)
@@ -186,12 +186,13 @@ public static class AgentHook
             ? type == "idle_prompt"
             : (Text(root, "message") ?? string.Empty).Contains("waiting for your input", StringComparison.OrdinalIgnoreCase);
 
-    private static ActivityState Done(string agent, string? folder) => new()
+    private static ActivityState Done(string agent, string? folder, string? transcript = null) => new()
     {
         RawKind = ActivityState.KindAgentDone,
         Agent = agent,
         Name = folder,
         State = "done",
+        Transcript = transcript,
     };
 
     /// <summary>An id usable as a file name. Just the agent name if there is no session id.</summary>

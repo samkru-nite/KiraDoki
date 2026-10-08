@@ -33,6 +33,9 @@ internal sealed class ActivityFeed : IDisposable
 
     public MediaWatcher Media { get; }
 
+    /// <summary>Agent cards' last answer / latest step for the lifted card (F2b).</summary>
+    public AgentTails Tails { get; } = new();
+
     public DownloadWatcher Downloads { get; }
 
     public PhoneDrop PhoneDrop { get; } = new();
@@ -79,6 +82,7 @@ internal sealed class ActivityFeed : IDisposable
         InterruptDeadAgents(items);
         DropFinishedSameChat(items, now);
         ChimeFinishedAgents(items);
+        Tails.Note(items);
         LogAgentChanges(items);
         items.AddRange(Media.Cards);   // one card per media player (user 10-07)
 
@@ -356,6 +360,7 @@ internal sealed class ActivityFeed : IDisposable
             if (before != now[file])
             {
                 TaskbarHost.Log($"agent: {file} {before} → {s.Kind} · {s.Name} · {Path.GetFileNameWithoutExtension(s.Transcript ?? "-")}");
+                Tails.For(s);   // logs "agent tail: …" — what the lifted card would say at this stage (F2b)
             }
         }
 
