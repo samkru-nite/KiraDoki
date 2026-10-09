@@ -465,8 +465,7 @@ public sealed partial class PillView : UserControl
 
     /// <summary>
     /// Draws the timer digits one by one. <b>Each digit slot is fixed to the widest digit</b> — drawing them as one string
-    /// made the text jiggle sideways when narrow digits like "1" appeared. <b>Only changed digits</b> roll down from above
-    /// (it's a countdown, so new digits come from above). null hides them.
+    /// made the text jiggle sideways when narrow digits like "1" appeared. Only changed digits are set again. null hides them.
     /// </summary>
     private void ShowClockDigits(string? clock)
     {
@@ -519,11 +518,7 @@ public sealed partial class PillView : UserControl
                 continue;
             }
 
-            cell.Text = text;
-            if (!rebuild)
-            {
-                RollIn(cell);
-            }
+            cell.Text = text;   // a hard cut (user 10-10, TODO 4.7 / F5: the roll down, then a fade, were too busy every second)
         }
 
         _clockShown = clock;
@@ -542,25 +537,6 @@ public sealed partial class PillView : UserControl
         }
 
         return Math.Ceiling(widest);
-    }
-
-    /// <summary>One changed digit: slides down 7 from above while sharpening (0.25s).</summary>
-    private static void RollIn(UIElement cell)
-    {
-        Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.SetIsTranslationEnabled(cell, true);
-        var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(cell);
-        var compositor = visual.Compositor;
-        var ease = compositor.CreateCubicBezierEasingFunction(new System.Numerics.Vector2(0.2f, 0.8f), new System.Numerics.Vector2(0.2f, 1f));
-        var move = compositor.CreateScalarKeyFrameAnimation();
-        move.InsertKeyFrame(0f, -7f);
-        move.InsertKeyFrame(1f, 0f, ease);
-        move.Duration = TimeSpan.FromMilliseconds(250);
-        visual.StartAnimation("Translation.Y", move);
-        var fade = compositor.CreateScalarKeyFrameAnimation();
-        fade.InsertKeyFrame(0f, 0f);
-        fade.InsertKeyFrame(1f, 1f, ease);
-        fade.Duration = TimeSpan.FromMilliseconds(200);
-        visual.StartAnimation("Opacity", fade);
     }
 
     /// <summary>
