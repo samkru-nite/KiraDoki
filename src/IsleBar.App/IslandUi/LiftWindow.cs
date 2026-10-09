@@ -429,7 +429,7 @@ internal sealed class LiftWindow : Window
             ? new ScreenRect(lay.Card.Left, (int)Math.Round(SwapMotion.Lerp(from.Top, lay.Card.Top, _growShare)), lay.Card.Right, lay.Card.Bottom)
             : lay.Card;
         var card = Local(cardRect, LiftMotion.Radius);
-        // opening from a pill of the ⋯ list (F3) it grows out of that pill; it always goes back into the big pill
+        // opening from a pill of the list (F3) it grows out of that pill; it always goes back into the big pill
         var pill = !_closing && r.From is { } from0 ? Local(from0, r.PillRadius) : Local(r.Pill, r.PillRadius);
         var cardColour = r.Palette.Card;
         var edgeColour = EdgeColor(r.Palette.Dark);

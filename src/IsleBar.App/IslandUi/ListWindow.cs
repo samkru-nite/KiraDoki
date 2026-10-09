@@ -9,7 +9,7 @@ using static IsleBar.App.Interop.NativeMethods;
 
 namespace IsleBar.App.IslandUi;
 
-/// <summary>What the bar hands over to open the ⋯ list (screen pixels, colours of the moment). Key 0 is the big pill's card.</summary>
+/// <summary>What the bar hands over to open the list (screen pixels, colours of the moment). Key 0 is the big pill's card.</summary>
 /// <param name="Host">What each list pill draws with (the bar).</param>
 /// <param name="Prepare">Readies a new list pill (its colours as at rest).</param>
 /// <param name="Render">Draws a card on its list pill — at opening and on every tick while the list is up.</param>
@@ -21,7 +21,7 @@ internal sealed record ListRequest(
     Action<string, PillView> Render,
     Func<string, Color?> Glow,
     ScreenRect Pill,
-    ScreenRect Dots,
+    ScreenRect Ball,
     double PillRadius,
     Color PillColor,
     Color LabelColor,
@@ -33,11 +33,11 @@ internal sealed record ListRequest(
     string OnBigLabel);
 
 /// <summary>
-/// The ⋯ list (TODO 7.9 F3, user 10-09): every card drawn by a pill of its own (<see cref="PillView"/>, the big pill's very
+/// The list (TODO 7.9 F3, user 10-09; opened by the circle since TODO ①½): every card drawn by a pill of its own (<see cref="PillView"/>, the big pill's very
 /// drawing, live: timers tick, bars flow — plan B, 10-10), stacked over the big pill, each flying out of
-/// the ⋯ circle and growing into its pill on the way (nearest first, a stagger apart, bowing up). A tap on one hands it to the bar,
+/// the circle and growing into its pill on the way (nearest first, a stagger apart, bowing up). A tap on one hands it to the bar,
 /// which lifts its card out of that very pill (<see cref="LiftWindow"/>, with <see cref="LiftRequest.From"/>); the others fade.
-/// Anything else closes it: they fly back into ⋯. See-through, never focused, topmost, like the lifted card. Numbers: <see cref="ListMotion"/>.
+/// Anything else closes it: they fly back into the circle. See-through, never focused, topmost, like the lifted card. Numbers: <see cref="ListMotion"/>.
 /// </summary>
 internal sealed class ListWindow : Window
 {
@@ -51,7 +51,7 @@ internal sealed class ListWindow : Window
 
     private ListRequest? _request;
     private ScreenRect _window;
-    private MotionBox _dots;
+    private MotionBox _ball;
     private Phase _phase = Phase.Shut;
     private string? _taken;
     private bool _animating;
@@ -70,7 +70,7 @@ internal sealed class ListWindow : Window
     /// <summary>A pill was tapped: its card and where the pill is on screen now.</summary>
     public Action<string, ScreenRect>? Tapped { get; set; }
 
-    /// <summary>The list starts going back into ⋯ (however it was closed): the bar brightens its pills again.</summary>
+    /// <summary>The list starts going back into the circle (however it was closed): the bar brightens its pills again.</summary>
     public Action? Closing { get; set; }
 
     /// <summary>A press there is the bar's own (it closes the list itself) — the list doesn't close on it.</summary>
@@ -112,20 +112,20 @@ internal sealed class ListWindow : Window
         var s = DpiSetup.Scale;
         var n = request.Keys.Count;
 
-        // the window: the stack, the ⋯ circle and the big pill, with room for the bounce and the arc
+        // the window: the stack, the circle and the big pill, with room for the bounce and the arc
         var room = PillGeometry.Px(LiftMotion.Room, s);
         var pillH = request.Pill.Height;
         var step = PillGeometry.Px(PillGeometry.Height + ListMotion.Gap, s);
         var top = request.TaskbarTop - PillGeometry.Px(ListMotion.Gap, s) - pillH - ((n - 1) * step);
         _window = new ScreenRect(
-            Math.Min(request.Pill.Left, request.Dots.Left) - room,
+            Math.Min(request.Pill.Left, request.Ball.Left) - room,
             top - room - PillGeometry.Px(ListMotion.Arc, s),
-            Math.Max(request.Pill.Right, request.Dots.Right) + room,
-            Math.Max(request.Pill.Bottom, request.Dots.Bottom));
+            Math.Max(request.Pill.Right, request.Ball.Right) + room,
+            Math.Max(request.Pill.Bottom, request.Ball.Bottom));
 
         MotionBox Local(ScreenRect r, double radius) => new((r.Left - _window.Left) / s, (r.Top - _window.Top) / s, r.Width / s, r.Height / s, radius);
         var pill = Local(request.Pill, request.PillRadius);
-        _dots = Local(request.Dots, request.Dots.Width / s / 2);
+        _ball = Local(request.Ball, request.Ball.Width / s / 2);
         var taskbarTop = (request.TaskbarTop - _window.Top) / s;
 
         _root.Children.Clear();
@@ -162,7 +162,7 @@ internal sealed class ListWindow : Window
         TaskbarHost.Log($"list: open {n} ({string.Join(", ", request.Keys)}) stagger {ListMotion.StaggerMs} window={_window.Left},{_window.Top} {_window.Width}x{_window.Height}");
     }
 
-    /// <summary>Back into ⋯ (nothing happens when it's not up).</summary>
+    /// <summary>Back into the circle (nothing happens when it's not up).</summary>
     public void PutAway()
     {
         if (!IsOpen)
@@ -326,11 +326,11 @@ internal sealed class ListWindow : Window
             {
                 case Phase.Opening:
                     var p = ListMotion.Out(i, elapsed, r.Bounce, ListMotion.StaggerMs);
-                    item.Place(ListMotion.Box(_dots, item.Slot, p), p);
+                    item.Place(ListMotion.Box(_ball, item.Slot, p), p);
                     break;
                 case Phase.Closing:
                     var back = ListMotion.Back(t);
-                    item.Place(ListMotion.Box(_dots, item.Slot, back), back);
+                    item.Place(ListMotion.Box(_ball, item.Slot, back), back);
                     break;
                 case Phase.Taking:
                     // the tapped one stays until the lifted card is surely drawn over it (a frame or two), then the card is it
@@ -359,6 +359,11 @@ internal sealed class ListWindow : Window
     private void BuildLabel(ListRequest r)
     {
         _label.Children.Clear();
+        if (string.IsNullOrEmpty(r.OnBigLabel))
+        {
+            return;   // no card on the big pill (every card pinned)
+        }
+
         var chip = new SmoothBorder { Fill = new SolidColorBrush(r.PillColor), Radius = 4, IsHitTestVisible = false };
         var text = new TextBlock
         {

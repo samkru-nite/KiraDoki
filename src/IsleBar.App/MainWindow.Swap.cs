@@ -30,18 +30,15 @@ public sealed partial class MainWindow
     /// <summary>The card the big pill draws now (null = hidden or showing the input box / a drop hint).</summary>
     private Card? _bigCard;
 
-    /// <summary>The cards the small pill's cells draw now, left to right (⋯ not included).</summary>
+    /// <summary>The cards the small pill's cells draw now, left to right .</summary>
     private readonly List<Card> _renderedCells = [];
-
-    /// <summary>Whether the small pill draws ⋯ now.</summary>
-    private bool DotsDrawn => TaskCells.Children.OfType<Grid>().Any(c => c.Tag as string == DotsTag);
 
     /// <summary>The card the big pill should draw for the state decided now.</summary>
     private Card? WantedBig => !_dropHover && _snapshot.IsActive ? _shownCard : null;
 
     /// <summary>The scene to draw differs from the one drawn: another card on the big pill, or other cells.</summary>
     private bool SceneChanged()
-        => WantedBig?.Key != _bigCard?.Key || DotsDrawn != _dotsOn
+        => WantedBig?.Key != _bigCard?.Key
            || !_renderedCells.Select(c => c.Key).SequenceEqual(_cellCards.Select(c => c.Key));
 
     /// <summary>A task icon was clicked: its card goes on the big pill and the card there takes the clicked cell.</summary>
@@ -88,13 +85,12 @@ public sealed partial class MainWindow
         try
         {
             var oldCells = _renderedCells.ToList();
-            var oldDots = DotsDrawn;
             var oldBig = _bigCard is not null && PillBody.Visibility == Visibility.Visible ? _bigCard : null;
             var oldWinPx = _placement.X;
             var winY = _placement.Y;
 
             // where the new layout will sit, worked out before drawing it — so the window can grow first
-            var next = PillGeometry.Compute(DpiSetup.Scale, WantedBig is not null, PillGeometry.SmallWidth(_cellCards.Count + (_dotsOn ? 1 : 0)));
+            var next = PillGeometry.Compute(DpiSetup.Scale, WantedBig is not null, PillGeometry.SmallWidth(_cellCards.Count));
             var spot = _tracker.PlaceNow(next.Width);
             if (!spot.Visible)
             {
@@ -122,7 +118,7 @@ public sealed partial class MainWindow
             Phase("old-card");
             var smallShot = await Capture(SmallPill);
             Phase("old-small");
-            var before = Lay(0, oldBig, oldShot, oldIconX, oldCells, oldDots).Shift(oldShift);
+            var before = Lay(0, oldBig, oldShot, oldIconX, oldCells).Shift(oldShift);
 
             // stand-ins for the old look over a taskbar-coloured sheet, while the new state is drawn underneath (no flash of it)
             Put(new Rectangle { Width = spanWidth, Height = _layout.Height / DpiSetup.Scale, Fill = Root.Background }, 0, 0);
@@ -147,7 +143,7 @@ public sealed partial class MainWindow
             var newBig = _bigCard;
             var newShot = newBig is null ? null : newBig.Key == oldBig?.Key ? oldShot : await Capture(CardRow);
             Phase("new-card");
-            var after = Lay(0, newBig, newShot, newBig is null ? 0 : IconX(), _renderedCells.ToList(), DotsDrawn).Shift(newShift);
+            var after = Lay(0, newBig, newShot, newBig is null ? 0 : IconX(), _renderedCells.ToList()).Shift(newShift);
             if ((oldBig is not null && oldShot is null) || (newBig is not null && newShot is null))
             {
                 return;   // no snapshot (screen locked): just show the result
@@ -228,18 +224,13 @@ public sealed partial class MainWindow
     }
 
     /// <summary>
-    /// Where everything sits for a scene, by the same rules as the XAML (TODO 7.9 D): circle, line, cells (⋯ first) + 4, gap 8, big.
+    /// Where everything sits for a scene, by the same rules as the XAML (TODO 7.9 D): circle, line, cells + 4, gap 8, big.
     /// </summary>
-    private Scene Lay(double winX, Card? big, ImageSource? shot, double iconX, IReadOnlyList<Card> cells, bool dots)
+    private Scene Lay(double winX, Card? big, ImageSource? shot, double iconX, IReadOnlyList<Card> cells)
     {
         var keys = cells.Select(c => (c.Key, (Card?)c)).ToList();
-        if (dots)
-        {
-            keys.Insert(0, (DotsTag, null));
-        }
-
         var smallWidth = PillGeometry.SmallWidth(keys.Count);
-        // the small pill on the left (fixed 10-10): circle │ ⋯ + cells, then the big pill
+        // the small pill on the left (fixed 10-10): circle │ cells, then the big pill
         var smallX = 0.0;
         var bigX = smallWidth + PillGeometry.Gap;
         var firstCell = smallX + PillGeometry.BallBox + PillGeometry.Rule;
@@ -452,14 +443,15 @@ public sealed partial class MainWindow
         return cell;
     }
 
-    /// <summary>A stand-in for one cell: its icon (or ⋯) as the small pill draws it.</summary>
+    /// <summary>A stand-in for one cell: its icon as the small pill draws it.</summary>
     private Grid CellGhost(string key, Card? card)
     {
-        UIElement content = key == DotsTag || card is null
-            ? new FontIcon { FontFamily = new FontFamily("Segoe Fluent Icons"), FontSize = 16, Glyph = "", Foreground = BrushOf(_theme.Icon) }
-            : CellContent(card, TaskIcons.For(card, CoverOf(card) is not null, DateTimeOffset.UtcNow), DateTimeOffset.UtcNow);
         var cell = new Grid { Width = PillGeometry.Cell, Height = PillGeometry.Height, IsHitTestVisible = false };
-        cell.Children.Add(content);
+        if (card is not null)
+        {
+            cell.Children.Add(CellContent(card, TaskIcons.For(card, CoverOf(card) is not null, DateTimeOffset.UtcNow), DateTimeOffset.UtcNow));
+        }
+
         return cell;
     }
 

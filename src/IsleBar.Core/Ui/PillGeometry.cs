@@ -34,7 +34,7 @@ public static class PillGeometry
     public const double Rule = 1;
 
     /// <summary>
-    /// Width of the small pill with <paramref name="taskCells"/> task cells (⋯ counts as one): the circle alone is 32; with tasks,
+    /// Width of the small pill with <paramref name="taskCells"/> task cells: the circle alone is 32; with tasks,
     /// 4 + 24 per cell + the 1 line + the circle's 32 (TODO 7.9 D).
     /// </summary>
     public static double SmallWidth(int taskCells) => BallBox + (taskCells > 0 ? CellMargin + (taskCells * Cell) + Rule : 0);

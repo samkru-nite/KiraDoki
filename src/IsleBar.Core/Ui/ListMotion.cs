@@ -1,8 +1,8 @@
 namespace IsleBar.Core.Ui;
 
 /// <summary>
-/// <b>Every number of the ⋯ list in one place</b> (TODO 7.9 F3, user 10-09 after the preview): all the cards drawn as big pills,
-/// stacked over the big pill; they fly out of the ⋯ circle, each growing into its pill on the way, the nearest first. Pure math, so
+/// <b>Every number of the list in one place</b> (TODO 7.9 F3, user 10-09 after the preview): all the cards drawn as big pills,
+/// stacked over the big pill; they fly out of the circle, each growing into its pill on the way, the nearest first. Pure math, so
 /// it can be checked without a window. Boxes are in dip, relative to whatever origin the caller gives the big pill.
 /// </summary>
 public static class ListMotion
@@ -10,10 +10,10 @@ public static class ListMotion
     /// <summary>Space between two pills of the list, and between the lowest one and the taskbar's top (dip) — as the lifted card.</summary>
     public const double Gap = 8;
 
-    /// <summary>The way out of ⋯ bows up by this much in the middle (dip; the swap's arc, user 10-09 picked 20).</summary>
+    /// <summary>The way out of the circle bows up by this much in the middle (dip; the swap's arc, user 10-09 picked 20).</summary>
     public const double Arc = 20;
 
-    /// <summary>A pill shows itself over this first share of its way (a 24 circle coming out of ⋯).</summary>
+    /// <summary>A pill shows itself over this first share of its way (a 24 circle coming out of the circle).</summary>
     public const double Appear = 0.15;
 
     /// <summary>Its content (the big pill's look) fades in from this share of the way (user 10-09: 50%).</summary>
@@ -28,7 +28,7 @@ public static class ListMotion
     /// <summary>Tapping a pill: it stays this long under the lifted card's first frames, so there's never a frame with neither.</summary>
     public static readonly TimeSpan Handover = TimeSpan.FromMilliseconds(60);
 
-    /// <summary>Going back into ⋯: the plain way out backwards, as quick as the lifted card's close.</summary>
+    /// <summary>Going back into the circle: the plain way out backwards, as quick as the lifted card's close.</summary>
     public static readonly TimeSpan Close = LiftMotion.Close;
 
     /// <summary>One pill's way out (the swap's and the lift's length, user 10-09: "the bounce as the card's").</summary>
@@ -65,7 +65,7 @@ public static class ListMotion
     /// <summary>The share of the way back at time share <paramref name="t"/> of <see cref="Close"/> (1 → 0, all together).</summary>
     public static double Back(double t) => SwapMotion.Ease(1 - t);
 
-    /// <summary>A pill at share <paramref name="p"/> of its way from the ⋯ circle to its slot: the swap's box between the two, bowing up.</summary>
+    /// <summary>A pill at share <paramref name="p"/> of its way from the circle to its slot: the swap's box between the two, bowing up.</summary>
     public static MotionBox Box(MotionBox dots, MotionBox slot, double p) => SwapMotion.Between(dots, slot, p, -Arc);
 
     /// <summary>How much of the pill shows at share <paramref name="p"/>, and how much of its content.</summary>

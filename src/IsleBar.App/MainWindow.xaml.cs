@@ -143,21 +143,19 @@ public sealed partial class MainWindow : Window
             var source = e.OriginalSource as DependencyObject;
             if (_list?.IsOpen == true && (IsInside(source, SmallPill) || IsInside(source, PillBody)))
             {
-                CloseList();   // with the ⋯ list up, a press on the pills only puts it away (TODO 7.9 F3)
+                CloseList();   // with the list up, a press on the pills only puts it away (TODO 7.9 F3)
                 return;
             }
 
             if (IsInside(source, SmallPill) && !IsInside(source, BallBox))
             {
-                _cellPress = CellTagAt(source) is { } tag && tag != DotsTag ? tag : null;   // swaps on release (below)
-                _dotsPress = CellTagAt(source) == DotsTag;   // opens the list on release
-
+                _cellPress = CellTagAt(source);   // swaps on release (below)
                 return;   // the line and the margins do nothing
             }
 
             if (IsInside(source, BallBox))
             {
-                // the circle = the tool menu, same as a right click (10-10: the input panel is gone) — on release, like the rest
+                // the circle = the "back key" (TODO ①½, 10-10): every card in the list — on release, like the rest. Right click = tools.
                 _ballPress = true;
                 return;
             }
@@ -197,15 +195,6 @@ public sealed partial class MainWindow : Window
             {
                 _ballPress = false;
                 if (IsInside(e.OriginalSource as DependencyObject, BallBox))
-                {
-                    ShowToolMenu();
-                }
-            }
-
-            if (_dotsPress)
-            {
-                _dotsPress = false;
-                if (CellTagAt(e.OriginalSource as DependencyObject) == DotsTag)
                 {
                     ToggleList();
                 }
@@ -378,9 +367,8 @@ public sealed partial class MainWindow : Window
     /// <summary>The order of the task icons (kept tick to tick, swapped on a click).</summary>
     private readonly TaskSlots _slots = new();
 
-    /// <summary>Cells on the small pill now: task icons, then whether ⋯ shows. Their keys, left to right in <see cref="_slots"/> order.</summary>
+    /// <summary>Cells on the small pill now: task icons, left to right in <see cref="_slots"/> order.</summary>
     private readonly List<Card> _cellCards = [];
-    private bool _dotsOn;
 
     /// <summary>What the cells were last built from; rebuilt only when it changes (null = rebuild).</summary>
     private string? _cellsSig;
@@ -388,12 +376,12 @@ public sealed partial class MainWindow : Window
     /// <summary>Each cell's colour as last drawn: a pinned card's change of colour makes its icon jump (G).</summary>
     private readonly Dictionary<string, IconTone> _cellTones = new(StringComparer.Ordinal);
 
-    /// <summary>Task cells + ⋯, for the window width.</summary>
-    private int TaskCellCount => _cellCards.Count + (_dotsOn ? 1 : 0);
+    /// <summary>Task cells, for the window width.</summary>
+    private int TaskCellCount => _cellCards.Count;
 
     /// <summary>
     /// Every card the big pill isn't showing gets an icon on the small pill (temporary ones excepted), as many as fit before the
-    /// taskbar's app icons (8 from them); the rest wait behind ⋯, which shows whenever any card is behind the big pill (TODO 7.9 D).
+    /// taskbar's app icons (8 from them); the rest are only in the circle's list (TODO ①½: no ⋯ cell any more).
     /// Frozen while a menu is open (the window doesn't change size under it).
     /// </summary>
     private void UpdateTaskCells()
@@ -405,7 +393,7 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    /// <summary>Works out which cells should show (<see cref="_cellCards"/>, <see cref="_dotsOn"/>). False while frozen.</summary>
+    /// <summary>Works out which cells should show (<see cref="_cellCards"/>). False while frozen.</summary>
     private bool ComputeCells()
     {
         if (_menuOpen || _flying)
@@ -415,15 +403,12 @@ public sealed partial class MainWindow : Window
 
         _slots.Update(_cards.Cards, _shownCard?.Key, _hovering);
         var cells = _slots.Cells;
-        var behind = Math.Max(0, _cards.Cards.Count - (_cards.Shown is null ? 0 : 1));   // all tucked: none on the big pill
-        var (icons, dots) = TaskSlots.Fit(cells.Count, behind, RoomForCells(cells.Count + (behind > 0 ? 1 : 0)));
         _cellCards.Clear();
-        _cellCards.AddRange(cells.Take(icons));
-        _dotsOn = dots;
+        _cellCards.AddRange(cells.Take(RoomForCells(cells.Count)));
         return true;
     }
 
-    /// <summary>The most cells (⋯ included) that fit on the taskbar at the bar's position, up to <paramref name="wanted"/>.</summary>
+    /// <summary>The most cells that fit on the taskbar at the bar's position, up to <paramref name="wanted"/>.</summary>
     private int RoomForCells(int wanted)
     {
         if (_tracker.Layout is null)
@@ -444,7 +429,7 @@ public sealed partial class MainWindow : Window
         return 0;
     }
 
-    /// <summary>Builds the cells when what they show changed: icon or cover, colour, pause bars; ⋯ first (next to the circle).</summary>
+    /// <summary>Builds the cells when what they show changed: icon or cover, colour, pause bars.</summary>
     private void RenderTaskCells()
     {
         var now = DateTimeOffset.UtcNow;
@@ -452,7 +437,7 @@ public sealed partial class MainWindow : Window
         // a timer's hand turns on its own; it is set again only when the timer itself changes (paused, resumed, lengthened)
         var sig = string.Join("|", icons.Select(i => $"{i.Key}:{i.Icon}" + (i.Card.State.Kind == ActivityKind.Timer
                       ? $":{i.Card.State.Due}:{i.Card.State.Total}:{i.Card.State.Left}:{i.Card.State.T0}" : string.Empty)))
-                  + $"|{_dotsOn}|{_theme.Icon}|{RealSearchBoxFill()}";
+                  + $"|{_theme.Icon}|{RealSearchBoxFill()}";
         SmallRule.Visibility = TaskCellCount > 0 ? Visibility.Visible : Visibility.Collapsed;
         if (sig == _cellsSig)
         {
@@ -488,15 +473,6 @@ public sealed partial class MainWindow : Window
         {
             // after layout: the press scales about the cell's centre, which needs its size
             _ui.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => jumps.ForEach(PressFeedback.Pulse));
-        }
-
-        var more = MakeCell(DotsTag, new Microsoft.UI.Xaml.Controls.FontIcon
-        {
-            FontFamily = new FontFamily("Segoe Fluent Icons"), FontSize = 16, Glyph = "", Foreground = BrushOf(_theme.Icon),
-        });
-        if (_dotsOn)
-        {
-            TaskCells.Children.Insert(0, more);
         }
 
         ApplyCellDim();
@@ -565,9 +541,6 @@ public sealed partial class MainWindow : Window
         return box;
     }
 
-
-    /// <summary>Tag of the ⋯ cell (task cells carry their card's key).</summary>
-    private const string DotsTag = "\u0001dots";
 
     /// <summary>A 24 cell with a 24-circle hover background (TODO 7.9 D), tagged with its card's key.</summary>
     private Microsoft.UI.Xaml.Controls.Grid MakeCell(string tag, UIElement content)
@@ -666,7 +639,7 @@ public sealed partial class MainWindow : Window
     private FrameworkElement PauseBars(double size, double width, double height, double x1, double x2)
         => PillView.PauseBars(BrushOf(_theme.Foreground), size, width, height, x1, x2);
 
-    /// <summary>The task cell (or ⋯) under <paramref name="source"/>, by its tag; null = not on a cell.</summary>
+    /// <summary>The task cell under <paramref name="source"/>, by its tag; null = not on a cell.</summary>
     private string? CellTagAt(DependencyObject? source)
     {
         for (var node = source; node is not null && node != TaskCells; node = VisualTreeHelper.GetParent(node))
@@ -717,7 +690,7 @@ public sealed partial class MainWindow : Window
 
     private DateTimeOffset _lastAttachTry = DateTimeOffset.MinValue;
 
-    /// <summary>The left button went down on the circle; its tool menu opens when it comes back up there.</summary>
+    /// <summary>The left button went down on the circle; the list opens when it comes back up there.</summary>
     private bool _ballPress;
 
     /// <summary>The speakers' levels for the now-playing bars (setting "music bars follow the sound").</summary>
@@ -1701,7 +1674,7 @@ public sealed partial class MainWindow : Window
         }
         else if (IsInside(source, SmallPill))
         {
-            if (CellTagAt(source) is { } tag && tag != DotsTag && _cellCards.FirstOrDefault(c => c.Key == tag) is { } card)
+            if (CellTagAt(source) is { } tag && _cellCards.FirstOrDefault(c => c.Key == tag) is { } card)
             {
                 ShowCardMenu(card, header: true);
             }

@@ -8,7 +8,7 @@ using Microsoft.UI.Xaml.Media;
 namespace IsleBar.App;
 
 /// <summary>
-/// The ⋯ list (TODO 7.9 F3, user 10-09): ⋯ opens every card as a big pill over the big pill (<see cref="ListWindow"/>); tapping one
+/// The list (TODO 7.9 F3, user 10-09): the circle (TODO ①½, 10-10) opens every card as a big pill over the big pill (<see cref="ListWindow"/>); tapping one
 /// puts it on the big pill (the usual swap underneath) and lifts its card straight out of that list pill. Each list pill is a
 /// <see cref="PillView"/> of its own, drawn every tick like the big pill (plan B, 10-10: snapshots of the big pill drawing each card
 /// made it flicker each second and caught timers mid-roll).
@@ -17,14 +17,11 @@ public sealed partial class MainWindow
 {
     private ListWindow? _list;
 
-    /// <summary>The left button went down on ⋯; the list opens when it comes back up there.</summary>
-    private bool _dotsPress;
-
     /// <summary>How dim the big pill is, and the task icons (1 = not; <see cref="ListMotion.Dim"/> while the list or a lifted card is up).</summary>
     private double _bigDim = 1;
     private double _cellDim = 1;
 
-    /// <summary>The cards for the list: the big pill's first, then the task icons' order, then the rest (behind ⋯, temporary) by stack.</summary>
+    /// <summary>The cards for the list: the big pill's first, then the task icons' order, then the rest (no room for an icon, temporary) by stack.</summary>
     private List<Card> ListCards()
     {
         var list = new List<Card>();
@@ -73,7 +70,10 @@ public sealed partial class MainWindow
         _listPillShot = (key, shot);
     }
 
-    /// <summary>⋯ was clicked: the list opens (a lifted card goes down first), or goes away.</summary>
+    /// <summary>
+    /// The circle was clicked: the list opens (a lifted card goes down first), or goes away. No cards: nothing (the circle only
+    /// springs back). Every card pinned: the list stands where the big pill would be, over the empty taskbar (user 10-10).
+    /// </summary>
     private void ToggleList()
     {
         if (_list?.IsOpen == true)
@@ -88,11 +88,22 @@ public sealed partial class MainWindow
             return;
         }
 
-        if (_flying || BigPillOnScreen() is not { } pill || DotsOnScreen() is not { } dots)
+        if (_flying || _cards.Cards.Count == 0)
         {
             return;
         }
 
+        if ((BigPillOnScreen() ?? BigPillWouldBe()) is not { } bigPill || BallOnScreen() is not { } circle)
+        {
+            return;
+        }
+
+        OpenList(bigPill, circle);
+    }
+
+    /// <summary>Opens the list over the big pill at <paramref name="pill"/>, flying out of the circle at <paramref name="ball"/> (screen pixels).</summary>
+    private void OpenList(ScreenRect pill, ScreenRect ball)
+    {
         var screen = Microsoft.UI.Windowing.DisplayArea.GetFromRect(
             new Windows.Graphics.RectInt32(pill.Left, pill.Top, pill.Width, pill.Height),
             Microsoft.UI.Windowing.DisplayAreaFallback.Nearest).OuterBounds;
@@ -122,7 +133,7 @@ public sealed partial class MainWindow
             RenderListPill,
             key => GlowOf(_cards.Cards.FirstOrDefault(c => c.Key == key)),
             pill,
-            dots,
+            ball,
             CornerRadiusNow(),
             RealSearchBoxFill(),
             _theme.Hint,
@@ -131,11 +142,26 @@ public sealed partial class MainWindow
             screen.X + screen.Width,
             taskbarTop,
             Animations.On,
-            _text.OnBigPill));
+            _shownCard is null ? string.Empty : _text.OnBigPill));   // every card pinned: none is on the big pill
         _ = Dim(ListMotion.Dim, ListMotion.Length(Animations.On));
     }
 
     private void CloseList() => _list?.PutAway();   // its Closing brightens the pills again
+
+    /// <summary>
+    /// Every card pinned, the big pill hidden: where it would be beside the small pill as it stands (screen pixels) — the list
+    /// stands there over the empty taskbar (user 10-10: no empty pill under it).
+    /// </summary>
+    private ScreenRect? BigPillWouldBe()
+    {
+        if (PillGeometry.Compute(DpiSetup.Scale, true, PillGeometry.SmallWidth(TaskCellCount)).Big is not { } big
+            || !NativeMethods.GetWindowRect(_taskbar.OuterWindow, out var bar))
+        {
+            return null;
+        }
+
+        return new ScreenRect(bar.Left + big.Left, bar.Top + big.Top, bar.Left + big.Right - 1, bar.Top + big.Bottom - 1);
+    }
 
     /// <summary>
     /// A list pill was tapped: its card goes on the big pill (the usual swap, under the card) and its card lifts out of that pill.
@@ -161,7 +187,7 @@ public sealed partial class MainWindow
 
     /// <summary>
     /// Dims (or brightens back) the big pill to <paramref name="to"/> over <paramref name="length"/>, and the task icons too
-    /// (<paramref name="cells"/>: the ⋯ list; not under a lifted card — the icons still swap then). While dim the big pill holds
+    /// (<paramref name="cells"/>: the list; not under a lifted card — the icons still swap then). While dim the big pill holds
     /// still (user 10-10); it moves again once it is bright.
     /// </summary>
     private async Task Dim(double to, TimeSpan length, bool cells = true)
@@ -197,7 +223,7 @@ public sealed partial class MainWindow
     private int _dimRun;
 
     /// <summary>
-    /// The big pill is dim under a lifted card or the ⋯ list: its buttons (close) do nothing then — a click anywhere on it only
+    /// The big pill is dim under a lifted card or the list: its buttons (close) do nothing then — a click anywhere on it only
     /// puts the card or the list away, like a click outside (user 10-10).
     /// </summary>
     private bool BigDimmed => _lift?.OpenKey is not null || _list?.IsOpen == true;
@@ -243,21 +269,20 @@ public sealed partial class MainWindow
         return Windows.UI.Color.FromArgb(c.A, Mix(c.R), Mix(c.G), Mix(c.B));
     }
 
-    /// <summary>The task icons (not ⋯) at <see cref="_listDim"/>; called again whenever the cells are built.</summary>
+    /// <summary>The task icons at <see cref="_cellDim"/> (the circle stays lit: it puts the list away); called again whenever the cells are built.</summary>
     private void ApplyCellDim()
     {
         foreach (var cell in TaskCells.Children.OfType<FrameworkElement>())
         {
-            // ⋯ stays lit under its own list (it puts the list away)
-            cell.Opacity = cell.Tag as string == DotsTag ? 1 : _cellDim;
+            cell.Opacity = _cellDim;
         }
     }
 
-    /// <summary>The ⋯ cell's 24 circle on screen (pixels), or null when ⋯ isn't drawn.</summary>
-    private ScreenRect? DotsOnScreen()
+    /// <summary>The circle's 24 cell on screen (pixels): the list flies out of it and back.</summary>
+    private ScreenRect? BallOnScreen()
     {
-        if (TaskCells.Children.OfType<FrameworkElement>().FirstOrDefault(c => c.Tag as string == DotsTag) is not { } cell
-            || !NativeMethods.GetWindowRect(_taskbar.OuterWindow, out var bar))
+        var cell = BallCell;
+        if (!NativeMethods.GetWindowRect(_taskbar.OuterWindow, out var bar))
         {
             return null;
         }
@@ -295,10 +320,10 @@ public sealed partial class MainWindow
         return In(PillBody) || In(SmallPill);
     }
 
-    /// <summary>Each tick: no card on the big pill any more puts the list away.</summary>
+    /// <summary>Each tick: no card left at all puts the list away (every card pinned keeps it: the big pill is empty under it, TODO ①½).</summary>
     private void KeepList()
     {
-        if (_list?.IsOpen == true && _shownCard is null)
+        if (_list?.IsOpen == true && _cards.Cards.Count == 0)
         {
             CloseList();
             return;

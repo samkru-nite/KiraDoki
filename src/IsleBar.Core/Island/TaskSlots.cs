@@ -9,7 +9,7 @@ namespace IsleBar.Core.Island;
 /// <item>clicking an icon swaps it with the big pill: the card coming down takes the clicked cell, the others stay put
 /// (<see cref="Swap"/>); a card coming down because the rules put another one up (a pinned card arrived) is placed by stack order.</item>
 /// </list>
-/// No limit on the count: the window fits what it can before the taskbar's app icons, the rest go behind "⋯" (<see cref="Fit"/>).
+/// No limit on the count: the window fits what it can before the taskbar's app icons, the rest are only in the circle's list (TODO ①½).
 /// </summary>
 public sealed class TaskSlots
 {
@@ -67,17 +67,5 @@ public sealed class TaskSlots
         }
 
         _order[at] = shownKey;
-    }
-
-    /// <summary>
-    /// How many cells show when at most <paramref name="room"/> cells fit (the ⋯ cell included), and whether ⋯ shows.
-    /// ⋯ shows whenever any card sits behind the big pill (<paramref name="behind"/>: temporary ones too); the icons that don't fit
-    /// are the last ones.
-    /// </summary>
-    public static (int Icons, bool Dots) Fit(int cells, int behind, int room)
-    {
-        var dots = behind > 0;
-        var icons = Math.Clamp(room - (dots ? 1 : 0), 0, cells);
-        return (icons, dots && room > 0);
     }
 }

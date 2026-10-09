@@ -7,7 +7,7 @@ using static IsleBar.App.Interop.NativeMethods;
 namespace IsleBar.App.IslandUi;
 
 /// <summary>
-/// Makes a window a see-through, never-focused, topmost popup over the taskbar (the lifted card F1, the ⋯ list F3): no frame, no
+/// Makes a window a see-through, never-focused, topmost popup over the taskbar (the lifted card F1, the list F3): no frame, no
 /// system edge or rounding, per-pixel alpha so XAML draws its own anti-aliased shapes over whatever is behind. Starts off-screen.
 /// </summary>
 internal static class SeeThrough

@@ -38,7 +38,7 @@ internal interface IPillHost
 
 /// <summary>
 /// One big pill drawing one card (TODO 7.9 F3, plan B, 10-09): the drawing that lived in MainWindow, moved here unchanged so the
-/// ⋯ list can draw each card with a real pill (step 2) instead of snapshots of the taskbar's. Everything that moves on its own
+/// list can draw each card with a real pill (step 2) instead of snapshots of the taskbar's. Everything that moves on its own
 /// (scrolling title, rolling digits, the bars, the flowing piece) is this pill's own.
 /// </summary>
 public sealed partial class PillView : UserControl
@@ -168,7 +168,7 @@ public sealed partial class PillView : UserControl
     }
 
     /// <summary>
-    /// A pill in the ⋯ list: the list draws the shape (it grows out of ⋯) and the border, so this one's own surface, glass, veil and
+    /// A pill in the list: the list draws the shape (it grows out of the circle) and the border, so this one's own surface, glass, veil and
     /// border don't show — the surface keeps its colour for the scrolling title's end fades. The close button as at rest.
     /// </summary>
     internal void UseAsListed(Windows.UI.Color fill, Windows.UI.Color chip, double chipRadius, string closeText, Windows.UI.Color closeInk)
@@ -194,7 +194,7 @@ public sealed partial class PillView : UserControl
     }
 
     /// <summary>
-    /// Holds still (dimmed under the ⋯ list or a lifted card, user 10-10): a long title rests with "…", the music bars stop, the
+    /// Holds still (dimmed under the list or a lifted card, user 10-10): a long title rests with "…", the music bars stop, the
     /// flowing piece and a timer's hand stand. Words and numbers still change. Off again: they move from the next draw on.
     /// </summary>
     internal bool Frozen

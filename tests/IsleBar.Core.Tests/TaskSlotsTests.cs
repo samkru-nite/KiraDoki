@@ -57,15 +57,6 @@ public sealed class TaskSlotsTests
         Assert.Equal(["b"], Keys(slots));
     }
 
-    [Theory]
-    [InlineData(3, 3, 10, 3, true)]    // everything fits, ⋯ still there (something is behind the big pill)
-    [InlineData(5, 5, 4, 3, true)]     // room for 4 cells: 3 icons + ⋯
-    [InlineData(0, 1, 5, 0, true)]     // only a temporary card behind: just ⋯
-    [InlineData(0, 0, 5, 0, false)]    // nothing behind
-    [InlineData(2, 2, 0, 0, false)]    // no room at all: the circle alone
-    public void Fit_keeps_room_for_the_dots(int cells, int behind, int room, int icons, bool dots)
-        => Assert.Equal((icons, dots), TaskSlots.Fit(cells, behind, room));
-
     [Fact]
     public void Icons_colour_only_what_needs_you()
     {

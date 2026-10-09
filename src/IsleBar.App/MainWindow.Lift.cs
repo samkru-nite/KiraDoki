@@ -69,7 +69,7 @@ public sealed partial class MainWindow
     }
 
     /// <summary>
-    /// Lifts <paramref name="card"/> (the big pill's) out of the big pill, or — tapped in the ⋯ list (F3) — out of that list pill
+    /// Lifts <paramref name="card"/> (the big pill's) out of the big pill, or — tapped in the list (F3) — out of that list pill
     /// (<paramref name="from"/>, drawn as <paramref name="shot"/>, with its border colour <paramref name="glow"/>).
     /// </summary>
     private void OpenLift(Card card, Microsoft.UI.Xaml.Media.ImageSource? shot, ScreenRect? from = null, Windows.UI.Color? glow = null)
@@ -118,7 +118,7 @@ public sealed partial class MainWindow
         var look = TaskIcons.For(card, cover is not null, DateTimeOffset.UtcNow);
         _liftIconKey = LiftIconKey(card);
         _liftKept = card.Type == CardType.Temporary ? card.State : null;
-        _ = Dim(ListMotion.Dim, LiftMotion.OpenLength(Animations.On), cells: false);   // the big pill dims under its card, as under the ⋯ list (user 10-10)
+        _ = Dim(ListMotion.Dim, LiftMotion.OpenLength(Animations.On), cells: false);   // the big pill dims under its card, as under the list (user 10-10)
         _lift.Open(new LiftRequest(
             card.Key,
             pill,
@@ -324,7 +324,7 @@ public sealed partial class MainWindow
     private string? _liftIconKey;
 
     /// <summary>
-    /// A press at this screen point lands on a task cell (not ⋯): it doesn't close the lifted card — the swap it starts on release
+    /// A press at this screen point lands on a task cell: it doesn't close the lifted card — the swap it starts on release
     /// sends the card down into its cell (user 10-08: it went back to where the big pill had been while the pill was elsewhere).
     /// </summary>
     private bool OnTaskCell(int x, int y)
@@ -337,7 +337,7 @@ public sealed partial class MainWindow
         var s = DpiSetup.Scale;
         foreach (var cell in TaskCells.Children.OfType<Microsoft.UI.Xaml.Controls.Grid>())
         {
-            if (cell.Tag is not string tag || tag == DotsTag)
+            if (cell.Tag is not string tag)
             {
                 continue;
             }
