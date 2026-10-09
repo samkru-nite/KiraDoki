@@ -311,6 +311,12 @@ public sealed class LanguageStrings
     /// <summary>The close zone on an inform card (TODO 7.3): closes the card ("I've seen it").</summary>
     public required string CloseCard { get; init; }
 
+    /// <summary>Right-click on the big pill: keep its card in the small pill (甲⑤).</summary>
+    public required string Pin { get; init; }
+
+    /// <summary>Right-click on a pinned card: let it follow the usual rules again.</summary>
+    public required string Unpin { get; init; }
+
     /// <summary>Setting: card text left-aligned or centred on the big pill (user 10-07).</summary>
     public required string CardTextLabel { get; init; }
 

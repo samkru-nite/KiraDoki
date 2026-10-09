@@ -67,6 +67,16 @@ public sealed class CardStack
     /// <summary>The card on its debut now (null = none).</summary>
     public string? DebutKey => _debutKey;
 
+    private readonly List<string> _notes = [];
+
+    /// <summary>What happened to debuts since the last call — queued, started, skipped and why (for the log; 甲②③ 10-09).</summary>
+    public IReadOnlyList<string> TakeDebutNotes()
+    {
+        var notes = _notes.ToList();
+        _notes.Clear();
+        return notes;
+    }
+
     private readonly Dictionary<string, (CardType Type, DateTimeOffset Since)> _arrived = new(StringComparer.Ordinal);
     private readonly HashSet<string> _hidden = new(StringComparer.Ordinal);
     private IReadOnlyList<ActivityState> _items = [];
@@ -79,11 +89,47 @@ public sealed class CardStack
     /// <summary>All cards, top first.</summary>
     public IReadOnlyList<Card> Cards { get; private set; } = [];
 
-    /// <summary>Position of the card on the pill in <see cref="Cards"/> (0 = top). 0 when there are no cards.</summary>
+    /// <summary>Position of the card on the pill in <see cref="Cards"/> (0 = top). 0 when there are no cards, −1 when all are tucked.</summary>
     public int ShownIndex { get; private set; }
 
-    /// <summary>The card on the big pill, or null when there are none (only the ball shows).</summary>
-    public Card? Shown => Cards.Count == 0 ? null : Cards[ShownIndex];
+    /// <summary>The card on the big pill, or null when there are none or all are tucked (only the small pill shows).</summary>
+    public Card? Shown => Cards.Count == 0 || ShownIndex < 0 ? null : Cards[ShownIndex];
+
+    private readonly HashSet<string> _tucked = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// "Keep in the small pill" (user 10-10, 甲⑤): the card stays on the small pill — no debut, no taking the big pill when it turns
+    /// done / needs you; clicked, it shows while the mouse is there and goes back down after. Until it ends or is closed.
+    /// </summary>
+    public void Tuck(string key, DateTimeOffset now)
+    {
+        _tucked.Add(key);
+        if (_chosenKey == key)
+        {
+            _chosenKey = null;
+        }
+
+        _debutQueue.Remove(key);
+        if (_debutKey == key)
+        {
+            _debutKey = null;
+        }
+
+        _shownKey = null;   // it goes down now, even with the mouse there (the menu was opened on it)
+        Rebuild(now);
+    }
+
+    /// <summary>"Unpin": the card follows the usual rules again (a done / needs-you card comes up by itself).</summary>
+    public void Untuck(string key, DateTimeOffset now)
+    {
+        if (_tucked.Remove(key))
+        {
+            Rebuild(now);
+        }
+    }
+
+    /// <summary>The card is kept in the small pill (<see cref="Tuck"/>).</summary>
+    public bool IsTucked(string key) => _tucked.Contains(key);
 
     /// <summary>The status card last chosen, if it is still there.</summary>
     public string? ChosenKey => _chosenKey;
@@ -149,9 +195,14 @@ public sealed class CardStack
         }
 
         var card = Cards[index];
+        if (_debutKey is not null || _debutQueue.Count > 0)
+        {
+            _notes.Add($"debut of {_debutKey ?? "-"} and {_debutQueue.Count} waiting dropped ({key} clicked)");
+        }
+
         _debutKey = null;   // a clicked card replaces any debut
         _debutQueue.Clear();
-        if (!card.Pinned)
+        if (!card.Pinned && !_tucked.Contains(card.Key))   // a tucked card shows while looked at, then goes back down
         {
             _chosenKey = card.Key;   // a pinned card shows by itself anyway — the choice to come back to is the status card
         }
@@ -204,9 +255,13 @@ public sealed class CardStack
             {
                 seen = (type, now);
                 _arrived[key] = seen;
-                if (type == CardType.Status && TaskRules.Debuts(state) && !_hidden.Contains(key))
+                if (type == CardType.Status && TaskRules.Debuts(state) && !_hidden.Contains(key) && !_tucked.Contains(key))
                 {
                     fresh.Add((key, state.UpdatedAt));
+                }
+                else if (type == CardType.Status)
+                {
+                    _notes.Add($"{key} became status, no debut ({(_hidden.Contains(key) ? "closed" : _tucked.Contains(key) ? "tucked" : "rules")})");
                 }
             }
 
@@ -223,6 +278,7 @@ public sealed class CardStack
         }
 
         _hidden.RemoveWhere(k => !present.Contains(k));
+        _tucked.RemoveWhere(k => !present.Contains(k) || _hidden.Contains(k));   // ended or closed: a new one is a new card
         cards.Sort((a, b) =>
         {
             if (a.Card.Pinned != b.Card.Pinned)
@@ -255,7 +311,7 @@ public sealed class CardStack
 
         UpdateDebut(ordered, fresh, now);
         ShownIndex = PickShown(ordered, now);
-        _shownKey = ordered.Count == 0 ? null : ordered[ShownIndex].Key;
+        _shownKey = ordered.Count == 0 || ShownIndex < 0 ? null : ordered[ShownIndex].Key;
     }
 
     /// <summary>Starts, queues, hands over and ends debuts (see the class notes).</summary>
@@ -264,6 +320,16 @@ public sealed class CardStack
         bool Present(string? key) => key is not null && cards.Any(c => c.Key == key && c.Type == CardType.Status);
         if (_hovering || now - _leftAt < HoldAfterLeave)
         {
+            foreach (var f in fresh)
+            {
+                _notes.Add($"{f.Key} became status, no debut (mouse {(_hovering ? "on the pills" : "just left")})");
+            }
+
+            if (_debutKey is not null || _debutQueue.Count > 0)
+            {
+                _notes.Add($"debut of {_debutKey ?? "-"} and {_debutQueue.Count} waiting dropped (mouse)");
+            }
+
             _debutKey = null;   // the mouse is there: new cards go straight to their cells
             _debutQueue.Clear();
             return;
@@ -273,18 +339,36 @@ public sealed class CardStack
 
         if (!Present(_debutKey))
         {
+            if (_debutKey is not null)
+            {
+                _notes.Add($"debut of {_debutKey} ended: no longer a status card");
+            }
+
             _debutKey = null;
         }
 
         _debutQueue.RemoveAll(k => !Present(k));
         if (now - _firstUpdate!.Value >= StartQuiet)
         {
-            _debutQueue.AddRange(fresh.OrderBy(f => f.Updated).ThenBy(f => f.Key, StringComparer.Ordinal).Select(f => f.Key)
-                .Where(k => k != _debutKey && !_debutQueue.Contains(k)));
+            var add = fresh.OrderBy(f => f.Updated).ThenBy(f => f.Key, StringComparer.Ordinal).Select(f => f.Key)
+                .Where(k => k != _debutKey && !_debutQueue.Contains(k)).ToList();
+            _debutQueue.AddRange(add);
+            foreach (var k in add)
+            {
+                _notes.Add($"{k} became status, queued for a debut ({_debutQueue.Count} waiting{(temporary ? ", a temporary card shows" : string.Empty)})");
+            }
+        }
+        else
+        {
+            foreach (var f in fresh)
+            {
+                _notes.Add($"{f.Key} became status, no debut (just started)");
+            }
         }
 
         if (_debutKey is not null && (temporary || now - _debutSince >= (_debutQueue.Count > 0 ? DebutAtLeast : DebutLength)))
         {
+            _notes.Add($"debut of {_debutKey} over{(temporary ? " (a temporary card came)" : string.Empty)}");
             _debutKey = null;   // its turn is over, or a temporary card came: that one goes first
         }
 
@@ -293,6 +377,7 @@ public sealed class CardStack
             _debutKey = _debutQueue[0];
             _debutQueue.RemoveAt(0);
             _debutSince = now;
+            _notes.Add($"debut of {_debutKey} starts");
         }
     }
 
@@ -317,12 +402,14 @@ public sealed class CardStack
             return debut;   // a few seconds, even over a pinned card (a temporary one stops it: UpdateDebut)
         }
 
-        if (cards[0].Pinned)
+        // tucked cards wait on the small pill (Tuck): the rest as if they weren't there; all tucked → none on the big pill
+        var top = cards.FindIndex(c => !_tucked.Contains(c.Key));
+        if (top >= 0 && cards[top].Pinned)
         {
-            return 0;   // someone is waiting for you
+            return top;   // someone is waiting for you
         }
 
         var chosen = _chosenKey is null ? -1 : cards.FindIndex(c => c.Key == _chosenKey);
-        return chosen >= 0 ? chosen : 0;
+        return chosen >= 0 ? chosen : top;
     }
 }

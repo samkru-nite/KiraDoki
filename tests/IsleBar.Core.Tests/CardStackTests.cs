@@ -386,4 +386,75 @@ public sealed class CardStackTests
         stack.Update([music, work], T0.AddSeconds(11));
         Assert.Equal("m", ShownKey(stack));
     }
+
+    // ---------------- Keep in the small pill (甲⑤) ----------------
+
+    [Fact]
+    public void A_tucked_card_leaves_the_big_pill_and_does_not_come_back_when_it_turns_done()
+    {
+        var stack = new CardStack();
+        var music = Item(ActivityKind.Music, "m");
+        var work = Item(ActivityKind.AgentWorking, "w");
+        stack.Update([music, work], T0);
+        Assert.Equal("m", ShownKey(stack));
+
+        stack.Tuck("m", T0.AddSeconds(1));
+        Assert.Equal("w", ShownKey(stack));
+
+        stack.Update([music, work], T0.AddSeconds(10));
+        Assert.Equal("w", ShownKey(stack));
+        Assert.Contains("m", Keys(stack));   // still a card, on the small pill
+
+        var done = Item(ActivityKind.AgentDone, "w", 20, "done");
+        stack.Tuck("w", T0.AddSeconds(11));
+        stack.Update([music, done], T0.AddSeconds(20));
+        Assert.Null(ShownKey(stack));   // all tucked: only the small pill
+    }
+
+    [Fact]
+    public void A_clicked_tucked_card_shows_while_looked_at_then_goes_back_down()
+    {
+        var stack = new CardStack();
+        var music = Item(ActivityKind.Music, "m");
+        var work = Item(ActivityKind.AgentWorking, "w");
+        stack.Update([music, work], T0);
+        stack.Tuck("w", T0);
+
+        stack.SetHover(true, T0.AddSeconds(1));
+        stack.Choose("w", T0.AddSeconds(1));
+        stack.Update([music, work], T0.AddSeconds(2));
+        Assert.Equal("w", ShownKey(stack));
+
+        stack.SetHover(false, T0.AddSeconds(3));
+        stack.Update([music, work], T0.AddSeconds(3 + CardStack.HoldAfterLeave.TotalSeconds + 1));
+        Assert.Equal("m", ShownKey(stack));
+    }
+
+    [Fact]
+    public void A_tucked_card_that_ends_is_forgotten()
+    {
+        var stack = new CardStack();
+        var work = Item(ActivityKind.AgentWorking, "w");
+        stack.Update([work], T0);
+        stack.Tuck("w", T0);
+        stack.Update([], T0.AddSeconds(5));
+        Assert.False(stack.IsTucked("w"));
+        stack.Update([work], T0.AddSeconds(6));
+        Assert.Equal("w", ShownKey(stack));
+    }
+
+    [Fact]
+    public void An_unpinned_card_follows_the_rules_again()
+    {
+        var stack = new CardStack();
+        var music = Item(ActivityKind.Music, "m");
+        var done = Item(ActivityKind.AgentDone, "w", state: "done");
+        stack.Update([music, done], T0);
+        stack.Tuck("w", T0);
+        Assert.Equal("m", ShownKey(stack));
+
+        stack.Untuck("w", T0.AddSeconds(1));
+        Assert.False(stack.IsTucked("w"));
+        Assert.Equal("w", ShownKey(stack));   // a done card comes up by itself again
+    }
 }

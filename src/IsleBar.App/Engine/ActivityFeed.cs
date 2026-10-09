@@ -91,10 +91,48 @@ internal sealed class ActivityFeed : IDisposable
         if (Watchers is not null)
         {
             items.AddRange(Watchers.Current);   // brief notices
+            DropAgentAppToasts(items);
             AddPrivacy(items, now);
         }
 
         return items;
+    }
+
+    /// <summary>How near an agent card's change an AI app's own Windows notification counts as the same news.</summary>
+    private static readonly TimeSpan SameNews = TimeSpan.FromSeconds(20);
+
+    private readonly HashSet<string> _droppedToasts = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The Claude / Codex app's own Windows notification ("Claude finished") when that agent's card has just turned done / needs you /
+    /// failed: the big pill showed the same news twice (user 10-10, 甲①). Kept when no card changed near it — a plain chat in the
+    /// Claude app has no hook, so its notification is the only news. Log "toast: … dropped".
+    /// </summary>
+    private void DropAgentAppToasts(List<ActivityState> items)
+    {
+        static string? AgentOf(string? appId)
+            => appId is null ? null
+                : appId.StartsWith("Claude_", StringComparison.OrdinalIgnoreCase) ? IsleBar.Core.Launch.AgentKind.Claude
+                : appId.StartsWith("OpenAI.", StringComparison.OrdinalIgnoreCase) ? IsleBar.Core.Launch.AgentKind.Codex
+                : null;
+
+        var changes = items.Where(s => s.Agent is not null && s.Kind is ActivityKind.AgentDone or ActivityKind.AgentPermission or ActivityKind.Error)
+            .ToList();
+        items.RemoveAll(toast =>
+        {
+            if (toast is not { Kind: ActivityKind.Notice, Stage: "expand" } || AgentOf(toast.AppId) is not { } agent
+                || !changes.Any(c => c.Agent == agent && (c.UpdatedAt - toast.UpdatedAt).Duration() <= SameNews))
+            {
+                return false;
+            }
+
+            if (_droppedToasts.Add($"{toast.AppId}|{toast.UpdatedAt.ToUnixTimeMilliseconds()}"))
+            {
+                TaskbarHost.Log($"toast: {toast.AppId} \"{toast.Title}\" dropped — the {agent} card just said it");
+            }
+
+            return true;
+        });
     }
 
     private DateTimeOffset? _privacySince;

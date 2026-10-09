@@ -971,6 +971,7 @@ public sealed partial class MainWindow : Window
             EndStaleHover();
 
             _cards.Update(items, DateTimeOffset.UtcNow);
+            LogDebutNotes();
             _shownCard = _cards.Shown;
             KeepLift();
             KeepList();
@@ -1101,7 +1102,7 @@ public sealed partial class MainWindow : Window
 
         _slots.Update(_cards.Cards, _shownCard?.Key, _hovering);
         var cells = _slots.Cells;
-        var behind = Math.Max(0, _cards.Cards.Count - 1);
+        var behind = Math.Max(0, _cards.Cards.Count - (_cards.Shown is null ? 0 : 1));   // all tucked: none on the big pill
         var (icons, dots) = TaskSlots.Fit(cells.Count, behind, RoomForCells(cells.Count + (behind > 0 ? 1 : 0)));
         _cellCards.Clear();
         _cellCards.AddRange(cells.Take(icons));
@@ -1534,6 +1535,16 @@ public sealed partial class MainWindow : Window
         else
         {
             _besidePending = color;
+        }
+    }
+
+    /// <summary>Debuts queued / started / skipped and why, and the card the big pill shows then ("debut: …"; 甲②③ 10-09).</summary>
+    private void LogDebutNotes()
+    {
+        var notes = _cards.TakeDebutNotes();
+        if (notes.Count > 0)
+        {
+            TaskbarHost.Log($"debut: {string.Join(" | ", notes)} → shown {_cards.Shown?.Key ?? "-"}, lifted {_lift?.OpenKey is not null}, list {_list?.IsOpen == true}, hovering {_hovering}");
         }
     }
 
@@ -2687,6 +2698,8 @@ public sealed partial class MainWindow : Window
 
     private const int MenuQuit = 1;
     private const int MenuClose = 2;   // close the card the menu is about
+    private const int MenuTuck = 3;    // keep the big pill's card in the small pill (甲⑤)
+    private const int MenuUntuck = 4;
     private const int MenuQuickBase = 20;   // quick timers (from settings, up to 6)
     private const int MenuPomodoro = 13;
     private const int MenuStopwatch = 14;
@@ -2745,7 +2758,14 @@ public sealed partial class MainWindow : Window
             _cards.Hide(card.Key, DateTimeOffset.UtcNow);
         }
 
+        Restack();
+    }
+
+    /// <summary>The cards changed by hand (closed, tucked): the stack again, then the next card comes up / icons move, animated.</summary>
+    private void Restack()
+    {
         _cards.Update(_feed.Collect(DateTimeOffset.UtcNow), DateTimeOffset.UtcNow);
+        LogDebutNotes();
         _shownCard = _cards.Shown;
         _snapshot = _shownCard is { } shown ? new IslandSnapshot(shown.State, _cards.Cards.Count - 1) : IslandSnapshot.Empty;
         _animator.Classify(_snapshot);
@@ -2793,11 +2813,41 @@ public sealed partial class MainWindow : Window
             items.Add(new MenuItem(0, CardMenuTitle(card), Header: true));
         }
 
-        items.Add(new MenuItem(MenuClose, _text.CloseCard));
-        if (RunMenu(items) == MenuClose)
+        // "Pin" keeps the big pill's card in the small pill (user 10-10; a temporary one has no cell); a pinned card — on its icon,
+        // or on the big pill while clicked up — offers "Unpin" (user 10-09)
+        var tucked = _cards.IsTucked(card.Key);
+        if (tucked)
         {
-            CloseCard(_cards.Cards.FirstOrDefault(c => c.Key == card.Key));
+            items.Add(new MenuItem(MenuUntuck, _text.Unpin));
         }
+        else if (!header && card.Type != CardType.Temporary)
+        {
+            items.Add(new MenuItem(MenuTuck, _text.Pin));
+        }
+
+        items.Add(new MenuItem(MenuClose, _text.CloseCard));
+        var chosen = RunMenu(items);
+        // after RunMenu has let go of the menu (one beat later): while "menu open" the cells don't change, and the card used to
+        // jump to its cell instead of flying (user 10-09)
+        _ui.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            switch (chosen)
+            {
+                case MenuClose:
+                    CloseCard(_cards.Cards.FirstOrDefault(c => c.Key == card.Key));
+                    break;
+                case MenuTuck:
+                    TaskbarHost.Log($"card: {card.Key} pinned to the small pill");
+                    _cards.Tuck(card.Key, DateTimeOffset.UtcNow);
+                    Restack();
+                    break;
+                case MenuUntuck:
+                    TaskbarHost.Log($"card: {card.Key} unpinned");
+                    _cards.Untuck(card.Key, DateTimeOffset.UtcNow);
+                    Restack();
+                    break;
+            }
+        });
     }
 
     /// <summary>"report.pdf · 12.3 MB/s" · "islebar · Claude working" · "Song · Artist" — what the card is and how it stands.</summary>
