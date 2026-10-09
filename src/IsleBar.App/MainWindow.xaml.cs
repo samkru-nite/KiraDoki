@@ -1521,6 +1521,15 @@ public sealed partial class MainWindow : Window
             _besidePending = null;
             Root.Background = BrushOf(color);
             TaskbarHost.Log($"taskbar colour beside the pill changed to {color}");
+            if (PillView.UseTaskbar(color))
+            {
+                // the pills follow the taskbar (TODO 丙④): everything painted from their colours again
+                TaskbarHost.Log($"pill colours: taskbar {color} → pill {RealSearchBoxFill()}");
+                ApplyTheme();
+                ApplyStyle();
+                Big.RefreshFades();
+                RenderIsland();
+            }
         }
         else
         {
@@ -2007,10 +2016,16 @@ public sealed partial class MainWindow : Window
 
     private void ApplyTheme()
     {
+        var taskbar = TaskbarColorBeside();
+        if (PillView.UseTaskbar(taskbar))
+        {
+            TaskbarHost.Log($"pill colours: taskbar {taskbar} → pill {RealSearchBoxFill()}");
+        }
+
         var background = RealSearchBoxFill();
         _theme = ThemeColors.ForActualBackground(background, ThemeColors.AccentColor());
         PillSurface.Fill = BrushOf(background);
-        Root.Background = BrushOf(TaskbarColorBeside());   // outside the pill (the stair-steps of the clip edge sit on this color and become invisible)
+        Root.Background = BrushOf(taskbar);   // outside the pill (the stair-steps of the clip edge sit on this color and become invisible)
         LeadIcon.Foreground = BrushOf(_theme.Icon);
         Entry.Foreground = BrushOf(_theme.Foreground);
         BallRing.Stroke = BrushOf(_theme.Icon);
@@ -2058,18 +2073,13 @@ public sealed partial class MainWindow : Window
     /// <summary>Pill background: normal / hovered or typing (slightly brighter — same response as the real search box, Python version's LOOK).</summary>
     private void PaintFill()
     {
-        var rest = RealSearchBoxFill();
+        var colours = PillView.Colours;
         // on the close button only the button lights up; elsewhere on the pill only the pill, the button stays as it is (user 10-10)
         var lift = (_hoverBig && !_closeHover) || _typing;
-        var light = ThemeColors.FromSystem().Light;
-        PillSurface.Fill = BrushOf(!lift ? rest
-            : light ? Blend(rest, Windows.UI.Color.FromArgb(255, 255, 255, 255), 0.55)
-            : Blend(rest, Windows.UI.Color.FromArgb(255, 255, 255, 255), 0.05));
-        SmallSurface.Fill = BrushOf(rest);   // the small pill lifts only its circle cell (BallHover)
+        PillSurface.Fill = BrushOf(PillView.ColourOf(lift ? colours.Hover : colours.Rest));
+        SmallSurface.Fill = BrushOf(PillView.ColourOf(colours.Rest));   // the small pill lifts only its circle cell (BallHover)
         // the close button: a step off the resting pill's colour, one more under the pointer (user 10-08, B5)
-        CloseChip.Fill = BrushOf(light
-            ? Blend(rest, Windows.UI.Color.FromArgb(255, 0, 0, 0), _closeHover ? 0.12 : 0.07)
-            : Blend(rest, Windows.UI.Color.FromArgb(255, 255, 255, 255), _closeHover ? 0.16 : 0.10));
+        CloseChip.Fill = BrushOf(PillView.ColourOf(_closeHover ? colours.ChipHover : colours.Chip));
         Big.RefreshFades();   // the scrolling text's end fades are the pill colour: repaint them when it lifts (hover) — they showed as dark blocks (user 10-07)
 
         PaintEdge();
@@ -2078,7 +2088,7 @@ public sealed partial class MainWindow : Window
     /// <summary>Thin line around the pill edge (like the real search box border) — a faint line matched to background brightness.</summary>
     private void PaintEdge()
     {
-        PillSurface.Edge = BrushOf(LiftWindow.PillEdge(PillSurface.Fill is SolidColorBrush fill ? fill.Color : default));
+        PillSurface.Edge = BrushOf(PillView.EdgeFill());
         SmallSurface.Edge = PillSurface.Edge;
     }
 

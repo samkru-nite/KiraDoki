@@ -131,7 +131,7 @@ internal sealed class ListWindow : Window
 
         _root.Children.Clear();
         _items.Clear();
-        var edge = LiftWindow.EdgeColor(request.Dark);
+        var edge = PillView.EdgeFill();   // they're pills: the pills' edge (TODO 丙④)
         for (var i = 0; i < n; i++)
         {
             var item = new Item(request.Keys[i], ListMotion.Slot(i, pill, taskbarTop), request.PillColor, edge, pill.Width, pill.Height, request.Host);

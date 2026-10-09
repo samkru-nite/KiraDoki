@@ -102,11 +102,36 @@ public sealed partial class PillView : UserControl
 
     private SolidColorBrush BrushOf(Windows.UI.Color color) => Host.Brush(color);
 
-    /// <summary>The pill's colour at rest (the real search box's). Light: F2F6FC / dark: 2C2C2C.</summary>
-    internal static Windows.UI.Color RestFill()
-        => ThemeColors.FromSystem().Light
-            ? Windows.UI.Color.FromArgb(255, 242, 246, 252)
-            : Windows.UI.Color.FromArgb(255, 44, 44, 44);
+    private static PillColours? _colours;
+
+    /// <summary>
+    /// The pills' colours, worked out from the taskbar beside them (<see cref="PillPalette"/>, TODO 丙④). Until the taskbar is
+    /// read: the theme's usual taskbar.
+    /// </summary>
+    internal static PillColours Colours => _colours ??= PillPalette.For(ThemeColors.FromSystem().Light
+        ? new Rgb(0xDF, 0xE6, 0xF3)
+        : new Rgb(0x20, 0x20, 0x20));
+
+    /// <summary>The taskbar beside the pills is <paramref name="taskbar"/>: works their colours out again. False when unchanged.</summary>
+    internal static bool UseTaskbar(Windows.UI.Color taskbar)
+    {
+        var next = PillPalette.For(new Rgb(taskbar.R, taskbar.G, taskbar.B));
+        if (_colours == next)
+        {
+            return false;
+        }
+
+        _colours = next;
+        return true;
+    }
+
+    internal static Windows.UI.Color ColourOf(Rgb c) => Windows.UI.Color.FromArgb(255, c.R, c.G, c.B);
+
+    /// <summary>The pill's colour at rest.</summary>
+    internal static Windows.UI.Color RestFill() => ColourOf(Colours.Rest);
+
+    /// <summary>The pills' edge line (solid).</summary>
+    internal static Windows.UI.Color EdgeFill() => ColourOf(Colours.Edge);
 
     // ---------------- One card ----------------
 

@@ -511,7 +511,7 @@ internal sealed class LiftWindow : Window
         {
             // from the pill's own faint edge to the card's (it faded from nothing: landing, the card had no edge and the pill's popped in)
             _frame.EdgeWidth = 1;
-            _edge.Color = Mix(PillEdgeOn(r.PillColor), edgeColour, turn);
+            _edge.Color = Mix(PillView.EdgeFill(), edgeColour, turn);
         }
 
         Canvas.SetLeft(_shot, pill.X);
@@ -687,17 +687,6 @@ internal sealed class LiftWindow : Window
     public static Color CardColor(bool dark) => dark ? Color.FromArgb(255, 0x2C, 0x2C, 0x2C) : Color.FromArgb(255, 0xF9, 0xF9, 0xF9);
 
     internal static Color EdgeColor(bool dark) => dark ? Color.FromArgb(255, 0x3C, 0x3C, 0x3C) : Color.FromArgb(255, 0xE0, 0xE0, 0xE0);
-
-    /// <summary>The pills' faint edge line (like the real search box border), see-through over a pill of colour <paramref name="pill"/>.</summary>
-    internal static Color PillEdge(Color pill)
-        => (pill.R * 0.3) + (pill.G * 0.59) + (pill.B * 0.11) > 128 ? Color.FromArgb(34, 0, 0, 40) : Color.FromArgb(30, 255, 255, 255);
-
-    /// <summary>The same line as it looks on the pill, solid — what the card's edge turns from / into.</summary>
-    private static Color PillEdgeOn(Color pill)
-    {
-        var e = PillEdge(pill);
-        return Mix(pill, Color.FromArgb(255, e.R, e.G, e.B), e.A / 255.0);
-    }
 
     internal static Color Mix(Color a, Color b, double t) => Color.FromArgb(
         (byte)Math.Round(a.A + ((b.A - a.A) * t)),

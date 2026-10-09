@@ -47,11 +47,7 @@ public sealed partial class MainWindow
     /// <summary>A list pill readied: its colours at rest, the close button as the big pill's (<see cref="PaintFill"/>, <see cref="ApplyCorners"/>).</summary>
     private void PrepareListPill(PillView pill)
     {
-        var rest = RealSearchBoxFill();
-        var chip = ThemeColors.FromSystem().Light
-            ? Blend(rest, Windows.UI.Color.FromArgb(255, 0, 0, 0), 0.07)
-            : Blend(rest, Windows.UI.Color.FromArgb(255, 255, 255, 255), 0.10);
-        pill.UseAsListed(rest, chip, CloseChip.Radius, _text.CloseCard, _theme.Foreground);
+        pill.UseAsListed(RealSearchBoxFill(), PillView.ColourOf(PillView.Colours.Chip), CloseChip.Radius, _text.CloseCard, _theme.Foreground);
     }
 
     /// <summary>Draws a card on its list pill as the big pill draws it (<see cref="RenderIsland"/>); a card gone keeps its last look.</summary>
