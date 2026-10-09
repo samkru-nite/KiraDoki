@@ -78,7 +78,7 @@
 - [ ] 复制网址时在掀起卡片里给"在浏览器打开"
 - [ ] 图标统一换成微软官方 Fluent UI System Icons（见 history 7.10）
 - [ ] 5 分钟检查清单（Windows 大更新后照着点，含 100% / 125% / 150% 缩放）
-- [ ] 发布前：下载 Win2D 许可全文放进 `licenses/Win2D-LICENSE.txt`（先问用户）；**确认装着的 `%LOCALAPPDATA%\IsleBar\bin\islebar.exe` 是新版命令行**（10-09 核对：`licenses/` 里还没有 Win2D 的文件；Claude 钩子 `~/.claude/settings.json` 调用的就是这个 exe，文件日期仍是 10-03 20:14 = 旧版，钩子的新改动要重新发布才生效）
+- [ ] 发布前：下载 Win2D 许可全文放进 `licenses/Win2D-LICENSE.txt`（先问用户）；~~确认装着的 `%LOCALAPPDATA%\IsleBar\bin\islebar.exe` 是新版命令行~~ **10-10 已更新**（`dotnet publish src/IsleBar.Cli -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true`，替换前的旧版备份为同目录 `islebar.old-1003.exe`，确认没问题可删；**以后改了 Cli / AgentHook 都要这样重新发布一次**）（10-09 核对：`licenses/` 里还没有 Win2D 的文件；Claude 钩子调用的就是这个 exe，日期仍是 10-03 20:14 = 旧版。**实际影响小**：完成卡片的回答靠 App 按会话编号自己找记录，旧版照样有（用户确认）；旧版只差两处——Stop 不带记录路径（有补救）、会话中途结束时旧版直接清掉卡片而不是变"中断"卡片；Codex 文案语言。发布时一起更新即可）
 
 ## 三、还没定的大问题
 
@@ -100,6 +100,7 @@
 - 胶囊上加任何快捷按钮（播放 / 暂停、上一首 / 下一首都留在掀起卡片里）
 - HDR 适配（用户试过没问题）
 - 麦克风 / 摄像头用固定颜色表示"开着"、护眼模式提醒、Steam 下载、按住圆圈往外划选菜单（"星环"）、键盘灯
+- 读时钟应用的计时器 / 秒表（10-10 用户问后说不用纠结；没有正式接口，计时器到点的通知已经会镜像到岛上）。顺带确认：**专注时段卡片可用**（`FocusWatcher` 的 `FocusSessionManager` 在未打包的程序里也能用，用户实测）
 - 2.3 输入法问题（输入框删了，自然消失）、3.1/3.2 启动失败报错字体（随启动功能删除）
 
 ## 六、保留的功能（10-09 盘点）
