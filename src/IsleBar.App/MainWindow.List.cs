@@ -249,7 +249,8 @@ public sealed partial class MainWindow
     {
         foreach (var cell in TaskCells.Children.OfType<FrameworkElement>())
         {
-            cell.Opacity = cell.Tag as string == DotsTag ? 1 : _cellDim;
+            // ⋯ stays lit under its own list (it puts the list away); under the input panel it's as grey as the rest (user 10-09)
+            cell.Opacity = cell.Tag as string == DotsTag && !_panelDims ? 1 : _cellDim;
         }
     }
 

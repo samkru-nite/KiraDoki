@@ -150,9 +150,10 @@ public sealed partial class MainWindow : Window
         // Ctrl+Alt+C = type from anywhere (same key as the Python version). Switches to the input box even if an island is showing.
         _hotkey = new GlobalHotkey(() => _ui.TryEnqueue(() =>
         {
-            _taskbar.TakeFocus();
-            BeginTyping();
-            Entry.Focus(FocusState.Programmatic);
+            if (_panel?.IsOpen != true)
+            {
+                OpenPanel();   // the input panel (TODO 7.9 H)
+            }
         }));
         _watchdog.Start();
         _foreground = new ForegroundEvents(window =>
@@ -209,7 +210,7 @@ public sealed partial class MainWindow : Window
         HookCompose();
         HookFileDrop();
         PressFeedback.Attach(BallCell);
-        PressFeedback.Enabled = () => _settings.Bounce;
+        PressFeedback.Enabled = () => _settings.Bounce && !PanelTakesPress;   // grey under the input panel = no response, not even the press (user 10-09)
         PressFeedback.Attach(PillBody, PressFeedback.PillPressed, PressFeedback.PillDamping);   // the big pill too: half on press, the rest + the card on release (user 10-08)
         Root.Loaded += (_, _) => MeasureInkAsync();   // where the card font's glyphs sit (TODO 7.9 D: centre the ink, not the line box)   // pressing makes it sink in and spring back (09-30 design M5)
         Entry.TextChanged += (_, _) =>
@@ -251,6 +252,12 @@ public sealed partial class MainWindow : Window
                 return;
             }
 
+            if (PanelTakesPress && !IsInside(source, BallBox) && (IsInside(source, SmallPill) || IsInside(source, PillBody)))
+            {
+                _panel!.Collapse();   // with the input panel up, a press on the pills only puts it away (user 10-09); the circle toggles it
+                return;
+            }
+
             if (IsInside(source, SmallPill) && !IsInside(source, BallBox))
             {
                 _cellPress = !_typing && CellTagAt(source) is { } tag && tag != DotsTag ? tag : null;   // swaps on release (below)
@@ -261,19 +268,10 @@ public sealed partial class MainWindow : Window
 
             if (IsInside(source, BallBox))
             {
-                // the circle = the way in: click to type, click again to stop (TODO 7.3). Until the new input panel (H), typing
-                // happens in the big pill as before.
-                if (_typing)
-                {
-                    _closedByClickAt = DateTimeOffset.UtcNow;
-                    EndTyping();
-                    return;
-                }
-
-                StartMenu.CloseIfOpen();   // Start stays up over a click on the pill and would cover the results list (user 10-04)
-                _taskbar.TakeFocus();
-                BeginTyping();
-                Entry.Focus(FocusState.Programmatic);
+                // the circle = the way in: the input panel, click again to put it away (TODO 7.9 H) — on release: the taskbar takes
+                // the foreground for the press a moment after it, and a panel opened on the press lost it then (log 10-09)
+                StartMenu.CloseIfOpen();   // Start stays up over a click on the pill and would cover the panel (user 10-04)
+                _ballPress = true;
                 return;
             }
 
@@ -312,6 +310,15 @@ public sealed partial class MainWindow : Window
                 if (!_typing && CellTagAt(e.OriginalSource as DependencyObject) == pressed)
                 {
                     OnTaskCellClicked(pressed);   // that card and the big pill swap places (TODO 7.3, 10-07) - on release, like the big pill
+                }
+            }
+
+            if (_ballPress)
+            {
+                _ballPress = false;
+                if (IsInside(e.OriginalSource as DependencyObject, BallBox))
+                {
+                    TogglePanel();
                 }
             }
 
@@ -1075,6 +1082,9 @@ public sealed partial class MainWindow : Window
     /// <summary>What the cells were last built from; rebuilt only when it changes (null = rebuild).</summary>
     private string? _cellsSig;
 
+    /// <summary>Each cell's colour as last drawn: a pinned card's change of colour makes its icon jump (G).</summary>
+    private readonly Dictionary<string, IconTone> _cellTones = new(StringComparer.Ordinal);
+
     /// <summary>Task cells + ⋯, for the window width.</summary>
     private int TaskCellCount => _cellCards.Count + (_dotsOn ? 1 : 0);
 
@@ -1152,9 +1162,30 @@ public sealed partial class MainWindow : Window
         _renderedCells.AddRange(_cellCards);
         TaskCells.Children.Clear();
         // nothing breathes — not AI, not mic / camera (user 10-08: only what waits for you may move; it is all or none)
+        var jumps = new List<UIElement>();
         foreach (var (key, icon, card) in icons)
         {
-            TaskCells.Children.Add(MakeCell(key, CellContent(card, icon, now)));
+            var cell = MakeCell(key, CellContent(card, icon, now));
+            TaskCells.Children.Add(cell);
+            // a pinned card has no debut: when its colour changes in its cell (working → done), the icon jumps once as it takes the
+            // new colour, so the change isn't missed (user 10-09, G). A cell just come (or back from the big pill) has no "before".
+            if (_cellTones.TryGetValue(key, out var was) && was != icon.Tone && _cards.IsTucked(key))
+            {
+                jumps.Add(cell);
+                TaskbarHost.Log($"cell: {key} {was} → {icon.Tone}, jumps");
+            }
+        }
+
+        _cellTones.Clear();
+        foreach (var (key, icon, _) in icons)
+        {
+            _cellTones[key] = icon.Tone;
+        }
+
+        if (jumps.Count > 0)
+        {
+            // after layout: the press scales about the cell's centre, which needs its size
+            _ui.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => jumps.ForEach(PressFeedback.Pulse));
         }
 
         var more = MakeCell(DotsTag, new Microsoft.UI.Xaml.Controls.FontIcon

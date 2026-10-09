@@ -317,6 +317,12 @@ public sealed class LanguageStrings
     /// <summary>Right-click on a pinned card: let it follow the usual rules again.</summary>
     public required string Unpin { get; init; }
 
+    /// <summary>The input panel's grey hint when searching files (user 10-09: in the UI's language, not always English).</summary>
+    public required string SearchFilesHint { get; init; }
+
+    /// <summary>The grey hint when asking AI; {0} = the agent's name.</summary>
+    public required string AskAgentHint { get; init; }
+
     /// <summary>Setting: card text left-aligned or centred on the big pill (user 10-07).</summary>
     public required string CardTextLabel { get; init; }
 

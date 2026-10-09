@@ -12,7 +12,8 @@ namespace IsleBar.App.IslandUi;
 /// </summary>
 internal static class SeeThrough
 {
-    public static IntPtr Make(Window window, string name)
+    /// <param name="typing">The input panel (TODO 7.9 H): it takes the keyboard, so it can be activated — everything else as the others.</param>
+    public static IntPtr Make(Window window, string name, bool typing = false)
     {
         if (window.AppWindow.Presenter is OverlappedPresenter presenter)
         {
@@ -28,7 +29,7 @@ internal static class SeeThrough
 
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
         var ex = Unsigned32(GetWindowLong(hwnd, GWL_EXSTYLE));
-        SetWindowLong(hwnd, GWL_EXSTYLE, Signed32(ex | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW));
+        SetWindowLong(hwnd, GWL_EXSTYLE, Signed32(ex | (typing ? 0 : WS_EX_NOACTIVATE) | WS_EX_TOOLWINDOW));
 
         // A plain popup, no frame at all: with the frame styles left on (even without a title bar) a 1 px white system edge showed
         // around the see-through window (user 10-08 screenshot).

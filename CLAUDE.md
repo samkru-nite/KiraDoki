@@ -1,7 +1,8 @@
 # IsleBar 二次开发 — 项目上下文（交接文件）
 
 > 新会话先读本文件和 TODO.md（进度看 TODO 每条的 [x]/[~] 和注记）。源码已通读，地图见下方。
-> **最新交接（10-09 会话，先看这条）**：丙④ 胶囊配色算法提交（`843aba0`，`Core/Ui/PillPalette.cs`，胶囊跟任务栏颜色走）；丙④-③ 用户说做过了；丙④-④ Win2D 许可全文发布前再下（要先问用户）。**甲组 ①⑤ 提交**（AI 应用自己的通知去重、右键"固定/取消固定"）；**甲②③（麦克风 / 新一轮工作中不亮相）原因未查到，加了日志 "debut: …"，用户以后遇到再报**。丙、甲都做完 → **下一步：打第一版标记（问用户），然后第二版 G（小球后台提醒，先出预览）**。提交说明用 Write 工具写文件（PowerShell 的 Out-File 会加 BOM，进到提交标题里）。
+> **最新交接（10-09 晚，先看这条）**：第一版标记 **`v0.2.0`** 已打。**G 改成"固定卡片变色时小图标跳一下"**（已写已提交，用户还没专门试）。**H（新输入框）讨论定稿 + H1a 完成并提交**：从圆圈弹出的输入面板 `IslandUi/InputPanel.cs`（可接收键盘的透明窗口、玻璃/纯色都画在系统背景层、**自己画的光标**、宽 361 以整组胶囊为中心），所有决定和踩过的坑（前台被任务栏抢、误发失去激活、窗口盖住圆圈、光标送不上屏幕、行距 18.5）见 TODO 7.9 第二版 H 条。**下个会话从 H1b 开始**（文件列表搬进面板，步骤写在 TODO H 条"下一步 H1b"）。旧打字代码（大胶囊 `Entry`、`BeginTyping` 等）还在但圆圈已不走它，H1c 删；留一个 CS0649 警告到那时。
+> （以下为更早的交接）**10-09 会话**：丙④ 胶囊配色算法提交（`843aba0`，`Core/Ui/PillPalette.cs`，胶囊跟任务栏颜色走）；丙④-③ 用户说做过了；丙④-④ Win2D 许可全文发布前再下（要先问用户）。**甲组 ①⑤ 提交**（AI 应用自己的通知去重、右键"固定/取消固定"）；**甲②③（麦克风 / 新一轮工作中不亮相）原因未查到，加了日志 "debut: …"，用户以后遇到再报**。丙、甲都做完 → **下一步：打第一版标记（问用户），然后第二版 G（小球后台提醒，先出预览）**。提交说明用 Write 工具写文件（PowerShell 的 Out-File 会加 BOM，进到提交标题里）。
 > （以下为更早的交接）**10-10 深夜**：丙组 ①②③ 提交（`6fec9cb`）；④ 卡片玻璃提交（`2acfca2`）；**"透明模式"开关提交**（风格只留两种：开 = 卡片玻璃，关 = 同样的卡片但不透明；节能模式/系统透明效果关 → 自动不透明，见 TODO 丙④「风格定稿」）。**下个会话：④ 最后一块——胶囊配色算法**（数字和要改的地方都列在 TODO 丙④「还剩」①；两种模式胶囊一样），做完 → 用户试 → 提交；然后②~④小尾巴，再做甲组。
 > （以下为更早的交接）**10-10 晚**：F 全部完成并提交（F3 办法 B `6e68728`/`456ae20`、F4 `03bb756`（顺带删了检查更新和崩溃报告，不再联系原作者）、F5 `ec5c89f` 计时数字硬切）。用户 10-10 又给了一批零碎修改，分成**甲乙丙丁四组**，见 TODO 7.9 F 后面「F 之后的零碎修改」：**丁（问答）已答、乙（大胶囊外观）已做完并提交**（关闭按钮镂空、大胶囊图标不变色、掀起卡片时大胶囊也变暗、变暗时静止/边框去色/按钮失效、悬停分开）。**下个会话做丙（掀起卡片：收回时底边线条宽度对不上、卡片高度加 300 档、计时卡片"取消"改"关闭"、给卡片和大小胶囊加 Windows 系统的云母/亚克力——要先实测透明窗口和嵌在任务栏里能不能用），然后甲（卡片规则：Claude 完成弹两次、麦克风/工作中卡片不亮相、右键"固定进小胶囊"）**。每组做完：构建 → 用户试 → 提交。还没打第一版标记（用户要先做完这些零碎修改）。
 > （以下为更早的交接）> （以下为上一条交接）**10-09 晚**：F2b 已全部提交（最新提交 `d2aa7e0`）。**F3「⋯」列表**动画已定稿并写了代码（办法 A），已作为半成品提交 `cf5698d`。用户试用后发现截图法（办法 A）两个问题：下面的大胶囊每秒闪、计时胶囊显示不全。**Claude 建议改办法 B（拆出可复用的胶囊部件），用户尚未明确答复，新会话先问用户确认**。现状、原因、B 的两步做法、哪些代码保留/删除，全在 TODO 7.9 F 条「10-09 晚 交接」。F3 定稿参数见同处「F3 动画定稿」（预览 https://claude.ai/artifact/GdAWsJVV8UnrzctjQ98TPm 第 3 版，用 Artifact 工具 `action: "read"` 读回源码；本地副本 `.claude/preview/f3-list.html`，`.claude/` 不进 git 但留在硬盘上。在应用的浏览器面板里看：`preview_start` 启动 `preview-d`，打开 `http://localhost:8765/f3-list.html?v=N`）。之后是 F4（删旧消息卡片 `ExpandedNotice.cs`）→ F5（番茄钟数字）。
@@ -34,7 +35,7 @@
 - 用户需求原文档：`C:\Users\Kasumi\Desktop\新建 Microsoft Word 文档.docx`（内容已整理进 TODO.md，另有 2 张截图未看，需要时从 `word/media/` 提取）。
 
 ## 基线
-- 原始源码：构建 0 警告 0 错误，测试 783 个。**10-09 甲组后：0 警告 0 错误，测试 906 个；界面文案 165。****10-10 丙组后：0 警告 0 错误，测试 891 个；界面文案 163（+ 透明模式）。****10-10 乙组后：0 警告 0 错误，测试 890 个；界面文案 163。****10-09 F3（`cf5698d`）：0 警告 0 错误，测试 927 个；界面文案 170。****10-07 第七轮后：0 警告 0 错误，测试 880 个；界面文案 140。****截至 10-04（下载 1.1/1.3 完成后）：构建 0 警告 0 错误，测试 855 个全过；界面文案 116 条。**
+- 原始源码：构建 0 警告 0 错误，测试 783 个。**10-09 甲组后：0 警告 0 错误，测试 906 个；界面文案 165。** **10-09 H1a 后：1 警告（CS0649 `_closedByClickAt`，旧打字代码，H1c 删）0 错误，测试 914 个；界面文案 167。****10-10 丙组后：0 警告 0 错误，测试 891 个；界面文案 163（+ 透明模式）。****10-10 乙组后：0 警告 0 错误，测试 890 个；界面文案 163。****10-09 F3（`cf5698d`）：0 警告 0 错误，测试 927 个；界面文案 170。****10-07 第七轮后：0 警告 0 错误，测试 880 个；界面文案 140。****截至 10-04（下载 1.1/1.3 完成后）：构建 0 警告 0 错误，测试 855 个全过；界面文案 116 条。**
 - git：`07041cf` = 原始源码；`10d87c9`/`86c50fc`/`985850d` 只改了 CLAUDE.md/TODO.md；之后每块功能一个提交。
 - 已完成（10-04）：4.6 消息卡片默认关闭+开关；4.5/3.4 文件搜索整套重做（见 TODO 4.5 注记）；开始菜单遮挡列表；2.2 启动失败报错复制；4.4 浏览器媒体开关 + 媒体选择规则重写（`9d736c1`）。2.1 不是 bug（用户没装命令行版）。
 
@@ -45,7 +46,7 @@ dotnet build src/IsleBar.App -v q -nologo
 dotnet test tests/IsleBar.Core.Tests -v q -nologo
 Start-Process "src\IsleBar.App\bin\Debug\net8.0-windows10.0.26100.0\IsleBar.App.exe"
 ```
-- 加界面文案：`LanguageStrings.cs` 加属性 + `LanguageCatalog.cs` 10 种语言都要加（文件里顺序：en ko ja zh zht fr de it pt es）+ `tests/.../LocalizationTests.cs` 里的文案总数 +N（10-09 甲组后 165）。
+- 加界面文案：`LanguageStrings.cs` 加属性 + `LanguageCatalog.cs` 10 种语言都要加（文件里顺序：en ko ja zh zht fr de it pt es）+ `tests/.../LocalizationTests.cs` 里的文案总数 +N（10-09 H1a 后 167）。
 - 加设置项：`IsleBarSettings`（属性 + `Clone()`）+ `SettingsCodec`（key、读、写）+ `Options/SettingsWindow.cs`。
 
 ## 项目地图（2026-10-04 读源码后补；行号是近似值，以 grep 为准）
@@ -68,7 +69,8 @@ Start-Process "src\IsleBar.App\bin\Debug\net8.0-windows10.0.26100.0\IsleBar.App.
 - **卡片玻璃**（10-10，丙④）：掀起卡片的底 = Windows 实时亚克力，在窗口的系统背景层里画（`Interop/TransparentBackdrop.cs` `StartGlass/MoveGlass`：host backdrop 画笔 → 再模糊 → WinUI 亚克力配方的亮度层/色调层 → 卡片纯色 "Solid" 叠在上面淡出 → 圆角遮罩，效果用 **Win2D**），遮罩每帧跟着卡片走（`LiftWindow.MoveGlass`：拉伸、倾斜、透视的 3D 矩阵）。**WinUI 层的卡片底色有玻璃时始终全透明**——半透明的 WinUI 底色叠在系统玻璃上会合成错误（比两边都亮）。设置"透明模式"关、系统透明效果关、节能模式开（有效电源模式 0/1）时不用玻璃（`IslandUi/Frost.cs`，日志 "lift: glass? …"）。滚动文字的渐隐改成合成层遮罩（`SheetView`，CommunityToolkit OpacityMaskView 做法）。卡片按钮是自己画的 Border。**慢放**：建文件 `%LOCALAPPDATA%\IsleBar\slow` = 卡片动画 ×8（调动画时用，用完删）。
 - **变暗**（10-10）：「⋯」列表打开或卡片掀起时大胶囊变暗（`MainWindow.List.cs` `Dim(to, length, cells)`：列表连小图标一起暗，掀起只暗大胶囊；`DimVeil` 盖在 `GlowRing` 上面），变暗时 `Big.Frozen`（停滚动/均衡器/流动条/表盘指针）、边框去色 `PaintGlowDim`、大胶囊按钮失效 `BigDimmed`。大胶囊和掀起卡片的图标一律普通色（只有小图标橙绿红），`BigLook`/`HasBigLook` 管互换时的交叉淡化。
 - **「⋯」列表（F3，10-10 办法 B）**：窗口 `App/IslandUi/ListWindow.cs`（每张 = 一个真 `PillView`，每 tick `Redraw`），数字 `Core/Ui/ListMotion.cs`，MW 侧 `MainWindow.List.cs`（`PrepareListPill`/`RenderListPill` 画列表胶囊；`OnListTapped` = 互换 + `OpenLift(from:)`，起点图 `TakeListPillShot`；变暗 `DimVeil` + `ApplyCellDim`）。透明窗口公共设置 `IslandUi/SeeThrough.cs`。日志 "list: …"。
-- 其他窗口：搜索结果 `App/Search/ResultsWindow.cs`、长问题编辑 `ComposeWindow.cs`、设置 `App/Options/SettingsWindow.cs`、弹出窗口公用摆放 `Options/PopupPlacement.cs`（⌄ 选项面板 E1 删了）、系统通知横幅 `App/SystemWatch/ToastBanners.cs`。
+- **输入面板（H，10-09）**：`App/IslandUi/InputPanel.cs`（`SeeThrough.Make(typing: true)` = 可接收键盘；点圆圈**松开时**开/关，MW `MainWindow.Panel.cs` `TogglePanel/OpenPanel`，Ctrl+Alt+C 也开；位置/尺寸 `Core/Ui/PanelMotion.cs`；玻璃或纯色都画在 `TransparentBackdrop` 系统背景层（`StartGlass/MoveGlass`、`StartSolid/MoveSolid`）——**WinUI 层底色必须透明，否则输入框的系统光标会冒出来且不闪**；光标自己画 `ShowCaret/CaretRect`（输入框报的位置不含内边距和滚动、高度不可信，行距打开时实测 `Pitch`）；动画结束后 `Clip` 把可点范围裁成面板本身；点外面 `OutsideClick`；面板开着时按在胶囊上只收面板 `PanelTakesPress`，两个胶囊连「⋯」一起变暗 `_panelDims`。日志 "panel: …"）。列表区 `InputPanel.List` 目前是占位字，H1b 放文件列表。
+- 其他窗口：搜索结果 `App/Search/ResultsWindow.cs`（H1b 搬进面板后删）、长问题编辑 `ComposeWindow.cs`、设置 `App/Options/SettingsWindow.cs`、弹出窗口公用摆放 `Options/PopupPlacement.cs`（⌄ 选项面板 E1 删了）、系统通知横幅 `App/SystemWatch/ToastBanners.cs`。
 - 嵌入任务栏：`App/Interop/TaskbarHost.cs`（Attach/Detach，打字时会脱离任务栏；嵌入失败 = 置顶浮动在任务栏上方，`LastError` 记错误码）、`App/Tracking/TaskbarTracker.cs`（后台线程用 UIA 读任务栏布局：开始/搜索/程序按钮 = 图标区，WidgetsButton，TrayNotifyWnd = 托盘）→ `Core/Ui/BarSlot.cs`（按设置 `Position` 最左边/正中间/托盘左边/手动 + `ManualOffset` 算位置，放不下就隐藏；有测试）、`PillRegion.cs`（裁剪成胶囊形）。10-05 起不再跟随/盖住系统搜索框（`SearchBoxTracker`、`NativeSearchBox` 已删）。设置窗口最下面有"诊断"小节（MW `Diagnostics()`）。
 - 主题色 `App/Interop/ThemeColors.cs`、`Core/Ui/ThemePalette.cs`；字体 `Core/Localization/UiFonts.cs`、`App/IslandUi/AppFonts.cs`；多语言文案 `Core/Localization/LanguageCatalog.cs`。
 - 日志：`%LOCALAPPDATA%\IsleBar\logs`（`TaskbarHost.Log`），排查启动失败先看这里。
