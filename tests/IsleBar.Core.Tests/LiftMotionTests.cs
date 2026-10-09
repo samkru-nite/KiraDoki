@@ -14,7 +14,7 @@ public sealed class LiftMotionTests
     public void The_card_is_centred_on_the_big_pill_and_sits_8_above_the_taskbar()
     {
         var pill = new ScreenRect(1000, 1359, 1440, 1423);
-        var lift = LiftMotion.Place(pill, 0, 2560, TaskbarTop, Scale, tall: false);
+        var lift = LiftMotion.Place(pill, 0, 2560, TaskbarTop, Scale, height: LiftMotion.Height);
 
         Assert.Equal(600, lift.Card.Width);
         Assert.Equal(400, lift.Card.Height);
@@ -23,23 +23,36 @@ public sealed class LiftMotionTests
     }
 
     [Fact]
+    public void An_adaptive_card_takes_the_lowest_height_that_holds_its_middle()
+    {
+        // no buttons, no progress: the middle is the height − 2 × 16 − 16 − 12 = 140 / 240 / 340
+        var sheet = new CardSheet("x", null, SheetTone.Plain, null, SheetLayout.Text, "t", [], null, null, null, null, [], Adaptive: true);
+        Assert.Equal(200, LiftMotion.Fit(sheet, 140));
+        Assert.Equal(300, LiftMotion.Fit(sheet, 141));
+        Assert.Equal(300, LiftMotion.Fit(sheet, 240));
+        Assert.Equal(400, LiftMotion.Fit(sheet, 241));
+        Assert.Equal(400, LiftMotion.Fit(sheet, 999));   // scrolls
+        Assert.Equal(200, LiftMotion.Fit(sheet with { Adaptive = false }, 999));
+    }
+
+    [Fact]
     public void The_window_reaches_past_the_small_pill_so_the_card_can_go_down_into_a_task_cell()
     {
         // big pill 1000–1440, small pill to its right up to 1800: the window spans it plus a cell and the overshoot (24 + 16 dip)
         var pill = new ScreenRect(1000, 1359, 1440, 1423);
         var bar = new ScreenRect(1000, 1345, 1800, 1437);
-        var lift = LiftMotion.Place(pill, 0, 2560, TaskbarTop, Scale, tall: false, bar);
+        var lift = LiftMotion.Place(pill, 0, 2560, TaskbarTop, Scale, height: LiftMotion.Height, bar);
 
         Assert.Equal(1800 + 80, lift.Window.Right);
         Assert.Equal(lift.Card.Left - 48, lift.Window.Left);   // on the left the card (300 on a 220 pill) and its room reach further
         Assert.Equal(1437, lift.Window.Bottom);
-        Assert.Equal(LiftMotion.Place(pill, 0, 2560, TaskbarTop, Scale, tall: false).Card, lift.Card);   // the card itself doesn't move
+        Assert.Equal(LiftMotion.Place(pill, 0, 2560, TaskbarTop, Scale, height: LiftMotion.Height).Card, lift.Card);   // the card itself doesn't move
     }
 
     [Fact]
     public void A_long_card_is_3_by_4()
     {
-        var lift = LiftMotion.Place(new ScreenRect(1000, 1359, 1440, 1423), 0, 2560, TaskbarTop, Scale, tall: true);
+        var lift = LiftMotion.Place(new ScreenRect(1000, 1359, 1440, 1423), 0, 2560, TaskbarTop, Scale, height: LiftMotion.TallHeight);
         Assert.Equal(lift.Card.Width * 4 / 3, lift.Card.Height);
     }
 
@@ -47,10 +60,10 @@ public sealed class LiftMotionTests
     public void Near_the_screen_edge_it_is_pushed_back_to_12()
     {
         // the big pill at x = 12 (small pill on its right): the card would hang 40 off the left → it lines up at 12
-        var left = LiftMotion.Place(new ScreenRect(24, 1359, 464, 1423), 0, 2560, TaskbarTop, Scale, tall: false);
+        var left = LiftMotion.Place(new ScreenRect(24, 1359, 464, 1423), 0, 2560, TaskbarTop, Scale, height: LiftMotion.Height);
         Assert.Equal(24, left.Card.Left);
 
-        var right = LiftMotion.Place(new ScreenRect(2400, 1359, 2840, 1423), 0, 2560, TaskbarTop, Scale, tall: false);
+        var right = LiftMotion.Place(new ScreenRect(2400, 1359, 2840, 1423), 0, 2560, TaskbarTop, Scale, height: LiftMotion.Height);
         Assert.Equal(2560 - 24, right.Card.Right);
     }
 
@@ -58,7 +71,7 @@ public sealed class LiftMotionTests
     public void The_window_holds_both_the_card_and_the_big_pill()
     {
         var pill = new ScreenRect(24, 1359, 464, 1423);
-        var lift = LiftMotion.Place(pill, 0, 2560, TaskbarTop, Scale, tall: false);
+        var lift = LiftMotion.Place(pill, 0, 2560, TaskbarTop, Scale, height: LiftMotion.Height);
 
         Assert.True(lift.Window.Left <= lift.Card.Left - 48 && lift.Window.Left <= pill.Left);   // room for the bounce
         Assert.True(lift.Window.Right >= lift.Card.Right + 48 && lift.Window.Right >= pill.Right);

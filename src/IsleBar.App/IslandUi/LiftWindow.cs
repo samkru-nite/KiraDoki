@@ -59,6 +59,7 @@ internal sealed class LiftWindow : Window
     private readonly Canvas _stage = new();    // the sheet: frame + content, tilting around its bottom edge
     private readonly CompositeTransform3D _tilt = new();
     private readonly SmoothBorder _frame = new() { EdgeWidth = 1 };   // smooth corners, like the pills (user 10-08)
+    private readonly ScaleTransform _frameStretch = new();
     private readonly Image _shot = new() { Stretch = Stretch.Fill, IsHitTestVisible = false };
     private readonly Canvas _content = new();
     private readonly RectangleGeometry _contentClip = new();
@@ -93,11 +94,11 @@ internal sealed class LiftWindow : Window
     /// <summary>A button on the card was clicked.</summary>
     public Action<SheetAction>? Act { get; set; }
 
-    /// <summary>The card's inside (F2), and whether it went 3:4.</summary>
+    /// <summary>The card's inside (F2), and its height (200 / 300 / 400, <see cref="LiftMotion.Fit"/>).</summary>
     private SheetView? _view;
-    private bool _tall;
+    private double _height = LiftMotion.Height;
 
-    /// <summary>Growing to 3:4 while open (more came in; it never shrinks back while open — user 10-08): from where, since when.</summary>
+    /// <summary>Growing a step taller while open (more came in; it never shrinks back while open — user 10-08): from where, since when.</summary>
     private ScreenRect? _growFrom;
     private readonly Stopwatch _growClock = new();
 
@@ -122,6 +123,7 @@ internal sealed class LiftWindow : Window
 
         _frame.Fill = _fill;
         _frame.Edge = _edge;
+        _frame.RenderTransform = _frameStretch;
         _content.Clip = _contentClip;
         _stage.Children.Add(_frame);
         _stage.Children.Add(_content);
@@ -148,12 +150,12 @@ internal sealed class LiftWindow : Window
         _firstFrameChecked = false;
         _growFrom = null;
 
-        // the card's inside first: an adaptive card is 3:2 when its middle fits, else 3:4 (user 10-08)
+        // the card's inside first: an adaptive card takes the lowest height its middle fits in (200 / 300 / 400, user 10-10)
         BuildView(request.Sheet);
-        _tall = request.Sheet.Adaptive && _view!.ContentHeight() > CardSheets.MiddleHeight(request.Sheet, LiftMotion.Height) + 0.5;
-        _layout = LiftMotion.Place(request.Pill, request.ScreenLeft, request.ScreenRight, request.TaskbarTop, DpiSetup.Scale, _tall, request.Bar,
+        _height = LiftMotion.Fit(request.Sheet, _view!.ContentHeight());
+        _layout = LiftMotion.Place(request.Pill, request.ScreenLeft, request.ScreenRight, request.TaskbarTop, DpiSetup.Scale, _height, request.Bar,
             reserveTall: request.Sheet.Adaptive, from: request.From);
-        _view!.SetSize(LiftMotion.Width, _tall ? LiftMotion.TallHeight : LiftMotion.Height);
+        _view!.SetSize(LiftMotion.Width, _height);
         var win = _layout.Window;
 
         // A picture taken ahead (when the mouse came onto the pill) — waiting for one here held the card back a beat (user 10-08).
@@ -183,7 +185,7 @@ internal sealed class LiftWindow : Window
         SetWindowPos(_hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         Start();
         _outside.Arm();
-        TaskbarHost.Log($"lift: open {request.Style} {request.Key} {(_tall ? "3:4" : "3:2")}{(request.Sheet.Adaptive ? " (adaptive)" : string.Empty)} card={_layout.Card.Left},{_layout.Card.Top} {_layout.Card.Width}x{_layout.Card.Height} window={win.Left},{win.Top} {win.Width}x{win.Height} pill={request.Pill.Left},{request.Pill.Top} {request.Pill.Width}x{request.Pill.Height}");
+        TaskbarHost.Log($"lift: open {request.Style} {request.Key} {_height}{(request.Sheet.Adaptive ? " (adaptive)" : string.Empty)} card={_layout.Card.Left},{_layout.Card.Top} {_layout.Card.Width}x{_layout.Card.Height} window={win.Left},{win.Top} {win.Width}x{win.Height} pill={request.Pill.Left},{request.Pill.Top} {request.Pill.Width}x{request.Pill.Height}");
     }
 
     /// <summary>
@@ -414,10 +416,16 @@ internal sealed class LiftWindow : Window
         // then pops up as the window goes)
         _stage.Opacity = following ? LiftMotion.Window(q, 0, LiftMotion.FollowFade) : 1;
 
+        // The frame is drawn at its upright height and stretched by 1/cos as a whole: leaning, its edge and corners then look as they
+        // do upright — stretching only the shape left the top and bottom edges 0.87 thick and the corners squashed (user 10-10: the
+        // card's bottom line didn't match the pill's as it went back in).
+        var upright = box.Height / stretch;
         Canvas.SetLeft(_frame, box.X);
-        Canvas.SetTop(_frame, box.Y);
-        _frame.Radius = Math.Clamp(box.Radius, 0, Math.Max(0, Math.Min(box.Width, box.Height)) / 2);
-        _frame.SetSize(Math.Max(0, box.Width), Math.Max(0, box.Height));   // the shape in this frame, not after layout
+        Canvas.SetTop(_frame, bottom - upright);
+        _frame.Radius = Math.Clamp(box.Radius, 0, Math.Max(0, Math.Min(box.Width, upright)) / 2);
+        _frame.SetSize(Math.Max(0, box.Width), Math.Max(0, upright));   // the shape in this frame, not after layout
+        _frameStretch.CenterY = upright;
+        _frameStretch.ScaleY = stretch;
         _fill.Color = Mix(r.PillColor, cardColour, turn);
         if (!_closing && r.FromGlow is { } glow && r.Style == LiftStyle.Morph)
         {
@@ -427,8 +435,9 @@ internal sealed class LiftWindow : Window
         }
         else
         {
+            // from the pill's own faint edge to the card's (it faded from nothing: landing, the card had no edge and the pill's popped in)
             _frame.EdgeWidth = 1;
-            _edge.Color = Color.FromArgb((byte)(edgeColour.A * turn), edgeColour.R, edgeColour.G, edgeColour.B);
+            _edge.Color = Mix(PillEdgeOn(r.PillColor), edgeColour, turn);
         }
 
         Canvas.SetLeft(_shot, pill.X);
@@ -520,7 +529,7 @@ internal sealed class LiftWindow : Window
 
     /// <summary>
     /// The card's words of the moment (each tick while it's up): changed in place when only the moving parts differ, built again
-    /// otherwise. An adaptive card whose middle no longer fits grows to 3:4 — once; it never shrinks back while open (user 10-08).
+    /// otherwise. An adaptive card whose middle no longer fits grows to the next height that holds it (300 / 400); it never shrinks back while open (user 10-08).
     /// </summary>
     public void Refresh(CardSheet sheet, UIElement? icon, ImageSource? cover)
     {
@@ -553,25 +562,25 @@ internal sealed class LiftWindow : Window
         {
             TaskbarHost.Log($"lift: rebuild {r.Key} (its layout changed)");
             BuildView(sheet);
-            _view!.SetSize(LiftMotion.Width, _tall ? LiftMotion.TallHeight : LiftMotion.Height);
+            _view!.SetSize(LiftMotion.Width, _height);
         }
 
-        if (_tall || _growFrom is not null || !sheet.Adaptive || _view!.ContentHeight() <= CardSheets.MiddleHeight(sheet, LiftMotion.Height) + 0.5)
+        var fit = LiftMotion.Fit(sheet, _view!.ContentHeight());
+        if (fit <= _height || _growFrom is not null)
         {
-            return;
+            return;   // only grows while open (user 10-08)
         }
 
-        _tall = true;
-        var grown = LiftMotion.Place(r.Pill, r.ScreenLeft, r.ScreenRight, r.TaskbarTop, DpiSetup.Scale, true, r.Bar, reserveTall: true, from: r.From);
+        var grown = LiftMotion.Place(r.Pill, r.ScreenLeft, r.ScreenRight, r.TaskbarTop, DpiSetup.Scale, fit, r.Bar, reserveTall: true, from: r.From);
         if (grown.Window != lay.Window)
         {
             TaskbarHost.Log("lift: grow skipped, the window would move");
-            _tall = false;
             return;
         }
 
-        TaskbarHost.Log($"lift: grow {r.Key} to 3:4");
-        _view.SetSize(LiftMotion.Width, LiftMotion.TallHeight);
+        TaskbarHost.Log($"lift: grow {r.Key} {_height} to {fit}");
+        _height = fit;
+        _view.SetSize(LiftMotion.Width, fit);
         _growFrom = lay.Card;
         _layout = grown;
         SetWindowRgn(_hwnd, IntPtr.Zero, redraw: true);
@@ -604,6 +613,17 @@ internal sealed class LiftWindow : Window
     public static Color CardColor(bool dark) => dark ? Color.FromArgb(255, 0x2C, 0x2C, 0x2C) : Color.FromArgb(255, 0xF9, 0xF9, 0xF9);
 
     internal static Color EdgeColor(bool dark) => dark ? Color.FromArgb(255, 0x3C, 0x3C, 0x3C) : Color.FromArgb(255, 0xE0, 0xE0, 0xE0);
+
+    /// <summary>The pills' faint edge line (like the real search box border), see-through over a pill of colour <paramref name="pill"/>.</summary>
+    internal static Color PillEdge(Color pill)
+        => (pill.R * 0.3) + (pill.G * 0.59) + (pill.B * 0.11) > 128 ? Color.FromArgb(34, 0, 0, 40) : Color.FromArgb(30, 255, 255, 255);
+
+    /// <summary>The same line as it looks on the pill, solid — what the card's edge turns from / into.</summary>
+    private static Color PillEdgeOn(Color pill)
+    {
+        var e = PillEdge(pill);
+        return Mix(pill, Color.FromArgb(255, e.R, e.G, e.B), e.A / 255.0);
+    }
 
     internal static Color Mix(Color a, Color b, double t) => Color.FromArgb(
         (byte)Math.Round(a.A + ((b.A - a.A) * t)),

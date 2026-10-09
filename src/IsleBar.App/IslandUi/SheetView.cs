@@ -101,7 +101,7 @@ internal sealed class SheetView
         }
     }
 
-    /// <summary>How high the middle's contents are at the card's width (dip) — for choosing 3:2 or 3:4.</summary>
+    /// <summary>How high the middle's contents are at the card's width (dip) — for choosing the card's height (200 / 300 / 400).</summary>
     public double ContentHeight()
     {
         var inner = _scroll?.Content as FrameworkElement ?? _middle;

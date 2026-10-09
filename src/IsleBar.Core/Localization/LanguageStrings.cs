@@ -354,7 +354,6 @@ public sealed class LanguageStrings
     public required string CardHide { get; init; }
     public required string CardPause { get; init; }
     public required string CardResume { get; init; }
-    public required string CardCancel { get; init; }
     public required string CardAgain { get; init; }
     public required string CardOpenFolder { get; init; }
     public required string CardPrivacy { get; init; }

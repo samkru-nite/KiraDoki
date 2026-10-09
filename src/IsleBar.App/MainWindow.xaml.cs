@@ -2078,10 +2078,7 @@ public sealed partial class MainWindow : Window
     /// <summary>Thin line around the pill edge (like the real search box border) — a faint line matched to background brightness.</summary>
     private void PaintEdge()
     {
-        var light = PillSurface.Fill is SolidColorBrush fill && ((fill.Color.R * 0.3) + (fill.Color.G * 0.59) + (fill.Color.B * 0.11)) > 128;
-        PillSurface.Edge = BrushOf(light
-            ? Windows.UI.Color.FromArgb(34, 0, 0, 40)
-            : Windows.UI.Color.FromArgb(30, 255, 255, 255));
+        PillSurface.Edge = BrushOf(LiftWindow.PillEdge(PillSurface.Fill is SolidColorBrush fill ? fill.Color : default));
         SmallSurface.Edge = PillSurface.Edge;
     }
 

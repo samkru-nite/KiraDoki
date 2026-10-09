@@ -186,7 +186,7 @@ public static class CardSheets
 
         IReadOnlyList<SheetButton> buttons = over
             ? [new(SheetAction.TimerAgain, text.CardAgain), new(SheetAction.Close, text.CloseCard)]
-            : [s.IsPaused ? new(SheetAction.TimerResume, text.CardResume) : new(SheetAction.TimerPause, text.CardPause), new(SheetAction.TimerCancel, text.CardCancel)];
+            : [s.IsPaused ? new(SheetAction.TimerResume, text.CardResume) : new(SheetAction.TimerPause, text.CardPause), new(SheetAction.TimerCancel, text.CloseCard)];
 
         return new CardSheet(
             string.IsNullOrWhiteSpace(s.Name) ? text.Timer : s.Name,
