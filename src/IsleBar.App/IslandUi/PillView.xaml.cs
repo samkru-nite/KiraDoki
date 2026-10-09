@@ -178,6 +178,33 @@ public sealed partial class PillView : UserControl
         ShiftIcon(0);   // typing: the icon is the agent's mark, back at its place
     }
 
+    /// <summary>
+    /// A pill in the ⋯ list: the list draws the shape (it grows out of ⋯) and the border, so this one's own surface, glass, veil and
+    /// border don't show — the surface keeps its colour for the scrolling title's end fades. The close button as at rest.
+    /// </summary>
+    internal void UseAsListed(Windows.UI.Color fill, Windows.UI.Color chip, double chipRadius, string closeText, Windows.UI.Color closeInk)
+    {
+        PillSurface.Fill = BrushOf(fill);
+        PillSurface.Opacity = 0;
+        GlassEdge.Visibility = Visibility.Collapsed;
+        DimVeil.Visibility = Visibility.Collapsed;
+        GlowRing.Visibility = Visibility.Collapsed;
+        CloseChip.Fill = BrushOf(chip);
+        CloseChip.Radius = chipRadius;
+        CloseLabel.Text = closeText;
+        CloseLabel.Foreground = BrushOf(closeInk);
+    }
+
+    /// <summary>The icon slot as a card has it (not the agent's mark of typing): the font icon, the logos hidden until the card asks.</summary>
+    internal void ShowCardLead()
+    {
+        ClaudeGlyphImage.Source = Host.ClaudeLogo;
+        CodexGlyph.Source = Host.CodexLogo;
+        ClaudeGlyphImage.Visibility = Visibility.Collapsed;
+        CodexGlyph.Visibility = Visibility.Collapsed;
+        LeadIcon.Visibility = Visibility.Visible;
+    }
+
     /// <summary>The card this pill last drew.</summary>
     private Card? _card;
 

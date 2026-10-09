@@ -9,16 +9,17 @@ using static IsleBar.App.Interop.NativeMethods;
 
 namespace IsleBar.App.IslandUi;
 
-/// <summary>One card of the ⋯ list: the big pill's look of it (a snapshot of the pill's content), its border colour if pinned, and
-/// its flowing progress bar if it has one (a snapshot would freeze it: the list draws it live).</summary>
-internal sealed record ListEntry(string Key, ImageSource Shot, Color? Glow, ListFlow? Flow);
-
-/// <summary>A flowing progress bar as the big pill draws it: its track (dip, inside the pill), colour and one pass's time.</summary>
-internal sealed record ListFlow(double X, double Y, double Width, Color Color, TimeSpan Period);
-
-/// <summary>What the bar hands over to open the ⋯ list (screen pixels, colours of the moment). Entry 0 is the big pill's card.</summary>
+/// <summary>What the bar hands over to open the ⋯ list (screen pixels, colours of the moment). Key 0 is the big pill's card.</summary>
+/// <param name="Host">What each list pill draws with (the bar).</param>
+/// <param name="Prepare">Readies a new list pill (its colours as at rest).</param>
+/// <param name="Render">Draws a card on its list pill — at opening and on every tick while the list is up.</param>
+/// <param name="Glow">A card's border colour (null = none).</param>
 internal sealed record ListRequest(
-    IReadOnlyList<ListEntry> Entries,
+    IReadOnlyList<string> Keys,
+    IPillHost Host,
+    Action<PillView> Prepare,
+    Action<string, PillView> Render,
+    Func<string, Color?> Glow,
     ScreenRect Pill,
     ScreenRect Dots,
     double PillRadius,
@@ -33,7 +34,8 @@ internal sealed record ListRequest(
     string OnBigLabel);
 
 /// <summary>
-/// The ⋯ list (TODO 7.9 F3, user 10-09): every card drawn as the big pill draws it, stacked over the big pill, each flying out of
+/// The ⋯ list (TODO 7.9 F3, user 10-09): every card drawn by a pill of its own (<see cref="PillView"/>, the big pill's very
+/// drawing, live: timers tick, bars flow — plan B, 10-10), stacked over the big pill, each flying out of
 /// the ⋯ circle and growing into its pill on the way (nearest first, a stagger apart, bowing up). A tap on one hands it to the bar,
 /// which lifts its card out of that very pill (<see cref="LiftWindow"/>, with <see cref="LiftRequest.From"/>); the others fade.
 /// Anything else closes it: they fly back into ⋯. See-through, never focused, topmost, like the lifted card. Numbers: <see cref="ListMotion"/>.
@@ -78,18 +80,21 @@ internal sealed class ListWindow : Window
     /// <summary>Up and not on its way out.</summary>
     public bool IsOpen => _phase is Phase.Opening or Phase.Open;
 
-    /// <summary>Up and still: a pill's look may be redrawn now without costing the animation a frame.</summary>
-    public bool IsSettled => _phase == Phase.Open && !_animating;
+    /// <summary>The mouse came onto a list pill (its card, its pill): a click nearly always follows.</summary>
+    public Action<string, PillView>? Hovered { get; set; }
 
-    /// <summary>The cards listed.</summary>
-    public IEnumerable<string> Keys => _items.Select(i => i.Entry.Key);
-
-    /// <summary>A card's look changed (a timer's second, progress): its pill shows the new one, in place.</summary>
-    public void Refresh(ListEntry entry)
+    /// <summary>Each tick while up: every pill draws its card as it is now, and its border.</summary>
+    public void Redraw()
     {
-        if (_items.FirstOrDefault(i => i.Entry.Key == entry.Key) is { } item)
+        if (_request is not { } r)
         {
-            item.Show(entry);
+            return;
+        }
+
+        foreach (var item in _items)
+        {
+            r.Render(item.Key, item.Pill);
+            item.SetGlow(r.Glow(item.Key));
         }
     }
 
@@ -106,7 +111,7 @@ internal sealed class ListWindow : Window
         _request = request;
         _taken = null;
         var s = DpiSetup.Scale;
-        var n = request.Entries.Count;
+        var n = request.Keys.Count;
 
         // the window: the stack, the ⋯ circle and the big pill, with room for the bounce and the arc
         var room = PillGeometry.Px(LiftMotion.Room, s);
@@ -129,11 +134,19 @@ internal sealed class ListWindow : Window
         var edge = LiftWindow.EdgeColor(request.Dark);
         for (var i = 0; i < n; i++)
         {
-            var item = new Item(request.Entries[i], ListMotion.Slot(i, pill, taskbarTop), request.PillColor, edge, pill.Width, pill.Height);
+            var item = new Item(request.Keys[i], ListMotion.Slot(i, pill, taskbarTop), request.PillColor, edge, pill.Width, pill.Height, request.Host);
+            request.Prepare(item.Pill);
             item.Box.Tapped += (_, _) => OnTapped(item);
+            item.Box.PointerEntered += (_, _) => Hovered?.Invoke(item.Key, item.Pill);
             _items.Add(item);
             _root.Children.Add(item.Box);
         }
+
+        // drawn twice, as the big pill is after a change: the second time the text fits its column's real width (a close button
+        // narrows it), measured by the layout in between
+        Redraw();
+        _root.UpdateLayout();
+        Redraw();
 
         BuildLabel(request);
         _root.Width = _window.Width / s;
@@ -147,7 +160,7 @@ internal sealed class ListWindow : Window
         SeeThrough.OnTop(_hwnd);
         Start();
         _outside.Arm();
-        TaskbarHost.Log($"list: open {n} ({string.Join(", ", request.Entries.Select(e => e.Key))}) stagger {request.StaggerMs} window={_window.Left},{_window.Top} {_window.Width}x{_window.Height}");
+        TaskbarHost.Log($"list: open {n} ({string.Join(", ", request.Keys)}) stagger {request.StaggerMs} window={_window.Left},{_window.Top} {_window.Width}x{_window.Height}");
     }
 
     /// <summary>Back into ⋯ (nothing happens when it's not up).</summary>
@@ -182,11 +195,11 @@ internal sealed class ListWindow : Window
 
         // the lifted card takes this pill's place from the next frame on: it goes now, the others fade
         _phase = Phase.Taking;
-        _taken = item.Entry.Key;
+        _taken = item.Key;
         _outside.Disarm();
-        TaskbarHost.Log($"list: tap {item.Entry.Key} at {rect.Left},{rect.Top}");
+        TaskbarHost.Log($"list: tap {item.Key} at {rect.Left},{rect.Top}");
         Start();
-        Tapped?.Invoke(item.Entry.Key, rect);
+        Tapped?.Invoke(item.Key, rect);
     }
 
     private void OnPress(int x, int y)
@@ -322,7 +335,7 @@ internal sealed class ListWindow : Window
                     break;
                 case Phase.Taking:
                     // the tapped one stays until the lifted card is surely drawn over it (a frame or two), then the card is it
-                    item.Box.Opacity = item.Entry.Key == _taken
+                    item.Box.Opacity = item.Key == _taken
                         ? (elapsed < ListMotion.Handover ? 1 : 0)
                         : 1 - LiftMotion.Window(t, 0, ListMotion.OthersOut);
                     break;
@@ -363,76 +376,40 @@ internal sealed class ListWindow : Window
         _root.Children.Add(_label);
     }
 
-    /// <summary>One pill of the list: the pill's surface, the card's look (snapshot) on it, its border colour over all.</summary>
+    /// <summary>One pill of the list: the pill's surface, a <see cref="PillView"/> drawing the card on it, its border colour over all.</summary>
     private sealed class Item
     {
         private readonly SmoothBorder _back;
         private readonly SmoothBorder _ring = new() { EdgeWidth = 2, IsHitTestVisible = false };
         private readonly SolidColorBrush _ringBrush = new();
-        private readonly Image _shot;
         private readonly Canvas _inside = new() { IsHitTestVisible = false };
         private readonly RectangleGeometry _clip = new();
-        private readonly Canvas _flowTrack = new() { Height = 2, IsHitTestVisible = false };
-        private readonly Border _flowPiece = new() { Height = 2, CornerRadius = new CornerRadius(1) };
-        private ListFlow? _flow;
 
-        public Item(ListEntry entry, MotionBox slot, Color pill, Color edge, double width, double height)
+        public Item(string key, MotionBox slot, Color pill, Color edge, double width, double height, IPillHost host)
         {
-            Entry = entry;
+            Key = key;
             Slot = slot;
             _back = new SmoothBorder { Fill = new SolidColorBrush(pill), Edge = new SolidColorBrush(edge), EdgeWidth = 1, IsHitTestVisible = false };
-            _shot = new Image { Width = width, Height = height, Stretch = Stretch.Fill, IsHitTestVisible = false };
+            Pill = new PillView { Host = host, Width = width, Height = height, IsHitTestVisible = false };
             _ring.Edge = _ringBrush;
-            _flowTrack.Children.Add(_flowPiece);
-            _inside.Children.Add(_shot);
-            _inside.Children.Add(_flowTrack);
+            _ring.Visibility = Visibility.Collapsed;
+            _inside.Children.Add(Pill);
             _inside.Clip = _clip;
             Box.Children.Add(_back);
             Box.Children.Add(_inside);
             Box.Children.Add(_ring);
-            Show(entry);
         }
 
-        public ListEntry Entry { get; private set; }
+        public string Key { get; }
 
-        /// <summary>Shows this look of the card: its snapshot, its border colour, its flowing bar (started, moved or stopped).</summary>
-        public void Show(ListEntry entry)
+        /// <summary>Draws the card (the bar renders it).</summary>
+        public PillView Pill { get; }
+
+        /// <summary>The card's border colour, or none.</summary>
+        public void SetGlow(Color? glow)
         {
-            Entry = entry;
-            _shot.Source = entry.Shot;
-            _ring.Visibility = entry.Glow is null ? Visibility.Collapsed : Visibility.Visible;
-            _ringBrush.Color = entry.Glow ?? Color.FromArgb(0, 0, 0, 0);
-            if (entry.Flow == _flow)
-            {
-                return;
-            }
-
-            _flow = entry.Flow;
-            var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(_flowPiece);
-            if (entry.Flow is not { } flow)
-            {
-                _flowTrack.Visibility = Visibility.Collapsed;
-                visual.StopAnimation("Translation.X");
-                return;
-            }
-
-            // as the big pill's (MainWindow.StartFlow): a quarter-length piece sliding along the track forever, on the compositor
-            var piece = flow.Width / 4;
-            Canvas.SetLeft(_flowTrack, flow.X);
-            Canvas.SetTop(_flowTrack, flow.Y);
-            _flowTrack.Width = flow.Width;
-            _flowTrack.Clip = new RectangleGeometry { Rect = new Windows.Foundation.Rect(0, 0, flow.Width, 2) };
-            _flowTrack.Visibility = Visibility.Visible;
-            _flowPiece.Width = piece;
-            _flowPiece.Background = new SolidColorBrush(flow.Color);
-            Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.SetIsTranslationEnabled(_flowPiece, true);
-            var linear = visual.Compositor.CreateLinearEasingFunction();
-            var slide = visual.Compositor.CreateScalarKeyFrameAnimation();
-            slide.InsertKeyFrame(0f, (float)-piece, linear);
-            slide.InsertKeyFrame(1f, (float)flow.Width, linear);
-            slide.Duration = flow.Period;
-            slide.IterationBehavior = Microsoft.UI.Composition.AnimationIterationBehavior.Forever;
-            visual.StartAnimation("Translation.X", slide);
+            _ring.Visibility = glow is null ? Visibility.Collapsed : Visibility.Visible;
+            _ringBrush.Color = glow ?? Color.FromArgb(0, 0, 0, 0);
         }
 
         public MotionBox Slot { get; }

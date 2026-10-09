@@ -1164,7 +1164,6 @@ public sealed partial class MainWindow : Window
         });
         if (_dotsOn)
         {
-            more.PointerEntered += (_, _) => TakeListShotsAhead();   // a click nearly always follows: draw the list's pills now (F3)
             TaskCells.Children.Insert(left ? 0 : TaskCells.Children.Count, more);
         }
 
