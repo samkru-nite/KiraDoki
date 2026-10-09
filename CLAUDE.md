@@ -26,6 +26,7 @@
 - 构建前必须先关掉正在运行的开发版（它锁住 dll，否则 MSB3027）；只关本项目路径下的进程，不动用户装的正式版。
 - git 没有配置用户名：提交时用 `git -c user.name="Kasumi" -c user.email="188979868+samkru-nite@users.noreply.github.com" commit ...`。没有 remote（源码是 zip 下载的，不是 clone）。**提交说明里有双引号时 PowerShell 5.1 会把参数拆坏**：把说明写进 scratchpad 的文本文件，用 `commit -F 文件`。
 - 日志：`%LOCALAPPDATA%\IsleBar\logs\islebar.log`（文件搜索 >30ms 会记 "file search: ..."）。
+- **改文件的 Python 脚本写进 scratchpad 的 .py 文件再跑**（`python -I 文件`）：在 PowerShell 里用 `python -c "…"` 带中文会乱码、反引号会被吃掉（10-10 踩过，TODO 里写进了乱码）；bash 的 heredoc 里脚本太长有时也会解析失败。
 - 用 Python 脚本批量改文件时注意：中文路径/反斜杠在 Python 字符串里会出转义错误，失败时改用 Edit 工具；C# 普通字符串里的一个反斜杠要写成两个（`"C:\\Recovery"`），或用 `@"..."`。
 - 项目根目录：`C:\Users\Kasumi\Desktop\islebar-0.1.0 (2)\islebar-0.1.0`（比压缩包外层多一层）。
 - 用户需求原文档：`C:\Users\Kasumi\Desktop\新建 Microsoft Word 文档.docx`（内容已整理进 TODO.md，另有 2 张截图未看，需要时从 `word/media/` 提取）。
