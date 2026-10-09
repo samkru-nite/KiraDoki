@@ -174,7 +174,7 @@ public sealed partial class MainWindow
                 break;
             case SheetAction.TimerAgain when state.Total is > 0:
                 _lift?.Collapse();
-                _feed.ReplaceTimer(TimerParser.ToActivity(TimeSpan.FromSeconds(state.Total.Value), DateTimeOffset.UtcNow, state.Name));
+                _feed.RestartTimer(state, TimerParser.ToActivity(TimeSpan.FromSeconds(state.Total.Value), DateTimeOffset.UtcNow, state.Name));
                 break;
             case SheetAction.MediaPrevious:
                 _ = _feed.Media.SendAsync(MediaAction.Previous, card.Key);
@@ -230,7 +230,7 @@ public sealed partial class MainWindow
             return;
         }
 
-        if (_shownCard?.Key != key || _typing)
+        if (_shownCard?.Key != key)
         {
             _lift.Collapse();
             return;
@@ -330,7 +330,7 @@ public sealed partial class MainWindow
     /// </summary>
     private bool OnTaskCell(int x, int y)
     {
-        if (_typing || !NativeMethods.GetWindowRect(_taskbar.OuterWindow, out var bar))
+        if (!NativeMethods.GetWindowRect(_taskbar.OuterWindow, out var bar))
         {
             return false;
         }

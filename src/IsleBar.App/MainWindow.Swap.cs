@@ -37,7 +37,7 @@ public sealed partial class MainWindow
     private bool DotsDrawn => TaskCells.Children.OfType<Grid>().Any(c => c.Tag as string == DotsTag);
 
     /// <summary>The card the big pill should draw for the state decided now.</summary>
-    private Card? WantedBig => !_typing && _compose is null && !_dropHover && _snapshot.IsActive ? _shownCard : null;
+    private Card? WantedBig => !_dropHover && _snapshot.IsActive ? _shownCard : null;
 
     /// <summary>The scene to draw differs from the one drawn: another card on the big pill, or other cells.</summary>
     private bool SceneChanged()
@@ -73,7 +73,7 @@ public sealed partial class MainWindow
             return;
         }
 
-        if (!SceneChanged() || _typing || _compose is not null || _dropHover || !_placement.Visible || !_taskbar.IsAttached)
+        if (!SceneChanged() || _dropHover || !_placement.Visible || !_taskbar.IsAttached)
         {
             RenderTaskCells();
             RenderIsland();

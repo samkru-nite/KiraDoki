@@ -88,7 +88,7 @@ public sealed partial class MainWindow
             return;
         }
 
-        if (_flying || _typing || BigPillOnScreen() is not { } pill || DotsOnScreen() is not { } dots)
+        if (_flying || BigPillOnScreen() is not { } pill || DotsOnScreen() is not { } dots)
         {
             return;
         }
@@ -249,8 +249,8 @@ public sealed partial class MainWindow
     {
         foreach (var cell in TaskCells.Children.OfType<FrameworkElement>())
         {
-            // ⋯ stays lit under its own list (it puts the list away); under the input panel it's as grey as the rest (user 10-09)
-            cell.Opacity = cell.Tag as string == DotsTag && !_panelDims ? 1 : _cellDim;
+            // ⋯ stays lit under its own list (it puts the list away)
+            cell.Opacity = cell.Tag as string == DotsTag ? 1 : _cellDim;
         }
     }
 
@@ -296,10 +296,10 @@ public sealed partial class MainWindow
         return In(PillBody) || In(SmallPill);
     }
 
-    /// <summary>Each tick: typing, or no card on the big pill any more, puts the list away.</summary>
+    /// <summary>Each tick: no card on the big pill any more puts the list away.</summary>
     private void KeepList()
     {
-        if (_list?.IsOpen == true && (_typing || _shownCard is null))
+        if (_list?.IsOpen == true && _shownCard is null)
         {
             CloseList();
             return;

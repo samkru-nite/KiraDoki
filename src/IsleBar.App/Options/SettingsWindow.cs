@@ -3,7 +3,6 @@ using IsleBar.Core.Configuration;
 using IsleBar.Core.Ui;
 using IsleBar.Core.Launch;
 using IsleBar.Core.Localization;
-using IsleBar.Core.Search;
 using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -209,72 +208,6 @@ internal sealed class SettingsWindow : Window
         folderRow.Children.Add(home);
         _body.Children.Add(folderRow);
 
-        // Tab order
-        Section(_text.TabOrder);
-        var order = BarModes.Normalize(_settings.ModeOrder);
-        for (var i = 0; i < order.Count; i++)
-        {
-            var index = i;
-            var line = new Grid { ColumnSpacing = 6, Margin = new Thickness(0, 1, 0, 1) };
-            line.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-            var label = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, VerticalAlignment = VerticalAlignment.Center };
-            label.Children.Add(new TextBlock { Text = $"{i + 1}", Opacity = 0.6, Width = 12 });
-            label.Children.Add(new FontIcon { Glyph = ModeGlyph(order[i]), FontSize = 14 });
-            label.Children.Add(new TextBlock { Text = ModeName(order[i]) });
-            line.Children.Add(label);
-
-            var up = OrderButton("\uE70E", i > 0, () => Swap(index, index - 1));      // ▲
-            var down = OrderButton("\uE70D", i < order.Count - 1, () => Swap(index, index + 1));   // ▼
-            Grid.SetColumn(up, 1);
-            Grid.SetColumn(down, 2);
-            line.Children.Add(up);
-            line.Children.Add(down);
-
-            // On/off (user feedback 09-30: also remove and add Tab-order entries) — disabled modes are skipped by Tab and dimmed. The last one can't be turned off
-            var mode = order[i];
-            var on = IsModeOn(mode);
-            label.Opacity = on ? 1 : 0.45;
-            var toggle = new ToggleSwitch { IsOn = on, OnContent = "", OffContent = "", MinWidth = 0, Margin = new Thickness(8, 0, -8, 0) };
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(toggle, ModeName(mode));   // unnamed for screen readers before (10-01)
-            toggle.Toggled += (_, _) =>
-            {
-                if (toggle.IsOn == IsModeOn(mode))
-                {
-                    return;
-                }
-
-                if (!toggle.IsOn && order.Count(IsModeOn) <= 1)
-                {
-                    toggle.IsOn = true;   // one must remain so the input box knows what to do
-                    return;
-                }
-
-                SetModeOn(mode, toggle.IsOn);
-                _changed();
-                Build();
-                Refit();
-            };
-            Grid.SetColumn(toggle, 3);
-            line.Children.Add(toggle);
-            _body.Children.Add(line);
-        }
-
-        // File search: how many results to list (user 10-04); the order is chosen under the list itself
-        TextRow(_text.FileResultsCount, $"{IsleBar.Core.Search.FileSearchQuery.MinCount}–{IsleBar.Core.Search.FileSearchQuery.MaxCount}",
-            () => _settings.FileResults.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            v =>
-            {
-                if (int.TryParse(v, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var n))
-                {
-                    _settings.FileResults = IsleBar.Core.Search.FileSearchQuery.ClampCount(n);
-                }
-            });
-
-        HiddenFoldersRow();
         DownloadFoldersRow();
 
         // Island notices (09-30 feature): per-kind on/off + calendar (ICS URL)
@@ -353,13 +286,6 @@ internal sealed class SettingsWindow : Window
         ToggleRow(_text.Transparency, () => _settings.Transparency, v => _settings.Transparency = v);   // the lifted card's glass (丙④, user 10-10)
         ChoiceRow(_text.CardTextLabel, [("left", _text.CardTextLeft), ("group", _text.CardTextCenterGroup), ("text", _text.CardTextCenterText)],
             () => _settings.CardTextAlign, v => _settings.CardTextAlign = v);
-        // the input panel's file list: how many rows (user 10-09: 8 by default, yours to change; more than fit the screen scroll)
-        var rowChoices = new[] { 5, 6, 8, 10, 12, 15 }.Append(_settings.FileResults).Distinct().Order()
-            .Select(n => n.ToString(System.Globalization.CultureInfo.InvariantCulture)).Select(v => (v, v)).ToArray();
-        ChoiceRow(_text.FileResultsCount, rowChoices,
-            () => _settings.FileResults.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            v => _settings.FileResults = IsleBar.Core.Search.FileSearchQuery.ClampCount(int.Parse(v, System.Globalization.CultureInfo.InvariantCulture)));
-
         // Advanced: power options, grouped under their own heading but always visible (labelled, not hidden). The drop command runs
         // a program on dropped files (we use it for phone transfer); the toggle picks whether a drop attaches to the prompt or runs it (10-01).
         Section(_text.AdvancedSection);
@@ -458,57 +384,6 @@ internal sealed class SettingsWindow : Window
         return toggle;
     }
 
-    /// <summary>A name + text input box (saved on leaving the box or pressing Enter).</summary>
-    /// <summary>
-    /// Folders file search hides — one rule per line, editable here so it can change without touching the source (user 10-04).
-    /// Matching the built-in list is stored as "unset", so later improvements to that list still reach this person.
-    /// </summary>
-    private void HiddenFoldersRow()
-    {
-        _body.Children.Add(new TextBlock { Text = _text.FileExcludeLabel, Margin = new Thickness(0, 8, 0, 4) });
-        var box = new TextBox
-        {
-            Text = string.Join("\r", _settings.FileExcludeLines),
-            AcceptsReturn = true,
-            TextWrapping = TextWrapping.NoWrap,
-            Height = 170,
-            IsSpellCheckEnabled = false,
-        };
-        ScrollViewer.SetVerticalScrollBarVisibility(box, ScrollBarVisibility.Auto);
-        ScrollViewer.SetHorizontalScrollBarVisibility(box, ScrollBarVisibility.Auto);
-        _body.Children.Add(box);
-        _body.Children.Add(new TextBlock
-        {
-            Text = _text.FileExcludeHint,
-            FontSize = 12,
-            Opacity = 0.7,
-            TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 4, 0, 0),
-        });
-        var reset = new HyperlinkButton { Content = _text.ResetDefaults, Padding = new Thickness(0, 2, 0, 2), FontSize = 12 };
-        _body.Children.Add(reset);
-
-        void Commit()
-        {
-            var lines = box.Text.Split('\r', '\n').Select(line => line.Trim()).Where(line => line.Length > 0).ToList();
-            List<string>? next = lines.SequenceEqual(IsleBar.Core.Search.FileExcludes.Defaults) ? null : lines;
-            var before = _settings.FileExclude;
-            if (next is null ? before is not null : before is null || !next.SequenceEqual(before))
-            {
-                _settings.FileExclude = next;
-                _changed();
-            }
-        }
-
-        box.LostFocus += (_, _) => Commit();
-        _commitOnClose.Add(Commit);   // typed and then closed with X (as the other text rows)
-        reset.Click += (_, _) =>
-        {
-            box.Text = string.Join("\r", IsleBar.Core.Search.FileExcludes.Defaults);
-            Commit();
-        };
-    }
-
     /// <summary>
     /// Folders watched for downloads, one per line (user 10-04). Unset shows this user's own Downloads folder — the path Windows
     /// gives for them, so no user name is ever written in — and is also the format example. Keeping just that line stores "unset",
@@ -564,6 +439,7 @@ internal sealed class SettingsWindow : Window
         };
     }
 
+    /// <summary>A name + text input box (saved on leaving the box or pressing Enter).</summary>
     private void TextRow(string label, string hint, Func<string> get, Action<string> set)
     {
         _body.Children.Add(new TextBlock { Text = label, Margin = new Thickness(0, 8, 0, 4) });
@@ -603,25 +479,6 @@ internal sealed class SettingsWindow : Window
             .Select(m => int.TryParse(m.Value, out var n) ? n : 0)
             .Where(n => n is >= 1 and <= 600)];
 
-    private bool IsModeOn(BarMode mode)
-        => mode == BarMode.Files ? _settings.Files : !_settings.ModesOff.Contains(BarModes.Key(mode));
-
-    private void SetModeOn(BarMode mode, bool on)
-    {
-        if (mode == BarMode.Files)
-        {
-            _settings.Files = on;   // file search reuses the old switch value (same meaning as toggling Everything)
-            return;
-        }
-
-        var key = BarModes.Key(mode);
-        _settings.ModesOff.Remove(key);
-        if (!on)
-        {
-            _settings.ModesOff.Add(key);
-        }
-    }
-
     private void Section(string title)
         => _body.Children.Add(new TextBlock
         {
@@ -631,42 +488,6 @@ internal sealed class SettingsWindow : Window
             // the last launch option ("remote control") read as too airy before "working folder" (user feedback 10-01).
             Margin = new Thickness(0, 10, 0, 4),
         });
-
-    private Button OrderButton(string glyph, bool enabled, Action move)
-    {
-        var button = new Button
-        {
-            Content = new FontIcon { Glyph = glyph, FontSize = 12 },
-            Padding = new Thickness(8, 4, 8, 4),
-            IsEnabled = enabled,
-        };
-        button.Click += (_, _) => move();
-        return button;
-    }
-
-    /// <summary>Swaps two modes' positions in the Tab order, then saves and redraws.</summary>
-    private void Swap(int a, int b)
-    {
-        var order = BarModes.Normalize(_settings.ModeOrder);
-        (order[a], order[b]) = (order[b], order[a]);
-        _settings.ModeOrder = [.. order.Select(BarModes.Key)];
-        _changed();
-        Build();
-        Refit();
-    }
-
-    private string ModeName(BarMode mode) => mode switch
-    {
-        BarMode.Files => _text.Files,
-        _ => _settings.Agent == AgentKind.Codex ? "Codex" : "Claude",
-    };
-
-    /// <summary>Same icons as the search box (the Claude spark is an image, so the chat glyph stands in here).</summary>
-    private static string ModeGlyph(BarMode mode) => mode switch
-    {
-        BarMode.Files => "\uE8B7",   // folder
-        _ => "\uE8BD",               // chat
-    };
 
     /// <summary>The current UI language (if auto, the one determined from the Windows language).</summary>
     private string _language => _currentLanguage();

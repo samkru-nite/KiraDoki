@@ -18,9 +18,9 @@ public sealed class ConfigStoreTests
         Assert.Equal("default", settings.Values.Model);
         Assert.Equal("default", settings.Values.Effort);
         Assert.False(settings.Values.Rc);
-        Assert.True(settings.Files);
+        Assert.True(settings.NotifyPower);
         Assert.Equal("", settings.Folder);
-        Assert.Empty(settings.History);
+        Assert.Equal("", settings.CalendarIcs);
         Assert.Equal(LaunchOptionDefs.DefaultModels, settings.Models);
         Assert.Equal(0, settings.ModelsChecked);
     }
@@ -75,8 +75,8 @@ public sealed class ConfigStoreTests
         {
           "lang": 42,
           "folder": "/home/ubuntu",
-          "files": "yes",
-          "history": "문자열인데 목록이어야 함",
+          "notify_power": "yes",
+          "download_folders": "문자열인데 목록이어야 함",
           "models_checked": "어제",
           "values": { "session": true, "perm": "plan", "rc": 1, "effort": "high" }
         }
@@ -86,8 +86,8 @@ public sealed class ConfigStoreTests
 
         Assert.Equal("auto", settings.Lang);                 // number → default
         Assert.Equal("/home/ubuntu", settings.Folder);       // survives
-        Assert.True(settings.Files);                         // "yes" isn't a bool → default
-        Assert.Empty(settings.History);                      // not a list → default
+        Assert.True(settings.NotifyPower);                   // "yes" isn't a bool → default
+        Assert.Empty(settings.DownloadFolders);              // not a list → default
         Assert.Equal(0, settings.ModelsChecked);
         Assert.Equal("new", settings.Values.Session);        // true isn't a string → default
         Assert.Equal("plan", settings.Values.Perm);          // survives
@@ -154,8 +154,8 @@ public sealed class ConfigStoreTests
         {
             Lang = "ja",
             Folder = @"C:\Users\me\Desktop",
-            Files = false,
-            History = ["첫 질문", "두 번째 질문"],
+            NotifyPower = false,
+            DownloadFolders = [@"D:\다운로드", @"E:\받은 파일"],
             Models = ["opus", "fable"],
             ModelsChecked = 1_759_000_000,
             Values = new LaunchOptions { Session = "resume", Model = "opus", Effort = "max", Perm = "plan", Rc = true },
@@ -165,8 +165,8 @@ public sealed class ConfigStoreTests
         var read = store.Load();
         Assert.Equal("ja", read.Lang);
         Assert.Equal(@"C:\Users\me\Desktop", read.Folder);
-        Assert.False(read.Files);
-        Assert.Equal(["첫 질문", "두 번째 질문"], read.History);
+        Assert.False(read.NotifyPower);
+        Assert.Equal([@"D:\다운로드", @"E:\받은 파일"], read.DownloadFolders);
         Assert.Equal(["opus", "fable"], read.Models);
         Assert.Equal(1_759_000_000, read.ModelsChecked);
         Assert.Equal("resume", read.Values.Session);
@@ -183,7 +183,7 @@ public sealed class ConfigStoreTests
         var path = dir.File("islebar.json");
         var store = new ConfigStore(path);
         var settings = store.Load();
-        settings.History = ["작업표시줄 검색창 만들어 줘"];
+        settings.DownloadFolders = ["작업표시줄 검색창 만들어 줘"];
         Assert.True(store.Save(settings));
 
         Assert.Contains("작업표시줄 검색창 만들어 줘", File.ReadAllText(path), StringComparison.Ordinal);
@@ -220,22 +220,20 @@ public sealed class ConfigStoreTests
     }
 
     [Fact]
-    public void History_over_50_keeps_only_the_most_recent()
+    public void Keys_of_removed_features_are_dropped_on_save()
     {
         using var dir = new TempDir();
         var path = dir.File("islebar.json");
-        var arr = new JsonArray();
-        for (var i = 0; i < 70; i++)
-        {
-            arr.Add((JsonNode)$"질문 {i}");
-        }
+        File.WriteAllText(path, """{ "files": true, "history": ["질문"], "mode_order": ["claude"], "theme": "dark" }""");
 
-        File.WriteAllText(path, new JsonObject { ["history"] = arr }.ToJsonString());
+        var store = new ConfigStore(path);
+        Assert.True(store.Save(store.Load()));
 
-        var history = new ConfigStore(path).Load().History;
-        Assert.Equal(50, history.Count);
-        Assert.Equal("질문 20", history[0]);
-        Assert.Equal("질문 69", history[^1]);
+        var raw = store.LoadRaw();
+        Assert.Null(raw["files"]);
+        Assert.Null(raw["history"]);
+        Assert.Null(raw["mode_order"]);
+        Assert.Equal("dark", (string?)raw["theme"]);   // unknown keys still survive
     }
 
     [Fact]
@@ -291,7 +289,7 @@ public sealed class ConfigStoreTests
             {
                 store.Update(s =>
                 {
-                    s.History = [$"질문 {n++}"];
+                    s.CalendarIcs = $"질문 {n++}";
                     return true;
                 });
             }

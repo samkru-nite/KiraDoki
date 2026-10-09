@@ -59,12 +59,4 @@ public class GlyphMaskTests
         Assert.Null(GlyphMask.Build(new byte[16], 2, 2, 0));
         Assert.Null(GlyphMask.Build(new byte[4], 2, 2, 8));
     }
-
-    [Theory]
-    [InlineData(IsleBar.Core.Localization.BarMode.Claude, "claude", "Ask Claude")]
-    [InlineData(IsleBar.Core.Localization.BarMode.Claude, "codex", "Ask Codex")]
-    [InlineData(IsleBar.Core.Localization.BarMode.Files, "codex", "Search files")]
-    [InlineData(IsleBar.Core.Localization.BarMode.Claude, null, "Ask Claude")]
-    public void Placeholder_follows_agent(IsleBar.Core.Localization.BarMode mode, string? agent, string expected)
-        => Assert.Equal(expected, IsleBar.Core.Localization.Placeholders.For(mode, agent));
 }

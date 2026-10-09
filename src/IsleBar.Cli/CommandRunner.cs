@@ -1,6 +1,5 @@
 using System.Globalization;
 using IsleBar.Core.Configuration;
-using IsleBar.Core.Commands;
 using IsleBar.Core.Island;
 using IsleBar.Core.Launch;
 using IsleBar.Core.Models;
@@ -42,7 +41,6 @@ public static class CommandRunner
                 "timer" => Timer(args[1..], output, error),
                 "args" => ShowArgs(args[1..], output, error),
                 "aliases" => Aliases(args[1..], output, error),
-                "commands" => Commands(args[1..], output, error),
                 "hook" => Hook(args[1..], input ?? Utf8StandardInput()),
                 "statusline" => StatusLine(args[1..], input ?? Utf8StandardInput(), output),
                 _ => Unknown(args[0], error),
@@ -372,49 +370,6 @@ public static class CommandRunner
         return ExitOk;
     }
 
-    /// <summary>
-    /// Shows the slash commands usable in this folder right now.
-    /// Project commands only appear when the working folder is that project, so use this to check why one is missing.
-    /// </summary>
-    private static int Commands(string[] args, TextWriter output, TextWriter error)
-    {
-        var opts = ArgMap.Parse(args);
-
-        // read the values first so they are not wrongly flagged as "unknown option"
-        var folder = opts.Value("folder") ?? Directory.GetCurrentDirectory();
-        var home = opts.Value("home")
-            ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        opts.WarnUnknown(error);
-
-        var all = SlashCommandScanner.Scan(folder, home);
-        var filter = opts.Rest.FirstOrDefault();
-        var shown = filter is null
-            ? all
-            : SlashCommandMatcher.Match(all, filter.StartsWith('/') ? filter : "/" + filter, int.MaxValue);
-
-        if (shown.Count == 0)
-        {
-            output.WriteLine(all.Count == 0
-                ? $"No commands available. (folder {folder} · home {home})"
-                : "No matching commands.");
-            return ExitOk;
-        }
-
-        foreach (var c in shown)
-        {
-            var where = c.Source switch
-            {
-                CommandSource.Project => "project",
-                CommandSource.User => "user",
-                _ => "plugin",
-            };
-            var desc = c.Description.Length > 0 ? "  " + c.Description : string.Empty;
-            output.WriteLine($"{c.Display,-32} [{where}]{desc}");
-        }
-
-        return ExitOk;
-    }
-
     private static int Aliases(string[] args, TextWriter output, TextWriter error)
     {
         var file = ArgMap.Parse(args).Rest.FirstOrDefault();
@@ -459,7 +414,6 @@ public static class CommandRunner
           islebar rm <id>                 remove a state
           islebar hook [--agent codex]    post an agent notification to the island (Claude hooks: JSON on stdin, Codex notify: JSON as last argument)
           islebar args [question] [opts]  preview how claude/codex would be invoked
-          islebar commands [text]         list slash commands usable in the current folder
           islebar aliases [file]          model alias list (from the file if given, otherwise from the official docs)
 
         push options:

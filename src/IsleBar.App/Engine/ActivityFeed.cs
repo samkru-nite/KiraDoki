@@ -43,8 +43,9 @@ internal sealed class ActivityFeed : IDisposable
     /// <summary>Brief notices (charging, Bluetooth, internet, focus, copy, overload, calendar, mic/camera; features added 09-30). Null until <see cref="Start"/>.</summary>
     public SystemWatchers? Watchers { get; private set; }
 
-    /// <summary>Timer file name — one at a time (starting a new one replaces it; same slot as typing "25min" in the input box).</summary>
-    public static string TimerSlot => $"timer_{Environment.ProcessId}";
+    /// <summary>A new timer's file name. Timers run side by side since the input box went (10-10, TODO 三-④ B): each gets its own
+    /// file, so its own card.</summary>
+    private static string NewTimerSlot() => $"timer_{Environment.ProcessId}_{DateTime.UtcNow.Ticks:x}";
 
     public void Start()
     {
@@ -174,21 +175,12 @@ internal sealed class ActivityFeed : IDisposable
     public PomodoroLengths PomodoroLengths()
         => IsleBar.Core.Island.PomodoroLengths.FromMinutes(_settings().PomodoroFocus, _settings().PomodoroBreak, _settings().PomodoroLong);
 
-    /// <summary>A timer is running or paused (a finished one waiting to be dismissed doesn't count).</summary>
-    public bool TimerRunning(DateTimeOffset now)
-        => Store.Read(now).Any(s => s.Kind == ActivityKind.Timer
-            && (s.IsPaused || TimerParser.IsStopwatch(s) || TimerParser.Remaining(s, now) > TimeSpan.Zero));
+    /// <summary>Starts a timer next to any that are running (each its own card).</summary>
+    public void StartTimer(ActivityState next) => Store.Write(NewTimerSlot(), next);
 
-    /// <summary>Writes the timer, removing any other timer first — one left behind by an earlier bar process would otherwise stay too.</summary>
-    public void ReplaceTimer(ActivityState next)
-    {
-        foreach (var old in Store.Read(DateTimeOffset.UtcNow).Where(s => s.Kind == ActivityKind.Timer && s.SourcePath is not null))
-        {
-            DeleteState(old.SourcePath!);
-        }
-
-        Store.Write(TimerSlot, next);
-    }
+    /// <summary>"Again" on a finished timer: the new run takes the same file, so the same card (one card per thing).</summary>
+    public void RestartTimer(ActivityState old, ActivityState next)
+        => Store.Write(old.SourcePath is { } path ? Path.GetFileNameWithoutExtension(path) : NewTimerSlot(), next);
 
     /// <summary>Timer pause ↔ resume. Rewrites the state file (so other windows/commands see the same state).</summary>
     public void TogglePause(ActivityState timer)
@@ -290,6 +282,10 @@ internal sealed class ActivityFeed : IDisposable
             if (finished && _chimed.Add(slot))
             {
                 Chime.Play(_settings().MuteChimeFullscreen, alarm: true);
+            }
+            else if (!finished)
+            {
+                _chimed.Remove(slot);   // running again ("Again" keeps the slot): it rings again at the end
             }
         }
 

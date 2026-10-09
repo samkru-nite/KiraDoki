@@ -1,6 +1,5 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using IsleBar.Core.History;
 using IsleBar.Core.Launch;
 using IsleBar.Core.Localization;
 
@@ -12,19 +11,18 @@ namespace IsleBar.Core.Configuration;
 /// </summary>
 public static class SettingsCodec
 {
+    /// <summary>Keys of removed features, dropped from the file on save: the real search box switch (10-05); file search,
+    /// the Tab order and question history (10-10).</summary>
+    private static readonly string[] RemovedKeys =
+        ["native_searchbox", "files", "file_results", "file_sort", "file_exclude", "mode_order", "modes_off", "history"];
+
     // JSON key names (same as the Python version's claude_bar.json)
     private const string KeyLang = "lang";
     private const string KeyValues = "values";
     private const string KeyCodexValues = "codex_values";
     private const string KeyRecentFolders = "recent_folders";
     private const string KeyFolder = "folder";
-    private const string KeyFiles = "files";
-    private const string KeyFileResults = "file_results";
-    private const string KeyFileSort = "file_sort";
-    private const string KeyFileExclude = "file_exclude";
     private const string KeyDownloadFolders = "download_folders";
-    private const string KeyModeOrder = "mode_order";
-    private const string KeyModesOff = "modes_off";
     private const string KeyPomoFocus = "pomo_focus";
     private const string KeyPomoBreak = "pomo_break";
     private const string KeyPomoLong = "pomo_long";
@@ -40,7 +38,6 @@ public static class SettingsCodec
     private const string KeyListStagger = "list_stagger";
     private const string KeyCardTextAlign = "card_text_align";
     private const string KeyAudioBars = "audio_bars";
-    private const string KeyHistory = "history";
     private const string KeyAgent = "agent";
     private const string KeyModels = "models";
     private const string KeyCodexModels = "codex_models";
@@ -90,25 +87,9 @@ public static class SettingsCodec
             s.Folder = folder;
         }
 
-        if (AsInt(raw[KeyFileResults]) is { } fileResults)
-        {
-            s.FileResults = Search.FileSearchQuery.ClampCount(fileResults);
-        }
-
-        s.FileSort = Search.FileSearchQuery.NormalizeSort(AsString(raw[KeyFileSort]) ?? s.FileSort);
-        if (raw[KeyFileExclude] is JsonArray excludeArr)
-        {
-            s.FileExclude = [.. excludeArr.Select(AsString).OfType<string>()];
-        }
-
         if (raw[KeyDownloadFolders] is JsonArray downloadArr)
         {
             s.DownloadFolders = [.. downloadArr.Select(AsString).OfType<string>().Where(line => line.Trim().Length > 0)];
-        }
-
-        if (AsBool(raw[KeyFiles]) is { } files)
-        {
-            s.Files = files;
         }
 
         s.NotifyPower = AsBool(raw[KeyNotifyPower]) ?? s.NotifyPower;
@@ -145,15 +126,6 @@ public static class SettingsCodec
             s.Models = models.Count > 0 ? models : [.. LaunchOptionDefs.DefaultModels];
         }
 
-        if (raw[KeyHistory] is JsonArray historyArr)
-        {
-            var history = StringList(historyArr);
-            // even if an old file holds more than 51, keep only the most recent
-            s.History = history.Count > QuestionHistory.Max
-                ? history.GetRange(history.Count - QuestionHistory.Max, QuestionHistory.Max)
-                : history;
-        }
-
         s.Position = Ui.BarSlot.Key(Ui.BarSlot.Parse(AsString(raw[KeyPosition]) ?? s.Position));
         s.PillCorners = AsString(raw[KeyPillCorners]) == "small" ? "small" : "round";
         s.BallSide = AsString(raw[KeyBallSide]) == "left" ? "left" : "right";
@@ -175,16 +147,6 @@ public static class SettingsCodec
         if (raw[KeyQuickTimers] is JsonArray quickTimerArr)
         {
             s.QuickTimers = [.. quickTimerArr.Select(Minutes).OfType<int>().Distinct().Take(6)];
-        }
-
-        if (raw[KeyModesOff] is JsonArray offArr)
-        {
-            s.ModesOff = [.. StringList(offArr).Where(k => Localization.BarModes.Parse(k) is { } m && m != Localization.BarMode.Files).Distinct()];
-        }
-
-        if (raw[KeyModeOrder] is JsonArray orderArr)
-        {
-            s.ModeOrder = [.. Localization.BarModes.Normalize(StringList(orderArr)).Select(Localization.BarModes.Key)];
         }
 
         if (raw[KeyRecentFolders] is JsonArray recentArr)
@@ -259,16 +221,9 @@ public static class SettingsCodec
         raw[KeyLang] = s.Lang;
         raw[KeyAgent] = s.Agent;
         raw[KeyFolder] = s.Folder;
-        raw[KeyFiles] = s.Files;
-        raw[KeyFileResults] = s.FileResults;
-        raw[KeyFileSort] = s.FileSort;
-        if (s.FileExclude is null)
+        foreach (var gone in RemovedKeys)
         {
-            raw.Remove(KeyFileExclude);   // the built-in list — not written, so later changes to it still apply
-        }
-        else
-        {
-            raw[KeyFileExclude] = new JsonArray([.. s.FileExclude.Select(line => (JsonNode)line)]);
+            raw.Remove(gone);
         }
 
         if (s.DownloadFolders.Count == 0)
@@ -279,9 +234,6 @@ public static class SettingsCodec
         {
             raw[KeyDownloadFolders] = new JsonArray([.. s.DownloadFolders.Select(line => (JsonNode)line)]);
         }
-        raw[KeyModeOrder] = ToArray(s.ModeOrder);
-        raw[KeyModesOff] = ToArray(s.ModesOff);
-        raw.Remove("native_searchbox");   // the old "hide the real search box" switch is gone (10-05)
         raw[KeyPosition] = s.Position;
         raw[KeyManualOffset] = s.ManualOffset;
         raw[KeyPillCorners] = s.PillCorners;
@@ -298,7 +250,6 @@ public static class SettingsCodec
         raw[KeyPomoLong] = s.PomodoroLong;
         raw[KeyQuickTimers] = new JsonArray([.. s.QuickTimers.Select(m => (JsonNode)m)]);
         raw[KeyModelsChecked] = s.ModelsChecked;
-        raw[KeyHistory] = ToArray(s.History);
         raw[KeyModels] = ToArray(s.Models);
         raw[KeyCodexModels] = ToArray(s.CodexModels);
         raw[KeyRecentFolders] = ToArray(s.RecentFolders);

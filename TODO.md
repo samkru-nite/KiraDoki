@@ -16,10 +16,16 @@
 
 ## 二、接下来的顺序
 
-### ① 三次删除 [ ]
+### ① 三次删除 [~]（第 1 次完成）
 每次：删 → 构建 → 测试 → 用户试 → 提交；同时删对应界面文案（10 种语言）和测试，更新 CLAUDE.md 项目地图。
 
-**第 1 次：文件搜索 + 输入面板**
+**第 1 次：文件搜索 + 输入面板** —— 10-10 代码删完（构建 0 警告 0 错误，测试 923 → 782，界面文案 171 → 145），**用户试过、已提交**。和清单不同的地方：
+- **Everything 留了一个精简版**（`Media/EverythingSdk.cs`，只剩"找最近改动的压缩包"）：资源管理器"压缩成 zip"没有系统进度窗口，靠它找正在变大的压缩包（用户 10-10 定：保留）。Everything64.dll 也留着。
+- 命令行 `islebar commands`（列斜杠命令）一起删了——它是斜杠命令代码的唯一用户。
+- 主窗口里的 `Launch()` / `ShowLaunchFailure` / 问题历史跟着输入框一起删了（没有调用方了）；`Engine/AgentLauncher`、`Core/Launch/*`、设置 `Folder`、文案 `LaunchFail` 留给第 2 次。
+- 拖文件到胶囊：没设"拖放命令"时胶囊不再接文件（原来是"附加到输入框"）；设置里拖放命令的说明文字还写着"空 = 附加到提示"，第 3 次删拖放命令时一起处理。
+- 计时器：每个计时器一个文件 `timer_{进程号}_{时间}` = 各自一张卡片，可同时存在；掀起卡片的"再来一次"沿用原文件（同一张卡片），结束提示音能再响。
+- 旧设置键（files、file_results、file_sort、file_exclude、mode_order、modes_off、history）下次保存时从 islebar.json 里清掉。
 - `Search/*`（EverythingSdk、FileSearchWorker、FileList、RecentFiles、ShellIcons、ComposeWindow、PromptPreviewWindow）、`Engine/FileActions`、`Engine/FileSearchRequests`、`Core/Search/*`
 - `IslandUi/InputPanel`、`MainWindow.Panel.cs`、`Core/Ui/PanelMotion`
 - `Interop/StartMenu`、`Interop/ForegroundEvents`、`Interop/GlobalHotkey`（Ctrl+Alt+C）、`Interop/ImeFont`

@@ -33,40 +33,11 @@ public sealed class IsleBarSettings
     /// </summary>
     public List<string> RecentFolders { get; set; } = [];
 
-    /// <summary>File search (Everything) on/off.</summary>
-    public bool Files { get; set; } = true;
-
-
-    /// <summary>File search: how many results to list (3–50; the list scrolls) — user 10-04.</summary>
-    public int FileResults { get; set; } = Search.FileSearchQuery.DefaultCount;
-
-    /// <summary>File search order: "name" (as Everything shows it, folders first) · "modified" · "size" — chosen in the results list (user 10-04).</summary>
-    public string FileSort { get; set; } = Search.FileSearchQuery.SortName;
-
-    /// <summary>
-    /// Folders file search hides, one rule per line (<see cref="Search.FileExcludes"/>; editable in settings — user 10-04).
-    /// Null = the built-in list, so a person who never edited it gets later improvements to it.
-    /// </summary>
-    public List<string>? FileExclude { get; set; }
-
-    /// <summary>The rules in effect: the person's list, or the built-in one.</summary>
-    [System.Text.Json.Serialization.JsonIgnore]
-    public IReadOnlyList<string> FileExcludeLines => FileExclude ?? [.. Search.FileExcludes.Defaults];
-
     /// <summary>
     /// Folders watched for downloads in progress (browsers' .crdownload/.part, Baidu Netdisk's .baiduyun.p.downloading), one per
     /// line — for browsers set to save elsewhere or to ask each time. Empty = the system Downloads folder.
     /// </summary>
     public List<string> DownloadFolders { get; set; } = [];
-
-    /// <summary>Tab order ("claude" · "files" · "web"). The first one is the default mode.</summary>
-    public List<string> ModeOrder { get; set; } = [.. Localization.BarModes.DefaultOrder.Select(Localization.BarModes.Key)];
-
-    /// <summary>
-    /// Modes removed from the Tab order (user feedback 09-30: wanted to be able to remove and add Tab-order entries). File search has long been toggled via <see cref="Files"/>, so
-    /// only Claude and web go here. Not all can be turned off (the settings window prevents turning off the last one).
-    /// </summary>
-    public List<string> ModesOff { get; set; } = [];
 
     /// <summary>Pomodoro focus, short break, long break (minutes). User feedback 09-30: asked how to change the durations.</summary>
     public int PomodoroFocus { get; set; } = 25;
@@ -116,9 +87,6 @@ public sealed class IsleBarSettings
 
     /// <summary>Quick timers in the right-click menu (minutes).</summary>
     public List<int> QuickTimers { get; set; } = [5, 25];
-
-    /// <summary>Recent questions, oldest → newest. At most <see cref="History.QuestionHistory.Max"/>.</summary>
-    public List<string> History { get; set; } = [];
 
     /// <summary>Claude model alias list (button order). Auto-updated from the model docs.</summary>
     public List<string> Models { get; set; } = [.. LaunchOptionDefs.DefaultModels];
@@ -206,13 +174,7 @@ public sealed class IsleBarSettings
         CodexValues = CodexValues.Clone(),
         Folder = Folder,
         RecentFolders = [.. RecentFolders],
-        Files = Files,
-        FileResults = FileResults,
-        FileSort = FileSort,
-        FileExclude = FileExclude is null ? null : [.. FileExclude],
         DownloadFolders = [.. DownloadFolders],
-        ModeOrder = [.. ModeOrder],
-        ModesOff = [.. ModesOff],
         PomodoroFocus = PomodoroFocus,
         PomodoroBreak = PomodoroBreak,
         PomodoroLong = PomodoroLong,
@@ -228,7 +190,6 @@ public sealed class IsleBarSettings
         ListStagger = ListStagger,
         CardTextAlign = CardTextAlign,
         AudioBars = AudioBars,
-        History = [.. History],
         Models = [.. Models],
         CodexModels = [.. CodexModels],
         ModelsChecked = ModelsChecked,

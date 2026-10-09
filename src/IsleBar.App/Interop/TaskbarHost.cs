@@ -15,7 +15,7 @@ namespace IsleBar.App.Interop;
 ///  3. Pass SetWindowLong values as <b>signed 32-bit</b> (WS_POPUP top bit).
 ///  4. Toggle the layered style off and on right after adding it — rebinding the composition surface keeps us
 ///     visible on top even when the Start menu opens and the taskbar repaints.
-///  5. <b>Detach while typing</b> (normal topmost window) — so IME and focus don't get entangled with Explorer.
+///  5. <b>Detach while a menu is open</b> (normal topmost window) — a window inside the taskbar can't take the foreground.
 ///  6. On failure, restore the styles so it can be used as a plain topmost window.
 ///
 /// <b>This file has never been built. Needs phase-0 verification on PC.</b>
@@ -110,8 +110,8 @@ internal sealed class TaskbarHost(IntPtr windowHandle)
     }
 
     /// <summary>
-    /// Detaches from the taskbar into a normal topmost window. <b>Call when input starts</b> —
-    /// typing while attached entangles IME/focus with Explorer and can hang Explorer.
+    /// Detaches from the taskbar into a normal topmost window — for a menu, which needs the foreground (typing while attached
+    /// also entangled IME/focus with Explorer and could hang it, 09-29; the input box is gone since 10-10).
     /// </summary>
     public void Detach(int x, int y, int width, int height)
     {
@@ -183,16 +183,10 @@ internal sealed class TaskbarHost(IntPtr windowHandle)
         }
         else
         {
-            // detached for typing, or floating because attaching failed: either way above the taskbar
+            // detached for a menu, or floating because attaching failed: either way above the taskbar
             SetWindowPos(_wrap, HWND_TOPMOST, x, y, width, height, SWP_NOACTIVATE | SWP_SHOWWINDOW);
         }
     }
-
-    /// <summary>
-    /// Takes focus on click. <b>Child windows don't get focus from a normal click</b> →
-    /// must be called explicitly on press for input to work.
-    /// </summary>
-    public void TakeFocus() => SetFocus(_wrap);
 
     /// <summary>Whether the window is still alive (for monitoring).</summary>
     public bool WindowAlive => IsWindow(_wrap);

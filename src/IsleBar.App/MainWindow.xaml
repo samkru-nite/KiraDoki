@@ -29,50 +29,7 @@
     <!-- The whole big pill (background and all content): when a new item appears, this group dips slightly and springs back. The outer Root is the taskbar color.
          What it draws is a PillView (IslandUi/PillView.xaml, 10-09: the ⋯ list draws its cards with the same) -->
     <Grid x:Name="PillBody" Width="220">
-        <!-- When typing ends, focus moves here (so no blinking caret is left in the input box). Invisible -->
-        <ContentControl x:Name="FocusSink" Width="0" Height="0" IsTabStop="True" UseSystemFocusVisuals="False" />
-
-        <ui:PillView x:Name="Big">
-            <ui:PillView.Input>
-                <!-- Input box (typing until the input panel of step H). Placeholder text is always English regardless of language (Placeholders) -->
-                <TextBox
-                    x:Name="Entry"
-                    VerticalAlignment="Center"
-                    BorderThickness="0"
-                    Background="Transparent"
-                    PlaceholderText="Ask Claude"
-                    TextWrapping="NoWrap"
-                    AcceptsReturn="False"
-                    IsSpellCheckEnabled="False"
-                    FontSize="14"
-                    CharacterSpacing="-11"
-                    MinHeight="0"
-                    VerticalContentAlignment="Center"
-                    Padding="0,0,0,1">
-                    <!-- Keep the pill background while typing: remove the white box, border and blue underline (like the native search box) -->
-                    <TextBox.Resources>
-                        <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
-                        <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
-                        <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent" />
-                        <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="Transparent" />
-                        <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent" />
-                        <Thickness x:Key="TextControlBorderThemeThickness">0</Thickness>
-                        <Thickness x:Key="TextControlBorderThemeThicknessFocused">0</Thickness>
-                    </TextBox.Resources>
-                </TextBox>
-            </ui:PillView.Input>
-            <ui:PillView.Hint>
-                <!-- Tab hint: dim [Tab] + next mode icon, only while typing with the input box empty (09-30 design decision B) -->
-                <StackPanel x:Name="TabHint" Orientation="Horizontal" Spacing="5" Opacity="0.6" VerticalAlignment="Center"
-                            Margin="0,0,10,0" Visibility="Collapsed" IsHitTestVisible="False">
-                    <Border x:Name="TabKey" BorderThickness="1,1,1,1.8" CornerRadius="4" Padding="4,0,4,1" VerticalAlignment="Center">
-                        <TextBlock x:Name="TabKeyText" Text="Tab" FontSize="10.5" FontWeight="SemiBold" CharacterSpacing="20" />
-                    </Border>
-                    <FontIcon x:Name="TabNextIcon" FontFamily="Segoe Fluent Icons" FontSize="13" VerticalAlignment="Center" />
-                    <Image x:Name="TabNextMark" Width="13" Height="13" VerticalAlignment="Center" Visibility="Collapsed" />
-                </StackPanel>
-            </ui:PillView.Hint>
-        </ui:PillView>
+        <ui:PillView x:Name="Big" />
     </Grid>
 
     <!-- Small pill (TODO 7.9 D): task icons + ⋯ │ circle (or circle │ ⋯ + task icons when it sits left — code swaps the columns).

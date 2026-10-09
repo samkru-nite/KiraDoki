@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Removed: file search and typing on the bar (fork, 10-10)
+- The bar only shows what happens in the background now. File search (Everything), the input box and its panel, question
+  history, the Tab modes, Ctrl+Alt+C and `islebar commands` are gone; their settings are dropped from islebar.json.
+- A click on the circle opens the tools menu (the same as a right click).
+- Timers run side by side, each on its own card, instead of asking to replace the running one.
+- Files can be dropped on the bar only when a drop command is set.
+- Everything is still used, if it runs, to follow an archive Explorer is compressing.
+
 ### Small pill and card rules (fork, 10-07)
 - The small pill shows one icon for every card behind the big pill (temporary ones excepted), as many as fit before the
   taskbar's app icons; the rest wait behind "⋯". Icons are colourless unless something needs you: orange waits for you,

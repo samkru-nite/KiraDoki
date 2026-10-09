@@ -2,7 +2,6 @@
 <!--
   One big pill as it draws a card (TODO 7.9 F3, plan B, 10-09): surface, content row, dim veil, border. The big pill on the taskbar
   is one (MainWindow's PillBody); the ⋯ list will use one per card. Moved out of MainWindow.xaml unchanged.
-  The input box and the Tab hint belong to the taskbar's pill only: MainWindow hands them in (Input, Hint).
   Card layout = TODO 7.9 D final sizes (E2): icon 16 at 8 (centre x 16), text from x 32 to 208 (right margin 12), left-aligned;
   an inform card puts a 72 close button on the right. Music: album art 22, then the now-playing bars before the right margin.
 -->
@@ -92,11 +91,8 @@
                 <Grid x:Name="LeadPause" IsHitTestVisible="False" />
             </Grid>
 
-            <!-- The input box goes here (MainWindow's Entry, the taskbar pill only) -->
-            <Grid x:Name="InputSlot" Grid.Column="2" />
-
             <!--
-              Card text. Shown instead of the input box when not typing. The right margin (12, or 8 before the music bars) is set in code.
+              Card text. The right margin (12, or 8 before the music bars) is set in code.
               Text lives in a canvas — scrolling a long title left requires placing it wider than the slot and moving it; the visible part
               is clipped in code. Vertical place = the 20 line box centred, moved by the measured ink offset (glyphs, not the line box, centred).
             -->
@@ -117,7 +113,6 @@
                 <Rectangle x:Name="FadeRight" Width="18" Height="20" HorizontalAlignment="Right" VerticalAlignment="Center" IsHitTestVisible="False" Visibility="Collapsed" />
             </Grid>
 
-            <!-- the Tab hint (MainWindow's, typing only) is added after the bars -->
             <StackPanel x:Name="TailRow" Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
                 <!-- Music playing: four dancing bars, 7 from the right edge: their middle 16 from it, like the cover / icon on the left (user 10-07: lopsided at 12). Purely decorative and animated by the compositor -->
                 <StackPanel x:Name="Equalizer" Orientation="Horizontal" Spacing="2" Height="14"

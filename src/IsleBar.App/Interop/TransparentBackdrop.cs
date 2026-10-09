@@ -154,69 +154,6 @@ internal sealed partial class TransparentBackdrop : SystemBackdrop
         _glassCut.BottomInset = Math.Max(0, _glassSize.Y - cutBottom);
     }
 
-    // the solid look in the same layer (the input panel without glass): a rounded rectangle of one colour, nothing read from behind
-    private Windows.UI.Composition.CompositionRoundedRectangleGeometry? _solidShape;
-    private Windows.UI.Composition.CompositionColorBrush? _solidInk;
-    private Windows.UI.Composition.CompositionBrush? _solidBrush;
-    private System.Numerics.Vector2 _solidSize;
-
-    /// <summary>
-    /// The panel's solid colour drawn here instead of by XAML (user 10-09): over a XAML fill the text box's own caret showed (still,
-    /// never blinking) on top of the panel's own one; over a see-through window, as with the glass, it doesn't. False when it couldn't.
-    /// </summary>
-    public bool StartSolid(float windowWidth, float windowHeight, Windows.UI.Color colour)
-    {
-        if (_target is null)
-        {
-            return false;
-        }
-
-        try
-        {
-            var c = Compositor();
-            var size = new System.Numerics.Vector2(windowWidth, windowHeight);
-            if (_solidBrush is null || _solidSize != size)
-            {
-                _solidShape = c.CreateRoundedRectangleGeometry();
-                _solidInk = c.CreateColorBrush(colour);
-                var sprite = c.CreateSpriteShape(_solidShape);
-                sprite.FillBrush = _solidInk;
-                var visual = c.CreateShapeVisual();
-                visual.Size = size;
-                visual.Shapes.Add(sprite);
-                var surface = c.CreateVisualSurface();
-                surface.SourceVisual = visual;
-                surface.SourceSize = size;
-                _solidBrush = c.CreateSurfaceBrush(surface);
-                _solidSize = size;
-            }
-
-            _solidInk!.Color = colour;
-            _solidShape!.Size = System.Numerics.Vector2.Zero;
-            _target.SystemBackdrop = _solidBrush;
-            return true;
-        }
-        catch (Exception ex)
-        {
-            TaskbarHost.Log($"panel: solid backdrop failed: {ex.GetType().Name} {ex.Message} (0x{ex.HResult:X})");
-            _solidBrush = null;
-            return false;
-        }
-    }
-
-    /// <summary>Puts the solid shape this frame (window pixels).</summary>
-    public void MoveSolid(System.Numerics.Vector2 offset, System.Numerics.Vector2 size, float radius)
-    {
-        if (_solidShape is null)
-        {
-            return;
-        }
-
-        _solidShape.Offset = offset;
-        _solidShape.Size = size;
-        _solidShape.CornerRadius = new System.Numerics.Vector2(radius, radius);
-    }
-
     public void HideGlass()
     {
         if (_target is not null)

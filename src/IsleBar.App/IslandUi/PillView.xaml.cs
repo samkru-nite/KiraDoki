@@ -68,38 +68,6 @@ public sealed partial class PillView : UserControl
 
     internal IPillHost Host { get; set; } = null!;
 
-    /// <summary>The input box, shown in the text column while typing (the taskbar's pill only).</summary>
-    public UIElement? Input
-    {
-        get => InputSlot.Children.Count > 0 ? InputSlot.Children[0] : null;
-        set
-        {
-            InputSlot.Children.Clear();
-            if (value is not null)
-            {
-                InputSlot.Children.Add(value);
-            }
-        }
-    }
-
-    /// <summary>The Tab hint, after the now-playing bars (the taskbar's pill only).</summary>
-    public UIElement? Hint
-    {
-        get => TailRow.Children.Count > 1 ? TailRow.Children[1] : null;
-        set
-        {
-            while (TailRow.Children.Count > 1)
-            {
-                TailRow.Children.RemoveAt(1);
-            }
-
-            if (value is not null)
-            {
-                TailRow.Children.Add(value);
-            }
-        }
-    }
-
     private SolidColorBrush BrushOf(Windows.UI.Color color) => Host.Brush(color);
 
     private static PillColours? _colours;
@@ -188,7 +156,7 @@ public sealed partial class PillView : UserControl
         IslandText.Foreground = BrushOf(ForegroundFor(state));
     }
 
-    /// <summary>No card (typing, nothing to show): the text, cover, bars and dial go; the icon back at its place.</summary>
+    /// <summary>No card (nothing to show): the text, cover, bars and dial go; the icon back at its place.</summary>
     internal void Clear()
     {
         SetEqualizer(false);
@@ -197,7 +165,7 @@ public sealed partial class PillView : UserControl
         ShowLeadDial(null, Host.Theme.Icon);
         StopMarquee();
         IslandContent.Visibility = Visibility.Collapsed;
-        ShiftIcon(0);   // typing: the icon is the agent's mark, back at its place
+        ShiftIcon(0);   // the icon back at its place
     }
 
     /// <summary>
@@ -217,7 +185,7 @@ public sealed partial class PillView : UserControl
         CloseLabel.Foreground = BrushOf(closeInk);
     }
 
-    /// <summary>The icon slot as a card has it (not the agent's mark of typing): the font icon, the logos hidden until the card asks.</summary>
+    /// <summary>The icon slot as a card has it: the font icon, the logos hidden until the card asks.</summary>
     internal void ShowCardLead()
     {
         ClaudeGlyphImage.Source = Host.ClaudeLogo;
@@ -1086,7 +1054,7 @@ public sealed partial class PillView : UserControl
 
     // ---------------- Close button ----------------
 
-    /// <summary>An inform card shows its close button on the right (TODO 7.3, A4; moved right 10-08); every other card and typing don't.</summary>
+    /// <summary>An inform card shows its close button on the right (TODO 7.3, A4; moved right 10-08); every other card doesn't.</summary>
     internal void ShowClose(bool show)
     {
         CloseZone.Visibility = show ? Visibility.Visible : Visibility.Collapsed;

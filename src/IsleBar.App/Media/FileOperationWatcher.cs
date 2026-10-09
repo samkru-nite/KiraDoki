@@ -2,7 +2,6 @@ using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using Interop.UIAutomationClient;
 using IsleBar.App.Interop;
-using IsleBar.App.Search;
 using IsleBar.Core.Island;
 
 namespace IsleBar.App.Media;

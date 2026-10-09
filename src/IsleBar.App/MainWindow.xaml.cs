@@ -2,16 +2,13 @@
 using IsleBar.App.Interop;
 using IsleBar.App.IslandUi;
 using IsleBar.App.Media;
-using IsleBar.App.Search;
 using IsleBar.App.Supervisor;
 using IsleBar.App.Tracking;
 using IsleBar.Core.Configuration;
-using IsleBar.Core.History;
 using IsleBar.Core.Island;
 using IsleBar.Core.Launch;
 using IsleBar.Core.Localization;
 using IsleBar.Core.Models;
-using IsleBar.Core.Search;
 using IsleBar.Core.Ui;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
@@ -37,7 +34,6 @@ public sealed partial class MainWindow : Window
     private const int BaseHeight = 32;
 
     private static readonly TimeSpan IslandPollInterval = TimeSpan.FromMilliseconds(250);
-    private static readonly TimeSpan SearchDebounce = TimeSpan.FromMilliseconds(90);
 
     /// <summary>Where the pills sit in the window and how big it is (pixels). Replaced whole, so the tracker thread may read it.</summary>
     private PillsLayout _layout = PillGeometry.Compute(DpiSetup.Scale, big: false, smallLeft: false, PillGeometry.SmallWidth(0), round: true);
@@ -59,16 +55,12 @@ public sealed partial class MainWindow : Window
     private readonly TaskbarHost _taskbar;
     private readonly TaskbarTracker _tracker;
     private readonly IslandAnimator _animator;
-    private readonly FileSearchRequests _fileSearch;
     private readonly Watchdog _watchdog;
 
     private IsleBarSettings _settings;
     private LanguageStrings _text;
     private string _language;
     private ThemeColors _theme;
-    private HistoryNavigator _history;
-
-    private BarMode _mode = BarMode.Claude;
     // not "Hidden": a first placement of Hidden must still be applied (it compared equal and the window stayed where WinUI put it — review 10-03).
     // The window's top-left (the pills' spot moved up by ArcRoom), not the pills'.
     private BarPlacement _placement = new(false, int.MinValue, int.MinValue);
@@ -77,25 +69,11 @@ public sealed partial class MainWindow : Window
     /// <summary>While a file is dragged over the pill (blue border).</summary>
     private bool _dropHover;
     private string? _dropNames;   // names of the files being dragged over the pill, for the drop hint
-    private GlobalHotkey? _hotkey;
-    private IntPtr _previousForeground;
-    private string? _historyText;
-    private Microsoft.UI.Xaml.Controls.Primitives.FlyoutBase? _entryMenu;
-    private OpenRequest? _openWhenReady;
-
-    // the text of the latest file search sent, and of the one the results list shows — Enter right after editing (before the
-    // 90 ms debounce and Everything's answer) opened the old query's first hit, an .exe or .lnk included (review 10-03)
-    private string? _shownQuery;
     private Options.SettingsWindow? _settingsWindow;
     /// <summary>Claude's logo in the plain icon colour (null = not on this PC); the Codex one is <c>CodexGlyph.Source</c>.</summary>
     private ImageSource? _claudeGlyph;
-
-    /// <summary>Currently detaching from the taskbar (focus changes during this are not the end of typing).</summary>
-    private bool _switching;
     private IslandSnapshot _snapshot = IslandSnapshot.Empty;
     private DispatcherQueueTimer? _islandTimer;
-    private DispatcherQueueTimer? _searchTimer;
-    private bool _typing;
 
     public MainWindow()
     {
@@ -110,20 +88,16 @@ public sealed partial class MainWindow : Window
         _language = LanguageResolver.Resolve(_settings.Lang, CurrentUiLanguageId());
         _text = LanguageCatalog.For(_language);
         _theme = ThemeColors.FromSystem();
-        _history = new HistoryNavigator(_settings.History);
 
         _tracker = new TaskbarTracker(() => _layout.Width, DpiSetup.Px(BaseHeight), () => (BarSlot.Parse(_settings.Position), DpiSetup.Px(_settings.ManualOffset)));
         _feed = new ActivityFeed(() => _settings, () => _text);
         _animator = new IslandAnimator([LeadSlot, IslandContent], IslandContent, GlowRing, PillBody);
-        _fileSearch = new FileSearchRequests(OnSearchResult);
         _watchdog = new Watchdog(_taskbar, () => ThemeColors.FromSystem().Light, RequestExit,
             _ => _ui.TryEnqueue(Retheme));
 
         ApplyFonts();
         ApplyTheme();
         LoadAgentMarks();
-        UpdateLeadIcon();
-        SetMode(HomeMode());   // start in the default mode too (first in Tab order)
         WireEvents();
 
         // remove the title bar and border — otherwise only a "WinUI Desktop" title bar shows inside the 64px (PC 09-29)
@@ -146,20 +120,7 @@ public sealed partial class MainWindow : Window
         _feed.Start();
         _feed.OfferToConnectAgents();
 
-        // Ctrl+Alt+C = type from anywhere (same key as the Python version). Switches to the input box even if an island is showing.
-        _hotkey = new GlobalHotkey(() => _ui.TryEnqueue(() =>
-        {
-            if (_panel?.IsOpen != true)
-            {
-                OpenPanel();   // the input panel (TODO 7.9 H)
-            }
-        }));
         _watchdog.Start();
-        _foreground = new ForegroundEvents(window =>
-        {
-            StartMenu.Notice(window);   // remember Start's window when it opens — it stays up after a click on the pill
-            _ui.TryEnqueue(CheckForeground);
-        });
         StartIslandPolling();
         _ = UpdateModelAliasesAsync();
     }
@@ -168,77 +129,14 @@ public sealed partial class MainWindow : Window
 
     private void WireEvents()
     {
-        Entry.GotFocus += (_, _) =>
-        {
-            // A right click on the idle pill also focuses the input box; starting to type there swapped in the box's
-            // copy/paste menu, so right click showed "Paste" instead of our menu (seen 10-02). Right click never starts typing.
-            if (!_menuOpen && DateTimeOffset.UtcNow - _rightPressAt > TimeSpan.FromMilliseconds(500)
-                && DateTimeOffset.UtcNow - _closedByClickAt > TimeSpan.FromMilliseconds(500))   // the click that just closed the list
-            {
-                BeginTyping();   // when the right-click menu closed and the window came forward, the input box got focus and typing started (measured on PC 09-30)
-            }
-        };
-        // End of typing = the input box loses focus or the window is deactivated. But ignore transient focus changes while detaching
-        // (otherwise: click → detach → focus wobble → immediately reattached, measured on PC 09-29).
-        // End of typing only watches for "the window was pushed away by another window". If we also watched the input box losing focus,
-        // pressing ⌄ while typing (focus moves to the button) ended typing, ⌄ vanished, and on release there was nothing to click so settings never opened (user feedback 09-30).
-        Activated += (_, e) =>
-        {
-            if (e.WindowActivationState == WindowActivationState.Deactivated && !_switching)
-            {
-                // A click on a result / the preview is on its way — what it does ends typing itself (10-03). Not tied to the button
-                // state: a touchpad tap arrives as press+release together, so the button already reads "up" here (review 10-03).
-                // Alt+Tab with the mouse resting over the preview, or a click that ends up doing nothing (padding, a file that's
-                // gone), used to keep typing on for good — the re-check ends it.
-                if (_typing && _compose is not null)
-                {
-                    return;   // the compose box is taking over the question (Shift+Enter, a pasted block) — it ends typing when it closes
-                }
-
-                if (_typing && _preview?.UnderCursor() == true)
-                {
-                    _ui.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, ScheduleTypingRecheck);
-                    return;
-                }
-
-                EndTyping();
-            }
-        };
-        // the input box swallows ↑↓ and Tab first (caret/focus movement), so catch them in the preview stage
-        Entry.PreviewKeyDown += OnEntryKeyDown;
-        HookCompose();
         HookFileDrop();
         PressFeedback.Attach(BallCell);
-        PressFeedback.Enabled = () => _settings.Bounce && !PanelTakesPress;   // grey under the input panel = no response, not even the press (user 10-09)
+        PressFeedback.Enabled = () => _settings.Bounce;
         PressFeedback.Attach(PillBody, PressFeedback.PillPressed, PressFeedback.PillDamping);   // the big pill too: half on press, the rest + the card on release (user 10-08)
         Root.Loaded += (_, _) => MeasureInkAsync();   // where the card font's glyphs sit (TODO 7.9 D: centre the ink, not the line box)   // pressing makes it sink in and spring back (09-30 design M5)
-        Entry.TextChanged += (_, _) =>
-        {
-            UpdateTabHint();
-            // When a person types, forget the history position. If the text was inserted from history, keep it — WinUI sends this notification
-            // later and separately, so an "inserting" flag can't tell them apart (measured on PC 09-29) → compare against the inserted text instead.
-            if (Entry.Text != _historyText)
-            {
-                _history.Reset();
-                _historyText = null;
-            }
-
-            if (_mode == BarMode.Files)
-            {
-                ScheduleSearch();
-            }
-        };
-
-        // a child window doesn't get focus from a normal click, so take it explicitly
-        // handledEventsToo so we get it even if the input box handles the click first. After Esc the input box still holds XAML focus,
-        // so GotFocus doesn't fire again; treat the click itself as the start of typing (measured on PC 09-29).
+        // handledEventsToo: a press a child element handled still counts
         Root.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, e) =>
         {
-            if (e.GetCurrentPoint(Root).Properties.IsRightButtonPressed)
-            {
-                _rightPressAt = DateTimeOffset.UtcNow;
-            }
-
             if (!e.GetCurrentPoint(Root).Properties.IsLeftButtonPressed)
             {
                 return;   // right click is the menu (RightTapped)
@@ -251,33 +149,18 @@ public sealed partial class MainWindow : Window
                 return;
             }
 
-            if (PanelTakesPress && !IsInside(source, BallBox) && (IsInside(source, SmallPill) || IsInside(source, PillBody)))
-            {
-                _panel!.Collapse();   // with the input panel up, a press on the pills only puts it away (user 10-09); the circle toggles it
-                return;
-            }
-
             if (IsInside(source, SmallPill) && !IsInside(source, BallBox))
             {
-                _cellPress = !_typing && CellTagAt(source) is { } tag && tag != DotsTag ? tag : null;   // swaps on release (below)
-                _dotsPress = !_typing && CellTagAt(source) == DotsTag;   // opens the list on release
+                _cellPress = CellTagAt(source) is { } tag && tag != DotsTag ? tag : null;   // swaps on release (below)
+                _dotsPress = CellTagAt(source) == DotsTag;   // opens the list on release
 
                 return;   // the line and the margins do nothing
             }
 
             if (IsInside(source, BallBox))
             {
-                // the circle = the way in: the input panel, click again to put it away (TODO 7.9 H) — on release: the taskbar takes
-                // the foreground for the press a moment after it, and a panel opened on the press lost it then (log 10-09)
-                StartMenu.CloseIfOpen();   // Start stays up over a click on the pill and would cover the panel (user 10-04)
+                // the circle = the tool menu, same as a right click (10-10: the input panel is gone) — on release, like the rest
                 _ballPress = true;
-                return;
-            }
-
-            if (_typing)
-            {
-                _taskbar.TakeFocus();   // a click in the big pill while typing only moves the caret
-                Entry.Focus(FocusState.Programmatic);
                 return;
             }
 
@@ -306,7 +189,7 @@ public sealed partial class MainWindow : Window
             if (_cellPress is { } pressed)
             {
                 _cellPress = null;
-                if (!_typing && CellTagAt(e.OriginalSource as DependencyObject) == pressed)
+                if (CellTagAt(e.OriginalSource as DependencyObject) == pressed)
                 {
                     OnTaskCellClicked(pressed);   // that card and the big pill swap places (TODO 7.3, 10-07) - on release, like the big pill
                 }
@@ -317,14 +200,14 @@ public sealed partial class MainWindow : Window
                 _ballPress = false;
                 if (IsInside(e.OriginalSource as DependencyObject, BallBox))
                 {
-                    TogglePanel();
+                    ShowToolMenu();
                 }
             }
 
             if (_dotsPress)
             {
                 _dotsPress = false;
-                if (!_typing && CellTagAt(e.OriginalSource as DependencyObject) == DotsTag)
+                if (CellTagAt(e.OriginalSource as DependencyObject) == DotsTag)
                 {
                     ToggleList();
                 }
@@ -343,18 +226,9 @@ public sealed partial class MainWindow : Window
                 }
             }
         }), handledEventsToo: true);
-        // Right click = dismiss an island item (cancel a timer, etc.) · turn off the search bar
-        // The input box grabs right clicks first (its own copy/paste menu), so receive them with handledEventsToo.
-        // While typing, use the input box's menu as-is; otherwise use our menu — and disable the input box menu then (measured on PC 09-29).
-        _entryMenu = Entry.ContextFlyout;
-        Entry.ContextFlyout = null;
+        // Right click = the menu of what's under it (close a card, the tools)
         Root.AddHandler(UIElement.RightTappedEvent, new RightTappedEventHandler((_, e) =>
         {
-            if (_typing)
-            {
-                return;
-            }
-
             e.Handled = true;
             ShowZoneMenu(e.OriginalSource as DependencyObject);
         }), handledEventsToo: true);
@@ -380,16 +254,6 @@ public sealed partial class MainWindow : Window
         BallCell.PointerExited += (_, _) => BallHover.Opacity = 0;
 
         Closed += (_, _) => Cleanup();
-
-        // Remove the WinUI input box clear (X) button. Visual state changes toggle its Visibility, so pin its width to 0 instead.
-        Entry.Loaded += (_, _) =>
-        {
-            if (FindChild(Entry, "DeleteButton") is FrameworkElement delete)
-            {
-                delete.MaxWidth = 0;
-                delete.Margin = new Thickness(0);
-            }
-        };
     }
 
     private static bool IsInside(DependencyObject? element, DependencyObject container)
@@ -405,537 +269,6 @@ public sealed partial class MainWindow : Window
         return false;
     }
 
-    private static DependencyObject? FindChild(DependencyObject parent, string name)
-    {
-        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
-        {
-            var child = VisualTreeHelper.GetChild(parent, i);
-            if (child is FrameworkElement { Name: var n } && n == name)
-            {
-                return child;
-            }
-
-            if (FindChild(child, name) is { } found)
-            {
-                return found;
-            }
-        }
-
-        return null;
-    }
-
-    // ---------------- Input ----------------
-
-    /// <summary>
-    /// When typing starts, <b>detach</b> from the taskbar. Typing while attached tangles IME/focus
-    /// with Explorer and can hang it (09-29 AppHangXProc).
-    /// </summary>
-    private void BeginTyping()
-    {
-        if (_typing)
-        {
-            return;
-        }
-
-        CloseLift();
-
-        var before = Interop.NativeMethods.GetForegroundWindow();
-        _previousForeground = before != _taskbar.OuterWindow ? before : IntPtr.Zero;   // window to give focus back to when closed with Esc
-        _typing = true;
-        _typingHadFront = false;
-        _switching = true;
-        Entry.ContextFlyout = _entryMenu;   // copy/paste menu while typing
-        LayoutPills();   // typing happens in the big pill: it appears if no card was showing
-        _taskbar.Detach(Spot.X, Spot.Y, _width, _height);
-        // keep the pill shape after detaching — without it a square window covers the real search box and feels like "a separate window opened" (PC 09-29)
-        ApplyRegion();
-        IslandContent.Visibility = Visibility.Collapsed;
-        Entry.Visibility = Visibility.Visible;
-
-        RenderIsland();   // clear the island and set the left icon to the Claude/Codex icon (09-29: the timer icon was left behind)
-        PaintFill();      // slightly brighter while typing
-
-        // match the IME composition text size to the input box
-        ImeFont.Apply(_hwnd, UiFonts.Entry(_language), DpiSetup.Px(14));
-
-        // only re-enable "end of typing" detection after returning the focus shaken by detaching to the input box
-        _ui.TryEnqueue(DispatcherQueuePriority.Low, () =>
-        {
-            Entry.Focus(FocusState.Programmatic);
-            _switching = false;
-        });
-        UpdateTabHint();
-        if (_mode == BarMode.Files)
-        {
-            ScheduleSearch();   // file search as the first mode: the recent-files list opens right away, like the Start menu's
-        }
-    }
-
-    private ForegroundEvents? _foreground;
-    private DateTimeOffset _closedByClickAt;
-
-    /// <summary>Whether one of our windows has been in front since typing began (until then, ending on "not ours" would be premature).</summary>
-    private bool _typingHadFront;
-
-    /// <summary>
-    /// Typing ends as soon as a window that isn't IsleBar's comes to the front (a click on the desktop, another app, Alt+Tab).
-    /// Called by Windows' foreground notification, and every tick as a backstop. When the click went to the results list, the
-    /// keyboard is handed back to the input box once the click is over — so Esc and typing keep working (user 10-04).
-    /// </summary>
-    private void CheckForeground()
-    {
-        if (!_typing || _switching)
-        {
-            return;
-        }
-
-        var front = NativeMethods.GetForegroundWindow();
-        if (ForegroundEvents.IsOurs(front))
-        {
-            _typingHadFront = true;
-            return;
-        }
-
-        if (!_typingHadFront || NativeMethods.MouseButtonDown() || _compose is not null || _menuOpen)
-        {
-            return;   // not ours yet / mid-click or drag (looked at again next tick) / the compose box or our menu takes over
-        }
-
-        EndTyping();
-    }
-
-    /// <summary>When typing ends, go back into the taskbar.</summary>
-    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _typingRecheck;
-
-    /// <summary>After a click on a popup kept typing on: end it if the bar is no longer in front and nothing took the typing over.</summary>
-    private void ScheduleTypingRecheck()
-    {
-        _typingRecheck ??= _ui.CreateTimer();
-        _typingRecheck.Interval = TimeSpan.FromSeconds(1.5);
-        _typingRecheck.IsRepeating = false;
-        _typingRecheck.Tick -= OnTypingRecheck;
-        _typingRecheck.Tick += OnTypingRecheck;
-        _typingRecheck.Start();
-    }
-
-    private void OnTypingRecheck(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
-    {
-        if (_typing && NativeMethods.MouseButtonDown())
-        {
-            sender.Start();   // still holding the button on a popup (scrolling the preview, say) or a result's right-click menu is open — look again later
-            return;
-        }
-
-        if (_typing && _compose is null && !_menuOpen && NativeMethods.GetForegroundWindow() != _taskbar.OuterWindow)
-        {
-            EndTyping();
-        }
-    }
-
-    private void EndTyping()
-    {
-        _openWhenReady = null;   // cancelled before the results came: nothing opens later (review 10-03)
-        if (!_typing)
-        {
-            return;
-        }
-
-        _typing = false;
-        LayoutPills();
-        if (_pendingTimer is not null)
-        {
-            _pendingTimer = null;   // Esc / clicking away = keep the running timer
-            Entry.PlaceholderText = Placeholders.For(_mode, _settings.Agent);   // SetMode below skips this when the mode is unchanged (code review 10-01)
-        }
-        PaintFill();
-        Entry.ContextFlyout = null;         // after typing, right click = our menu
-        FocusSink.Focus(FocusState.Programmatic);   // move focus out of the input box so no blinking caret is left behind
-        Entry.Text = string.Empty;
-        _history.Reset();
-        SetMode(HomeMode());   // after typing, return to the default mode (first in Tab order), same as the Python version's blur
-        if (_taskbar.Attach())
-        {
-            PlaceOnTaskbar();
-            ApplyRegion();
-        }
-
-        RenderIsland();
-        UpdateTabHint();
-        _preview?.Hide();
-    }
-
-    private void OnEntryKeyDown(object sender, KeyRoutedEventArgs e)
-    {
-        switch (e.Key)
-        {
-            case Windows.System.VirtualKey.Tab:
-                ToggleMode();
-                e.Handled = true;
-                break;
-
-            case Windows.System.VirtualKey.Enter when IsShiftDown() && _mode == BarMode.Claude:
-                OpenCompose(Entry.Text + "\n");   // newline = go to the long-question compose window (09-30)
-                e.Handled = true;
-                break;
-
-            case Windows.System.VirtualKey.Enter:
-                OnEnter(reveal: IsControlDown());
-                e.Handled = true;
-                break;
-
-            case Windows.System.VirtualKey.Escape:
-                Entry.Text = string.Empty;
-                EndTyping();
-                if (_previousForeground != IntPtr.Zero)
-                {
-                    ForegroundHelper.Bring(_previousForeground);   // back to the window that was in use before pressing (same as the Python version)
-                }
-
-                e.Handled = true;
-                break;
-
-            case Windows.System.VirtualKey.Up:
-                e.Handled = MoveSelection(-1);
-                break;
-
-            case Windows.System.VirtualKey.Down:
-                e.Handled = MoveSelection(+1);
-                break;
-        }
-    }
-
-    // ---------------- Long-question compose window ----------------
-
-    private ComposeWindow? _compose;
-
-    /// <summary>Text from a compose window closed with Esc — continued the next time it opens.</summary>
-    private string? _composeDraft;
-
-    /// <summary>IME composition in progress, e.g. Korean (moving the window now breaks the composed character).</summary>
-    private bool _imeComposing;
-
-    private static bool IsShiftDown()
-        => Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Shift)
-            .HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
-
-    /// <summary>
-    /// Long questions go to the compose window (user feedback 09-30: first prompts are long but only a short slice was visible, which was painful).
-    /// Opens on: Shift+Enter · pasting multiple lines · text overflowing the input box (only once composition has finished).
-    /// </summary>
-    private void HookCompose()
-    {
-        Entry.TextCompositionStarted += (_, _) => _imeComposing = true;
-        Entry.TextCompositionEnded += (_, _) =>
-        {
-            _imeComposing = false;
-            _ui.TryEnqueue(OpenComposeIfOverflowing);
-        };
-        Entry.TextChanged += (_, _) => OpenComposeIfOverflowing();
-        Entry.SelectionChanged += (_, _) => { if (_preview is not null) { OpenComposeIfOverflowing(); } };   // move the preview's blinking caret when the input caret moves (arrows/click), not only when the text changes
-
-        // a single-line input box keeps only the first line of a multi-line paste → paste manually, and go to the compose window if multi-line
-        Entry.Paste += async (_, e) =>
-        {
-            if (_mode != BarMode.Claude)
-            {
-                return;
-            }
-
-            e.Handled = true;
-            string clip;
-            try
-            {
-                var content = Windows.ApplicationModel.DataTransfer.Clipboard.GetContent();
-                if (!content.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.Text))
-                {
-                    return;
-                }
-
-                clip = await content.GetTextAsync();
-            }
-            catch (Exception ex) when (ex is System.Runtime.InteropServices.COMException or UnauthorizedAccessException)
-            {
-                return;
-            }
-
-            clip = clip.TrimEnd('\r', '\n') is var trimmed && !trimmed.Contains('\n') && !trimmed.Contains('\r') ? trimmed : clip;   // one line copied with its newline
-            var start = Entry.SelectionStart;
-            var merged = Entry.Text[..start] + clip + Entry.Text[(start + Entry.SelectionLength)..];
-            if (clip.Contains('\n') || clip.Contains('\r'))
-            {
-                OpenCompose(merged);
-                return;
-            }
-
-            Entry.Text = merged;
-            Entry.SelectionStart = start + clip.Length;
-        };
-    }
-
-    private PromptPreviewWindow? _preview;
-
-    /// <summary>
-    /// A long question overflowing the input box is shown in full above it (focus stays put so typed characters aren't lost).
-    /// Left alone during IME composition; checked again once composition ends.
-    /// </summary>
-    private void OpenComposeIfOverflowing()
-    {
-        var show = _mode == BarMode.Claude && _typing && _compose is null && Entry.Text.Length >= 10 && Overflows();
-        if (!show)
-        {
-            _preview?.Hide();
-            return;
-        }
-
-        if (_imeComposing && _preview is null)
-        {
-            return;
-        }
-
-        if (_preview is null)
-        {
-            _preview = new PromptPreviewWindow();
-            AppFonts.Apply(_preview, _language);
-            _preview.Clicked += () =>
-            {
-                // Clicking the preview used to end typing and lose the question (10-03). End typing first, then open the compose box:
-                // ending it afterwards (the bar's own deactivation) put the bar back in the taskbar, which took focus from the new
-                // compose box and closed it at once (log 10-03).
-                var text = Entry.Text;
-                TaskbarHost.Log($"preview clicked: typing={_typing} len={text.Length}");
-                EndTyping();
-                OpenCompose(text);
-            };
-        }
-
-        _preview.Show(Entry.Text, Entry.SelectionStart, PopupAnchorX, TaskbarTop());
-    }
-
-    private bool Overflows()
-    {
-        var probe = new Microsoft.UI.Xaml.Controls.TextBlock { Text = Entry.Text, FontSize = Entry.FontSize, FontFamily = Entry.FontFamily, CharacterSpacing = Entry.CharacterSpacing };
-        probe.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
-        return probe.DesiredSize.Width > Entry.ActualWidth - 16;
-    }
-
-    private void OpenCompose(string text)
-    {
-        if (_compose is not null)
-        {
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(text) && !string.IsNullOrEmpty(_composeDraft))
-        {
-            text = _composeDraft;
-        }
-
-        var opening = text;
-        _preview?.Hide();
-
-        _compose = new ComposeWindow(
-            () =>
-            {
-                // the user kept typing in the input box while the window was opening — append whatever was typed after the handed-over text
-                // (with a newline in between for Shift+Enter). If it differs from the input box (paste, continued draft), keep the handed-over text as-is.
-                var typed = Entry.Text;
-                Entry.Text = string.Empty;   // the text moved to the compose window
-                var newline = opening.EndsWith('\n');
-                var basis = newline ? opening[..^1] : opening;
-                return basis.Length > 0 && typed.StartsWith(basis, StringComparison.Ordinal)
-                    ? basis + (newline ? "\n" : string.Empty) + typed[basis.Length..]
-                    : opening;
-            },
-            Placeholders.For(_mode, _settings.Agent),
-            submit: question =>
-            {
-                _composeDraft = null;
-                if (!Launch(question))
-                {
-                    _composeDraft = question;   // not started: the next compose box opens with it again
-                }
-            },
-            cancel: draft => _composeDraft = string.IsNullOrWhiteSpace(draft) ? null : draft);
-        _compose.Closed += (_, _) =>
-        {
-            _compose = null;
-            if (_typing && !_watchdog.Quitting)   // not while exiting: re-attaching to the taskbar then is what ReleaseForClose avoids
-            {
-                EndTyping();   // the bar stayed in typing mode while the compose box had the question
-            }
-
-            RenderIsland();   // back to the status display
-        };
-        AppFonts.Apply(_compose, _language);
-        _compose.ShowAbove(PopupAnchorX, TaskbarTop());
-        RenderIsland();
-    }
-
-    /// <summary>In file mode, move through results; in Claude mode, scroll through previous questions.</summary>
-    private bool MoveSelection(int delta)
-    {
-        if (_mode == BarMode.Files)
-        {
-            return MoveResultSelection(delta);
-        }
-
-        var text = _history.Move(delta, Entry.Text);
-        if (text is null)
-        {
-            return true;      // no history: do nothing (just stop the caret from moving)
-        }
-
-        // inserting history is not "typing" — if Reset ran here, ↑ would never move past the most recent entry (measured on PC 09-29)
-        _historyText = text;
-        Entry.Text = text;
-        Entry.SelectionStart = text.Length;
-        return true;
-    }
-
-    private void OnEnter(bool reveal)
-    {
-        // "Replace the running timer?" is showing in the input box: Enter on it confirms (typing something else drops the question)
-        if (_pendingTimer is { } pending)
-        {
-            _pendingTimer = null;
-            if (Entry.Text.Trim().Length == 0)
-            {
-                _feed.ReplaceTimer(pending);
-                EndTyping();
-                return;
-            }
-
-            Entry.PlaceholderText = Placeholders.For(_mode, _settings.Agent);
-        }
-
-        if (_mode == BarMode.Files)
-        {
-            OpenSelectedFile(reveal);
-            return;
-        }
-
-        var question = Entry.Text.Trim();
-
-        // typing e.g. "25min" starts a timer — only when there's a unit and the whole text is a duration (so questions aren't hijacked)
-        if (TimerParser.TryParse(question, out var duration))
-        {
-            if (StartTimer(TimerParser.ToActivity(duration, DateTimeOffset.UtcNow)))
-            {
-                EndTyping();
-            }
-
-            return;
-        }
-
-        if (!Launch(question))
-        {
-            EndTyping();   // the red notice shows on the pill (hidden while typing); ↑ brings the question back
-        }
-    }
-
-    /// <summary>
-    /// The agent couldn't be started: say so on the pill and leave the question where it was. It used to be replaced by the error
-    /// text — the question was lost, and Enter then sent the error as a question (review 10-03).
-    /// </summary>
-    private void ShowLaunchFailure(string message, string question)
-    {
-        TaskbarHost.Log("launch failed: " + message);
-        RememberQuestion(question);
-
-        var text = _text.FormatLaunchFail(message);
-        var notice = IsleBar.Core.SystemWatch.SystemNotice.Make(text, "\uE7BA", DateTimeOffset.UtcNow, urgent: true);
-        notice.State = "error";   // red, like other things that need fixing
-        notice.Agent = _settings.Agent;   // an agent's failure → an inform card that stays until closed (user 10-05)
-        _feed.Store.Write("islebar_launch", notice);
-
-        // The error also goes on the clipboard, so it can be pasted into a bug report (10-04) \u2014 long ones only scroll by on the pill.
-        // Copied 2 s later: the clipboard's "Copied \u00B7 \u2026" notice then shows once the error has been seen, and the error comes back
-        // after it. Copied at once, the two notices arrived together and the pill flipped between them (user 10-04).
-        _ = Task.Delay(TimeSpan.FromSeconds(2)).ContinueWith(_ => _ui.TryEnqueue(() =>
-        {
-            try
-            {
-                var data = new Windows.ApplicationModel.DataTransfer.DataPackage();
-                data.SetText(text);
-                Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(data);
-            }
-            catch (System.Runtime.InteropServices.COMException)
-            {
-                // the clipboard is busy (another app holds it) \u2014 the error is still on the pill and in the log
-            }
-        }), TaskScheduler.Default);
-    }
-
-    /// <returns>Whether the agent was started (false: the question is kept for another try).</returns>
-    private bool Launch(string question)
-    {
-        if (AgentLauncher.Start(_settings, question) is { } error)
-        {
-            ShowLaunchFailure(error, question);
-            return false;
-        }
-
-        if (question.Length > 0)
-        {
-            RememberQuestion(question);
-            // the model list check writes these to the file in the background; keep them current in memory too, or the next
-            // settings save wrote the old ones back (review 10-03)
-            TakeBackgroundModelLists();
-        }
-
-        EndTyping();
-        return true;
-    }
-
-    /// <summary>Adds the question to the ↑ history (file and memory).</summary>
-    private void RememberQuestion(string question)
-    {
-        if (question.Length == 0)
-        {
-            return;
-        }
-
-        _store.Update((IsleBarSettings s) =>
-        {
-            s.History = QuestionHistory.Add(s.History, question);
-            return true;
-        });
-        // in place: an open settings window holds this same object — replacing it with a fresh load made every switch flipped
-        // there afterwards change a copy nobody saved (review 10-03)
-        _settings.History = QuestionHistory.Add(_settings.History, question);
-        _history = new HistoryNavigator(_settings.History);
-    }
-
-    /// <summary>Tab: Claude → files → web → Claude (files skipped if file search is off).</summary>
-    private void ToggleMode() => SetMode(BarModes.Next(_mode, UsableModes(), filesOn: true));
-
-    /// <summary>Only enabled modes, in Tab order (reflects modes removed in settings and the file-search switch).</summary>
-    private List<BarMode> UsableModes() => BarModes.Usable(ModeOrder(), _settings.Files, _settings.ModesOff);
-
-    private List<BarMode> ModeOrder() => BarModes.Normalize(_settings.ModeOrder);
-
-    /// <summary>Default mode = first in Tab order (files skipped if file search is off).</summary>
-    private BarMode HomeMode() => UsableModes()[0];
-
-    private void SetMode(BarMode mode)
-    {
-        _openWhenReady = null;
-        if (mode == _mode)
-        {
-            return;
-        }
-
-        _mode = mode;
-        _history.Reset();
-        Entry.PlaceholderText = Placeholders.For(_mode, _settings.Agent);
-        UpdateLeadIcon();
-        UpdateTabHint();
-        if (_mode == BarMode.Files)
-        {
-            ScheduleSearch();
-        }
-    }
-
     // ---------------- Island ----------------
 
     private void StartIslandPolling()
@@ -947,11 +280,6 @@ public sealed partial class MainWindow : Window
           try
           {
             RetryAttachIfNeeded();
-            if (_typing)
-            {
-                CheckForeground();   // backstop for the foreground notification
-            }
-
             FollowTaskbar();
             RefreshBesideColor();
             var items = KeepLiftedCard(_feed.Collect(DateTimeOffset.UtcNow));
@@ -985,7 +313,7 @@ public sealed partial class MainWindow : Window
             // Music is the long-running island and its only per-tick change is the progress bar, which now advances ~once a second
             // (the media watcher is event-driven). So skip its re-render when nothing visible changed — the title marquee keeps
             // scrolling on the compositor regardless. Timers still draw every tick for a smooth ring; a quick sig catches the rest.
-            var musicPrimary = change is IslandAnimator.Change.None && !_hovering && !_typing
+            var musicPrimary = change is IslandAnimator.Change.None && !_hovering
                 ? _snapshot.Primary is { Kind: ActivityKind.Music } m ? m : null
                 : null;
             if (musicPrimary is not null && MusicRenderSig(musicPrimary) == _lastMusicSig)
@@ -1031,7 +359,7 @@ public sealed partial class MainWindow : Window
 
         _placement = placement;
         _placedWidth = _width;
-        Interop.TaskbarHost.Log($"follow: visible={placement.Visible} {placement.X},{placement.Y} size {_width}x{_height} typing={_typing}");
+        Interop.TaskbarHost.Log($"follow: visible={placement.Visible} {placement.X},{placement.Y} size {_width}x{_height}");
         if (!placement.Visible)
         {
             // don't use AppWindow.Show/Hide on a taskbar child window (PC 09-29: Show hung and the position was never set)
@@ -1041,14 +369,11 @@ public sealed partial class MainWindow : Window
 
         Interop.NativeMethods.ShowWindow(_taskbar.OuterWindow, Interop.NativeMethods.SW_SHOWNOACTIVATE);
         Root.Background = BrushOf(TaskbarColorBeside());   // when the position changes, re-read the adjacent taskbar color too
-        if (!_typing)
-        {
-            _taskbar.PlaceAt(placement.X, placement.Y, _width, _height);
-        }
+        _taskbar.PlaceAt(placement.X, placement.Y, _width, _height);
     }
 
-    /// <summary>The big pill shows a card, typing, a dragged file or the compose box; otherwise only the small pill (TODO 7.1).</summary>
-    private bool BigVisible => _typing || _compose is not null || _dropHover || _snapshot.IsActive;
+    /// <summary>The big pill shows a card or a dragged file; otherwise only the small pill (TODO 7.1).</summary>
+    private bool BigVisible => _dropHover || _snapshot.IsActive;
 
     // ---------------- Small pill: task icons (E3) ----------------
 
@@ -1071,7 +396,7 @@ public sealed partial class MainWindow : Window
     /// <summary>
     /// Every card the big pill isn't showing gets an icon on the small pill (temporary ones excepted), as many as fit before the
     /// taskbar's app icons (8 from them); the rest wait behind ⋯, which shows whenever any card is behind the big pill (TODO 7.9 D).
-    /// Frozen while typing or a menu is open (the window doesn't change size under them).
+    /// Frozen while a menu is open (the window doesn't change size under it).
     /// </summary>
     private void UpdateTaskCells()
     {
@@ -1085,7 +410,7 @@ public sealed partial class MainWindow : Window
     /// <summary>Works out which cells should show (<see cref="_cellCards"/>, <see cref="_dotsOn"/>). False while frozen.</summary>
     private bool ComputeCells()
     {
-        if (_typing || _menuOpen || _flying)
+        if (_menuOpen || _flying)
         {
             return false;
         }
@@ -1402,8 +727,8 @@ public sealed partial class MainWindow : Window
 
     private DateTimeOffset _lastAttachTry = DateTimeOffset.MinValue;
 
-    /// <summary>When the right mouse button last went down on the pill (a right click must not start typing).</summary>
-    private DateTimeOffset _rightPressAt = DateTimeOffset.MinValue;
+    /// <summary>The left button went down on the circle; its tool menu opens when it comes back up there.</summary>
+    private bool _ballPress;
 
     /// <summary>The speakers' levels for the now-playing bars (setting "music bars follow the sound").</summary>
     private readonly AudioMeter _audioMeter = new();
@@ -1467,7 +792,7 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private void UpdateGlow()
     {
-        var card = _typing ? null : _shownCard;
+        var card = _shownCard;
         var (key, color) = card switch
         {
             _ when _dropHover => ("drop", _theme.Accent),   // dragging over — "drop here to send"
@@ -1513,7 +838,7 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private void RefreshBesideColor()
     {
-        if (_typing || !_taskbar.IsAttached || DateTimeOffset.UtcNow - _lastBesideCheck < TimeSpan.FromSeconds(3))
+        if (!_taskbar.IsAttached || DateTimeOffset.UtcNow - _lastBesideCheck < TimeSpan.FromSeconds(3))
         {
             return;
         }
@@ -1747,7 +1072,7 @@ public sealed partial class MainWindow : Window
         }
 
         var wait = TimeSpan.FromSeconds(_attachFailures < AttachFailuresBeforeSlowRetry ? 2 : 10);
-        if (_typing || DateTimeOffset.UtcNow - _lastAttachTry < wait)
+        if (DateTimeOffset.UtcNow - _lastAttachTry < wait)
         {
             return;
         }
@@ -1769,7 +1094,7 @@ public sealed partial class MainWindow : Window
             ++_attachFailures;
             PlaceOnTaskbar();   // floating: topmost at the same spot
             ApplyRegion();
-            if (_attachFailures >= AttachFailuresBeforeRestart && _compose is null && !_menuOpen && RestartForAttachAllowed())
+            if (_attachFailures >= AttachFailuresBeforeRestart && !_menuOpen && RestartForAttachAllowed())
             {
                 // Sometimes the taskbar keeps refusing this window (error 87) while it takes any other — a fresh start of the bar
                 // attached every time (seen twice on 10-03). Once per 5 minutes at most, so a Windows-wide refusal can't loop.
@@ -1805,25 +1130,21 @@ public sealed partial class MainWindow : Window
 
     private void RenderIsland()
     {
-        _bigCard = !_typing && _compose is null && !_dropHover && _snapshot.IsActive ? _shownCard : null;
+        _bigCard = !_dropHover && _snapshot.IsActive ? _shownCard : null;
         LayoutPills();
         ShowCloseZone();
         ApplyStyle();
         Big.UpdateProgress(_snapshot.Primary);
-        GlowRing.Visibility = _typing ? Visibility.Collapsed : Visibility.Visible;   // the island is hidden while typing, so the border goes too
         UpdateGlow();
         if (RenderDropHint())
         {
             return;
         }
 
-        // While the compose window is open the pill looks like the input box it came from — it used to snap back to an unrelated
-        // status ("Claude working · …") under the window you were typing in (design check 10-01)
-        if (!_snapshot.IsActive || _typing || _compose is not null)
+        if (!_snapshot.IsActive)
         {
             Big.Clear();
-            Entry.Visibility = Visibility.Visible;
-            UpdateLeadIcon();
+            Big.ShowCardLead();
             return;
         }
 
@@ -1832,32 +1153,29 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>
-    /// While a file is dragged over the pill, show it there instead of only the blue border (user 10-01): with a drop command set,
-    /// just a file icon and the file's name (whatever the command does, you're handing it a file — so no wording that would be wrong
-    /// for someone else's command); with none, "Attach to prompt · name". Returns false when not dragging.
+    /// While a file is dragged over the pill, show it there instead of only the blue border (user 10-01): a file icon and the file's
+    /// name (whatever the drop command does, you're handing it a file — so no wording that would be wrong for someone else's
+    /// command). Returns false when not dragging.
     /// </summary>
     private bool RenderDropHint()
     {
-        if (!_dropHover || _typing)
+        if (!_dropHover)
         {
             return false;
         }
 
-        var hasCommand = !string.IsNullOrWhiteSpace(_settings.DropCommand);
         RenderIslandState(new ActivityState
         {
             RawKind = ActivityState.KindNotice,
-            Title = hasCommand ? _dropNames ?? string.Empty : _text.DropToAttach,
-            Name = hasCommand ? null : _dropNames,
-            Glyph = hasCommand ? "\uE8A5" : "\uE723",   // document / attach 📎
+            Title = _dropNames ?? string.Empty,
+            Glyph = "\uE8A5",   // document
         });
         return true;
     }
 
     private void RenderIslandState(ActivityState state)
     {
-        Entry.Visibility = Visibility.Collapsed;
-        UpdateLeadIcon();
+        Big.ShowCardLead();
         Big.Render(state, _shownCard, plainIcon: _dropHover);
     }
 
@@ -1889,19 +1207,6 @@ public sealed partial class MainWindow : Window
     private void ApplyFonts()
     {
         Big.UseFontsFor(string.Empty);
-        // the input box uses Pretendard too (ImeFont handles the IME composition text separately)
-        Entry.FontFamily = AppFonts.For(null, _language).Normal;
-        if (_fileList is not null)
-        {
-            _fileList.FontFamily = AppFonts.For(null, _language).Normal;
-        }
-
-        if (_preview is not null)
-        {
-            AppFonts.Apply(_preview, _language);   // Korean / Japanese / Chinese glyph shapes differ (review 10-03)
-        }
-
-        Entry.PlaceholderText = Placeholders.For(_mode, _settings.Agent);
         if (Root.IsLoaded)
         {
             MeasureInkAsync();   // another language, another font: its glyphs sit differently
@@ -2022,7 +1327,6 @@ public sealed partial class MainWindow : Window
         LoadAgentMarks();
         ApplyStyle();
         Big.RefreshFades();   // the edge fades of a scrolling title keep the old pill colour otherwise (grey boxes)
-        UpdateLeadIcon();
         RenderIsland();
         foreach (var delay in new[] { 0.8, 2.0, 4.0, 7.0 })
         {
@@ -2049,7 +1353,6 @@ public sealed partial class MainWindow : Window
         PillSurface.Fill = BrushOf(background);
         Root.Background = BrushOf(taskbar);   // outside the pill (the stair-steps of the clip edge sit on this color and become invisible)
         LeadIcon.Foreground = BrushOf(_theme.Icon);
-        Entry.Foreground = BrushOf(_theme.Foreground);
         BallRing.Stroke = BrushOf(_theme.Icon);
         CloseLabel.Text = _text.CloseCard;
         CloseLabel.Foreground = BrushOf(_theme.Foreground);
@@ -2077,7 +1380,7 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private void ApplyStyle()
     {
-        var glass = _settings.StyleGlass && !_typing;
+        var glass = _settings.StyleGlass;
         GlassEdge.Visibility = glass ? Visibility.Visible : Visibility.Collapsed;
         if (!glass)
         {
@@ -2092,12 +1395,12 @@ public sealed partial class MainWindow : Window
         GlassShine.Visibility = dark ? Visibility.Visible : Visibility.Collapsed;   // the white shine line isn't visible on light backgrounds
     }
 
-    /// <summary>Pill background: normal / hovered or typing (slightly brighter — same response as the real search box, Python version's LOOK).</summary>
+    /// <summary>Pill background: normal / hovered (slightly brighter — same response as the real search box, Python version's LOOK).</summary>
     private void PaintFill()
     {
         var colours = PillView.Colours;
         // on the close button only the button lights up; elsewhere on the pill only the pill, the button stays as it is (user 10-10)
-        var lift = (_hoverBig && !_closeHover) || _typing;
+        var lift = _hoverBig && !_closeHover;
         PillSurface.Fill = BrushOf(PillView.ColourOf(lift ? colours.Hover : colours.Rest));
         SmallSurface.Fill = BrushOf(PillView.ColourOf(colours.Rest));   // the small pill lifts only its circle cell (BallHover)
         // the close button: a step off the resting pill's colour, one more under the pointer (user 10-08, B5)
@@ -2165,10 +1468,10 @@ public sealed partial class MainWindow : Window
         Big.RefreshFades();
     }
 
-    /// <summary>An inform card shows its close button on the right (TODO 7.3, A4; moved right 10-08); every other card and typing don't.</summary>
+    /// <summary>An inform card shows its close button on the right (TODO 7.3, A4; moved right 10-08); every other card doesn't.</summary>
     private void ShowCloseZone()
     {
-        var show = !_typing && !_dropHover && _compose is null && _shownCard is { Type: CardType.Inform };
+        var show = !_dropHover && _shownCard is { Type: CardType.Inform };
         Big.ShowClose(show);
         if (!show)
         {
@@ -2227,7 +1530,7 @@ public sealed partial class MainWindow : Window
     /// <summary>The diagnostics lines of the settings window: is the bar inside the taskbar, and where it sits.</summary>
     private IReadOnlyList<(string Label, string Value)> Diagnostics()
     {
-        var embed = _taskbar.IsAttached || _typing
+        var embed = _taskbar.IsAttached
             ? _text.DiagOk
             : $"{_text.DiagFloating} (err {_taskbar.LastError} ×{_attachFailures})";
         var name = BarSlot.Parse(_settings.Position) switch
@@ -2276,13 +1579,6 @@ public sealed partial class MainWindow : Window
         _store.Save(_settings);
         LayoutPills();   // the small pill's side and the corners are settings
         RenderIsland();  // ...and so is centring the card text
-        if (!_typing || !UsableModes().Contains(_mode))
-        {
-            SetMode(HomeMode());   // if the order changed or file search was turned off, go back to the default mode
-        }
-
-        UpdateLeadIcon();
-        Entry.PlaceholderText = Placeholders.For(_mode, _settings.Agent);
     }
 
     private void OnLanguageChanged()
@@ -2306,36 +1602,16 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Left icon: the spark extracted from claude.exe in Claude mode (same as the Python version), a magnifier in file mode.
-    /// When an island (progress) is showing, the island decides the icon.
-    /// </summary>
-    private void UpdateLeadIcon()
-    {
-        var island = _snapshot.IsActive && !_typing && _compose is null;   // composing counts as typing (agent mark, not the island icon)
-        var agentIcon = !island && _mode == BarMode.Claude;
-        var spark = agentIcon && _settings.Agent == AgentKind.Claude && _claudeGlyph is not null;
-        var blossom = agentIcon && _settings.Agent == AgentKind.Codex && _codexBrand is not null;
-        ClaudeGlyphImage.Source = _claudeGlyph;
-        CodexGlyph.Source = _codexBrand;
-        ClaudeGlyphImage.Visibility = spark ? Visibility.Visible : Visibility.Collapsed;
-        CodexGlyph.Visibility = blossom ? Visibility.Visible : Visibility.Collapsed;
-        LeadIcon.Visibility = spark || blossom ? Visibility.Collapsed : Visibility.Visible;
-        if (!island)
-        {
-            LeadIcon.Glyph = ModeGlyph(_mode);
-            ZipTeeth.Opacity = 0;
-        }
-    }
-
-    /// <summary>
-    /// Dragging a file onto the pill runs the drop command on it when one is set (e.g. a script that sends to a phone — PhoneDrop),
-    /// otherwise attaches it to the prompt. Blue border while hovering; on transfer, the island shows it sending.
+    /// Dragging a file onto the pill runs the drop command on it (e.g. a script that sends to a phone — PhoneDrop). With no command
+    /// set the pill doesn't take files (10-10: attaching them to a prompt went with the input box). Blue border while hovering; on
+    /// transfer, the island shows it sending.
     /// </summary>
     private void HookFileDrop()
     {
         Root.DragOver += (_, e) =>
         {
-            if (!e.DataView.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.StorageItems))
+            if (!e.DataView.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.StorageItems)
+                || string.IsNullOrWhiteSpace(_settings.DropCommand))
             {
                 return;
             }
@@ -2360,30 +1636,20 @@ public sealed partial class MainWindow : Window
         {
             _dropHover = false;
             RenderIsland();
-            if (!e.DataView.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.StorageItems))
+            if (!e.DataView.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.StorageItems)
+                || string.IsNullOrWhiteSpace(_settings.DropCommand))
             {
                 return;
             }
-
-            // The drop command decides what a drop does: if one is set (e.g. a script that sends to a phone),
-            // run it with the dropped files; if it's empty, attach the files to the prompt instead (the default for everyone). (user 10-01)
-            var hasCommand = !string.IsNullOrWhiteSpace(_settings.DropCommand);
 
             var deferral = e.GetDeferral();
             try
             {
                 var items = await e.DataView.GetStorageItemsAsync();
                 var paths = items.Select(i => i.Path).Where(p => !string.IsNullOrEmpty(p)).ToList();
-                if (hasCommand)
+                if (!_feed.PhoneDrop.Send(paths, _settings.DropCommand))
                 {
-                    if (!_feed.PhoneDrop.Send(paths, _settings.DropCommand))
-                    {
-                        TaskbarHost.Log($"drop→command: nothing to run or not files ({paths.Count})");
-                    }
-                }
-                else
-                {
-                    AttachToPrompt(paths);
+                    TaskbarHost.Log($"drop→command: nothing to run or not files ({paths.Count})");
                 }
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)   // async void: anything escaping ends the app (review 10-03)
@@ -2416,252 +1682,11 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    /// <summary>
-    /// Attach dropped files to the prompt: put their paths into the input box (quoted when they contain spaces) and start typing,
-    /// so the person can add their message and press Enter. The agent reads the referenced paths. (10-01)
-    /// </summary>
-    private void AttachToPrompt(IReadOnlyList<string> paths)
-    {
-        var files = paths.Where(p => File.Exists(p) || Directory.Exists(p)).ToList();
-        if (files.Count == 0)
-        {
-            return;
-        }
-
-        if (_mode != BarMode.Claude && UsableModes().Contains(BarMode.Claude))
-        {
-            SetMode(BarMode.Claude);
-        }
-
-        var refs = string.Join(" ", files.Select(p => p.Contains(' ', StringComparison.Ordinal) ? $"\"{p}\"" : p));
-        var gap = Entry.Text.Length > 0 && !Entry.Text.EndsWith(' ') ? " " : string.Empty;
-        Entry.Text += gap + refs + " ";
-        BeginTyping();
-        Entry.Focus(FocusState.Programmatic);
-        Entry.SelectionStart = Entry.Text.Length;
-    }
-
-    /// <summary>Mode icon (Segoe Fluent Icons) — shared by the left icon and the Tab hint.</summary>
-    private static string ModeGlyph(BarMode mode) => mode switch
-    {
-        BarMode.Files => "",   // folder — file search (Everything). User feedback 09-30: icons must not be confusing
-        _ => "",               // chat (when there's no Codex icon)
-    };
-
-    /// <summary>
-    /// Tab hint (09-30 design decision B): <b>only when the input box is empty</b>, a dim [Tab] key + the next mode's icon on the right.
-    /// Shows that Tab switches function, but disappears once you start typing so it doesn't get in the way (user asked for a hint that Tab changes the function).
-    /// </summary>
-    private void UpdateTabHint()
-    {
-        var next = BarModes.Next(_mode, UsableModes(), filesOn: true);
-        var show = _typing && Entry.Text.Length == 0 && next != _mode && _pendingTimer is null;   // the "replace timer?" question needs the whole width
-        TabHint.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-        if (!show)
-        {
-            return;
-        }
-
-        var hint = BrushOf(_theme.Hint);
-        TabKey.BorderBrush = hint;
-        TabKeyText.Foreground = hint;
-        TabNextIcon.Foreground = hint;
-        TabNextIcon.Glyph = ModeGlyph(next);
-
-        // if next is Claude/Codex, use the same mark as the left icon (from the user's PC; glyph when there is none)
-        var mark = next == BarMode.Claude
-            ? (_settings.Agent == AgentKind.Codex ? CodexGlyph.Source : _claudeGlyph)
-            : null;
-        TabNextMark.Source = mark;
-        TabNextMark.Visibility = mark is null ? Visibility.Collapsed : Visibility.Visible;
-        TabNextIcon.Visibility = mark is null ? Visibility.Visible : Visibility.Collapsed;
-    }
-
-    private bool MoveResultSelection(int delta) => _fileList?.Move(delta) ?? true;
-
-    /// <summary>Opens the selected result. Ctrl+Enter selects the file in Explorer instead.</summary>
-    private void OpenSelectedFile(bool revealInFolder)
-    {
-        // nothing selected: the top row, as the Start menu's search opens its best match on Enter (user 10-04)
-        if ((_fileList?.SelectedHit ?? _fileList?.FirstHit) is not { } hit || _shownQuery != SearchText())
-        {
-            // if the list hasn't caught up with the current input, search with the current input now and open the first item (same as the Python version)
-            _openWhenReady = revealInFolder ? OpenRequest.Reveal : OpenRequest.Open;
-            RequestSearch(SearchText());
-            return;
-        }
-
-        OpenHit(hit, revealInFolder);
-    }
-
-    private void OpenHit(FileHit hit, bool revealInFolder)
-    {
-        if (!FileActions.Open(hit.FullPath, revealInFolder))
-        {
-            return;   // a file that's gone: the panel stays, the list says nothing new
-        }
-
-        ClosePanelDone();
-    }
-
-    private static bool IsControlDown()
-        => Microsoft.UI.Input.InputKeyboardSource
-            .GetKeyStateForCurrentThread(Windows.System.VirtualKey.Control)
-            .HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
-
-    private void ScheduleSearch()
-    {
-        if (_searchTimer is null)
-        {
-            // attach the handler only once (attaching on every call fires multiple searches)
-            _searchTimer = _ui.CreateTimer();
-            _searchTimer.Interval = SearchDebounce;
-            _searchTimer.IsRepeating = false;
-            _searchTimer.Tick += (_, _) =>
-            {
-                if (PanelSearching)
-                {
-                    RequestSearch(SearchText());
-                }
-            };
-        }
-
-        _searchTimer.Stop();
-        _searchTimer.Start();
-    }
-
-    private void RequestSearch(string query) => _fileSearch.Request(query, _settings);
-
-    /// <summary>A sort button under the results: remember it and search again in that order, keeping typing in the input box.</summary>
-    private void ChooseFileSort(string sort)
-    {
-        if (sort != _settings.FileSort)
-        {
-            _settings.FileSort = sort;
-            _store.Update((IsleBarSettings s) =>
-            {
-                s.FileSort = sort;
-                return true;
-            });
-        }
-
-        RequestSearch(SearchText());
-    }
-
-    /// <summary>Row <paramref name="index"/> of the results: open it, or show it in Explorer.</summary>
-    private void OpenResult(int index, bool revealInFolder)
-    {
-        _fileList?.SelectAt(index);
-        if (_fileList?.SelectedHit is { } hit)
-        {
-            OpenHit(hit, revealInFolder);
-        }
-    }
-
-    /// <summary>"Open in Everything" under the results: Everything's own window with the same words (all results, every column).</summary>
-    private void OpenInEverything()
-    {
-        if (FileActions.EverythingExe() is not { } exe)
-        {
-            OpenEverythingDownload();
-            return;
-        }
-
-        if (!FileActions.SearchInEverything(exe, SearchText()))
-        {
-            return;
-        }
-
-        ClosePanelDone();
-    }
-
-    /// <summary>
-    /// "Everything isn't running — start it": starts it in the background (no window) and searches again once it has its index
-    /// up — typing carries on. Not installed → its download page.
-    /// </summary>
-    private void StartEverything()
-    {
-        _panel?.TakeKeyboard();   // the click on the link took it
-        if (FileActions.EverythingExe() is not { } exe)
-        {
-            OpenEverythingDownload();
-            return;
-        }
-
-        if (!FileActions.StartEverything(exe))
-        {
-            return;
-        }
-
-        var retry = _ui.CreateTimer();
-        retry.Interval = TimeSpan.FromSeconds(1.5);
-        retry.IsRepeating = false;
-        retry.Tick += (_, _) =>
-        {
-            if (PanelSearching)
-            {
-                RequestSearch(SearchText());
-            }
-        };
-        retry.Start();
-    }
-
-    /// <summary>Everything isn't installed: its official download page in the browser.</summary>
-    private void OpenEverythingDownload()
-    {
-        if (FileActions.OpenEverythingDownload())
-        {
-            _panel?.Collapse();
-        }
-    }
-
-    /// <summary>Called from the search thread → <b>marshals to the UI thread</b> to draw. Results for stale input are dropped.</summary>
-    private void OnSearchResult(long seq, IReadOnlyList<FileHit> hits, SearchProblem problem)
-        => _ui.TryEnqueue(() =>
-        {
-            // not typing (Esc / a click away just ended it): clearing the box then asked for the recent list, which popped up
-            // after typing had ended — and nothing closed it any more (user 10-04)
-            if (seq != _fileSearch.LatestSeq || !PanelSearching || _fileList is null)
-            {
-                return;
-            }
-
-            if (_openWhenReady is { } open)
-            {
-                _openWhenReady = null;
-                if (hits.Count > 0)
-                {
-                    OpenHit(hits[0], open == OpenRequest.Reveal);
-                    return;
-                }
-            }
-
-            // An empty box shows recent files, so the list is there as soon as file search opens (user 10-04). Nothing to show
-            // → one line under the header, a link where it leads somewhere.
-            (string? note, Action? noteAction) = problem switch
-            {
-                SearchProblem.SdkMissing => (_text.NoSdk, null),
-                SearchProblem.ServiceOff => (_text.EsOffLink, StartEverything),
-                SearchProblem.Failed => (_text.EsFail, null),
-                _ => hits.Count == 0 ? (_text.NoResultLink, (Action)OpenInEverything) : (null, null),
-            };
-
-            _fileList.Show(hits, note, noteAction, _settings.FileSort, _text);
-            if (hits.Count >= _settings.FileResults)
-            {
-                _panel?.CheckSpacing();   // a full list: its last row is the one next to the field
-            }
-
-            _shownQuery = _fileSearch.RequestedQuery;   // the latest request's results (older ones were dropped above)
-        });
-
     /// <summary>Windows display language (LANGID). The resolution rules live in Core (LanguageResolver).</summary>
     private static int CurrentUiLanguageId() => GetUserDefaultUILanguage();
 
     [System.Runtime.InteropServices.DllImport("kernel32.dll")]
     private static extern ushort GetUserDefaultUILanguage();
-
-    private enum OpenRequest { Open, Reveal }
 
     private async Task UpdateModelAliasesAsync()
     {
@@ -2682,34 +1707,8 @@ public sealed partial class MainWindow : Window
     private const int MenuStopwatch = 14;
     private const int MenuSettings = 17;
 
-    /// <summary>A new timer waiting for "Replace the running timer?" to be answered (Enter = replace, Esc = keep).</summary>
-    private ActivityState? _pendingTimer;
-
-    /// <summary>
-    /// Starts a timer — unless one is already running (or paused), in which case the input box asks first instead of silently
-    /// throwing it away: starting a stopwatch used to wipe a running Pomodoro without a word (user chose "ask once", 10-01).
-    /// True if it started now; false if it's waiting for the answer.
-    /// </summary>
-    private bool StartTimer(ActivityState next)
-    {
-        if (!_feed.TimerRunning(DateTimeOffset.UtcNow))
-        {
-            _feed.ReplaceTimer(next);
-            return true;
-        }
-
-        _pendingTimer = next;
-        if (!_typing)
-        {
-            _taskbar.TakeFocus();
-            BeginTyping();
-        }
-
-        Entry.Text = string.Empty;
-        Entry.PlaceholderText = _text.ReplaceTimerAsk;
-        UpdateTabHint();
-        return false;
-    }
+    /// <summary>Starts a timer next to any that are running (TODO 三-④ B, 10-10: they used to replace each other after asking in the input box).</summary>
+    private void StartTimer(ActivityState next) => _feed.StartTimer(next);
 
     /// <summary>
     /// "Close" on a card: a state file goes away (a finished task, a timer that rang, a failure, an agent's turn); a card with no file
@@ -2776,7 +1775,7 @@ public sealed partial class MainWindow : Window
                 ShowCardMenu(card, header: true);
             }
         }
-        else if (_shownCard is { } shown && !_dropHover && _compose is null)
+        else if (_shownCard is { } shown && !_dropHover)
         {
             ShowCardMenu(shown, header: false);
         }
@@ -2895,13 +1894,13 @@ public sealed partial class MainWindow : Window
 
     /// <summary>
     /// Shows a menu and returns the chosen id. A window attached to the taskbar can't become the foreground window, so the menu
-    /// couldn't receive clicks (measured on PC 09-29) → detach and bring it forward, as when typing, only while the menu is open.
+    /// couldn't receive clicks (measured on PC 09-29) → detach and bring it forward, only while the menu is open.
     /// Position and shape are unchanged, so it's unnoticeable.
     /// </summary>
     private int RunMenu(IReadOnlyList<MenuItem> items)
     {
         var detached = false;
-        if (!_typing && _taskbar.IsAttached)
+        if (_taskbar.IsAttached)
         {
             _taskbar.Detach(Spot.X, Spot.Y, _width, _height);
             ApplyRegion();
@@ -2917,18 +1916,10 @@ public sealed partial class MainWindow : Window
         finally
         {
             // focus notifications can arrive late after the menu closes, so release one beat later
-            _ui.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
-            {
-                if (!_typing)
-                {
-                    FocusSink.Focus(FocusState.Programmatic);   // so the input box isn't left with just a blinking caret
-                }
-
-                _menuOpen = false;
-            });
+            _ui.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => _menuOpen = false);
         }
 
-        if (detached && !_typing && _taskbar.Attach())
+        if (detached && _taskbar.Attach())
         {
             PlaceOnTaskbar();
             ApplyRegion();
@@ -2959,10 +1950,9 @@ public sealed partial class MainWindow : Window
     private void Cleanup()
     {
         _watchdog.Quitting = true;
-        _foreground?.Dispose();
         // every window closed, so the app ends by itself instead of waiting 4 s for the forced exit (review 10-03) — first, while
-        // the meter and timers still exist (closing compose re-renders the pill)
-        foreach (var close in new Action?[] { _settingsWindow is null ? null : _settingsWindow.Close, _lift is null ? null : _lift.Close, _preview is null ? null : _preview.Close, _compose is null ? null : _compose.Close })
+        // the meter and timers still exist
+        foreach (var close in new Action?[] { _settingsWindow is null ? null : _settingsWindow.Close, _lift is null ? null : _lift.Close })
         {
             try
             {
@@ -2973,16 +1963,13 @@ public sealed partial class MainWindow : Window
             }
         }
 
-        _hotkey?.Dispose();
         Big.StopMeterBars();
         _audioMeter.Dispose();
         _feed.Dispose();
         _settingsWindow?.Close();
 
         _islandTimer?.Stop();
-        _searchTimer?.Stop();
         _watchdog.Dispose();
         _tracker.Dispose();
-        _fileSearch.Dispose();
     }
 }

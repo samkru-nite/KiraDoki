@@ -18,10 +18,6 @@ public sealed class LanguageStrings
     /// <summary>Launch failure notice. The error message goes in <c>{}</c> — use <see cref="FormatLaunchFail"/>.</summary>
     public required string LaunchFail { get; init; }
 
-    public required string NoSdk { get; init; }
-    public required string EsOff { get; init; }
-    public required string EsFail { get; init; }
-    public required string NoResult { get; init; }
     public required string Done { get; init; }
     public required string Fail { get; init; }
     public required string Prep { get; init; }
@@ -37,7 +33,6 @@ public sealed class LanguageStrings
     public required string Folder { get; init; }
     public required string FolderChange { get; init; }
     public required string FolderHome { get; init; }
-    public required string Files { get; init; }
 
     public required OptionText Session { get; init; }
     public required OptionText Model { get; init; }
@@ -50,34 +45,17 @@ public sealed class LanguageStrings
     /// <summary>Title of "Agent" (Claude / Codex picker) in the settings window.</summary>
     public required string Agent { get; init; }
 
-    /// <summary>File search (user 10-04): the sort buttons under the results, the button that opens Everything, the row-count setting.</summary>
-    public required string SortName { get; init; }
-    public required string SortModified { get; init; }
-    public required string SortSize { get; init; }
-    public required string OpenInEverything { get; init; }
-    public required string FileResultsCount { get; init; }
 
     /// <summary>File search result right-click menu (user 10-04).</summary>
     public required string MenuOpen { get; init; }
-    public required string MenuOpenFolder { get; init; }
-    public required string MenuCopyPath { get; init; }
-    public required string MenuCopyName { get; init; }
 
-    /// <summary>Settings: the folders file search hides (one per line), its explanation, and the button that restores the built-in list (10-04).</summary>
-    public required string FileExcludeLabel { get; init; }
-    public required string FileExcludeHint { get; init; }
     public required string DownloadFoldersLabel { get; init; }
     public required string DownloadFoldersHint { get; init; }
     public required string Downloading { get; init; }
     public required string FileTransfer { get; init; }
     public required string ResetDefaults { get; init; }
 
-    /// <summary>File search, one clickable line in place of the list (10-04): nothing found → search in Everything; Everything off → start it.</summary>
-    public required string NoResultLink { get; init; }
-    public required string EsOffLink { get; init; }
 
-    /// <summary>Title of "Tab order" in the settings window.</summary>
-    public required string TabOrder { get; init; }
 
 
     /// <summary>Timer label on the island ("Timer 18:42" — like "Pomodoro 18:42" in the preview).</summary>
@@ -204,14 +182,7 @@ public sealed class LanguageStrings
     /// <summary>Drop command description.</summary>
     public required string DropCommandHint { get; init; }
 
-    /// <summary>
-    /// Pill text while a file is dragged over it and there's no drop command ("attach to prompt"). With a drop command set, the pill
-    /// shows only a file icon and the name — the command can be anything, so no wording claims what it does (user 10-01).
-    /// </summary>
-    public required string DropToAttach { get; init; }
 
-    /// <summary>Input-box question when a timer is started while another one runs ("Replace timer? Enter / Esc").</summary>
-    public required string ReplaceTimerAsk { get; init; }
 
     /// <summary>"Appearance" section in the settings window.</summary>
     public required string StyleSection { get; init; }
@@ -317,23 +288,11 @@ public sealed class LanguageStrings
     /// <summary>Right-click on a pinned card: let it follow the usual rules again.</summary>
     public required string Unpin { get; init; }
 
-    /// <summary>The input panel's grey hint when searching files (user 10-09: in the UI's language, not always English).</summary>
-    public required string SearchFilesHint { get; init; }
 
-    /// <summary>The grey hint when asking AI; {0} = the agent's name.</summary>
-    public required string AskAgentHint { get; init; }
 
-    /// <summary>The file list's header over its right column: the time (and size) — short, the column is narrow (H1b, user 10-09).</summary>
-    public required string SortTime { get; init; }
 
-    /// <summary>A file changed yesterday, in the file list's time column.</summary>
-    public required string Yesterday { get; init; }
 
-    /// <summary>The panel's mode button, hovered while searching files: "Click to chat with {0}" (user 10-09: say it's a click).</summary>
-    public required string ModeAskTip { get; init; }
 
-    /// <summary>The mode button, hovered while asking AI.</summary>
-    public required string ModeFilesTip { get; init; }
 
     /// <summary>Setting: card text left-aligned or centred on the big pill (user 10-07).</summary>
     public required string CardTextLabel { get; init; }
