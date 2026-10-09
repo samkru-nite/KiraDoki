@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Numerics;
 using System.Runtime.InteropServices;
 using IsleBar.App.Interop;
 using IsleBar.Core.Ui;
@@ -60,6 +61,16 @@ internal sealed class LiftWindow : Window
     private readonly CompositeTransform3D _tilt = new();
     private readonly SmoothBorder _frame = new() { EdgeWidth = 1 };   // smooth corners, like the pills (user 10-08)
     private readonly ScaleTransform _frameStretch = new();
+
+    /// <summary>
+    /// The glass (丙④): the system's live blur under the frame's see-through fill (<see cref="_live"/>), its shape moved with the
+    /// frame every frame. <see cref="_glassShare"/> = how far the fill has thinned (0 solid … 1 <see cref="LiftMotion.GlassDensity"/>).
+    /// </summary>
+    private bool _live;
+    private double _glassShare;
+
+    /// <summary>XAML leans the sheet's top towards you; System.Numerics' positive X turn takes it away — so the glass turns the other way (user 10-10, slowed down: the edge stood wider than the glass at the top).</summary>
+    private const float GlassLeanSign = -1;
     private readonly Image _shot = new() { Stretch = Stretch.Fill, IsHitTestVisible = false };
     private readonly Canvas _content = new();
     private readonly RectangleGeometry _contentClip = new();
@@ -124,6 +135,7 @@ internal sealed class LiftWindow : Window
         _frame.Fill = _fill;
         _frame.Edge = _edge;
         _frame.RenderTransform = _frameStretch;
+
         _content.Clip = _contentClip;
         _stage.Children.Add(_frame);
         _stage.Children.Add(_content);
@@ -149,6 +161,11 @@ internal sealed class LiftWindow : Window
         _rider.Visibility = Visibility.Collapsed;
         _firstFrameChecked = false;
         _growFrom = null;
+        _glassShare = 0;
+
+        // the whole window in the card's theme before its inside is made: the buttons came out light for a frame, then dark (user
+        // 10-10: "the buttons flash from bright to dark")
+        _root.RequestedTheme = request.Palette.Dark ? ElementTheme.Dark : ElementTheme.Light;
 
         // the card's inside first: an adaptive card takes the lowest height its middle fits in (200 / 300 / 400, user 10-10)
         BuildView(request.Sheet);
@@ -175,6 +192,12 @@ internal sealed class LiftWindow : Window
 
         SetWindowRgn(_hwnd, IntPtr.Zero, redraw: true);   // the whole window while it moves
         AppWindow.MoveAndResize(new Windows.Graphics.RectInt32(win.Left, win.Top, win.Width, win.Height));
+        // Windows' own acrylic (user 10-10: the glass doesn't follow the taskbar; reference = the notification centre). Dark: between
+        // WinUI's "base" (#202020 × 0.5 — a bit dark) and "default" (#2C2C2C × 0.15 — a bit light), luminosity 0.96; light: WinUI's
+        // default, #FCFCFC × 0, 0.85
+        var dark = request.Palette.Dark;
+        _live = Frost.Allowed() && SystemBackdrop is TransparentBackdrop backdrop && backdrop.StartGlass(win.Width, win.Height,
+            dark ? Color.FromArgb(255, 0x26, 0x26, 0x26) : Color.FromArgb(255, 0xFC, 0xFC, 0xFC), dark ? 0.3f : 0f, dark ? 0.96f : 0.85f);
         if (GetWindowRect(_hwnd, out var outer))
         {
             TaskbarHost.Log($"lift: window rect {outer.Left},{outer.Top} {outer.Right - outer.Left}x{outer.Bottom - outer.Top}, client {AppWindow.ClientSize.Width}x{AppWindow.ClientSize.Height}");
@@ -183,6 +206,7 @@ internal sealed class LiftWindow : Window
         _foregroundBefore = GetForegroundWindow();
         AppWindow.Show(activateWindow: false);
         SetWindowPos(_hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        _slow = File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "IsleBar", "slow"));
         Start();
         _outside.Arm();
         TaskbarHost.Log($"lift: open {request.Style} {request.Key} {_height}{(request.Sheet.Adaptive ? " (adaptive)" : string.Empty)} card={_layout.Card.Left},{_layout.Card.Top} {_layout.Card.Width}x{_layout.Card.Height} window={win.Left},{win.Top} {win.Width}x{win.Height} pill={request.Pill.Left},{request.Pill.Top} {request.Pill.Width}x{request.Pill.Height}");
@@ -201,6 +225,7 @@ internal sealed class LiftWindow : Window
         }
 
         _closing = true;
+
         Closing?.Invoke();
         _follow = _request.Style == LiftStyle.Morph ? follow : null;
         _followBounce = bounce;
@@ -228,6 +253,34 @@ internal sealed class LiftWindow : Window
         SetWindowPos(_hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         TaskbarHost.Log($"lift: close {_request.Key}{(_follow is null ? string.Empty : " into its task cell")}, top at pill = {Describe(TopAt(Centre(_request.Pill)))}");
         Start();
+    }
+
+    /// <summary>
+    /// The live glass's shape this frame, in window pixels: the frame's rounded rectangle (upright size), stretched by 1/cos and
+    /// leaning around its bottom edge as the XAML sheet does, seen in the root's perspective (centre = the window's centre).
+    /// </summary>
+    private void MoveGlass(LiftRequest r, MotionBox box, double upright, double bottom, double stretch, double lean, Color solid)
+    {
+        if (SystemBackdrop is not TransparentBackdrop backdrop || _layout is not { } lay)
+        {
+            return;
+        }
+
+        var s = (float)DpiSetup.Scale;
+        var win = lay.Window;
+        var cx = (float)(box.X + (box.Width / 2)) * s;
+        var by = (float)bottom * s;
+        var perspective = Matrix4x4.Identity;
+        perspective.M34 = -1 / (float)(LiftMotion.Depth * s);
+        var centre = Matrix4x4.CreateTranslation(-win.Width / 2f, -win.Height / 2f, 0);
+        var m = Matrix4x4.CreateTranslation(-cx, -by, 0)
+            * Matrix4x4.CreateScale(1, (float)stretch, 1)
+            * Matrix4x4.CreateRotationX(GlassLeanSign * (float)(lean * Math.PI / 180))
+            * Matrix4x4.CreateTranslation(cx, by, 0)
+            * centre * perspective * Matrix4x4.CreateTranslation(win.Width / 2f, win.Height / 2f, 0);
+        var cut = r.Style == LiftStyle.SlideUp ? r.TaskbarTop - win.Top : win.Height;
+        backdrop.MoveGlass(new Vector2((float)box.X * s, (float)(bottom - upright) * s), new Vector2((float)box.Width * s, (float)upright * s),
+            (float)_frame.Radius * s, m, (float)_stage.Opacity, cut, solid);
     }
 
     private void OnPress(int x, int y)
@@ -273,6 +326,7 @@ internal sealed class LiftWindow : Window
     {
         _meter?.Frame();
         var t = Math.Min(1, _clock.Elapsed.TotalMilliseconds / Length().TotalMilliseconds);
+        _glassShare = LiftMotion.GlassAt(t, _closing);
         Draw(!_closing ? LiftMotion.Opening(t, _request?.Bounce == true)
             : _follow is not null ? 1 - SwapMotion.Move(t, _followBounce)   // the swap's own curve, springing into the cell with it
             : LiftMotion.Closing(t));
@@ -298,9 +352,12 @@ internal sealed class LiftWindow : Window
         }
     }
 
-    private TimeSpan Length() => !_closing ? LiftMotion.OpenLength(_request?.Bounce == true)
+    private TimeSpan Length() => (!_closing ? LiftMotion.OpenLength(_request?.Bounce == true)
         : _follow is not null ? SwapMotion.Length(_followBounce)
-        : LiftMotion.Close;
+        : LiftMotion.Close) * (_slow ? 8 : 1);
+
+    /// <summary>DIAGNOSTIC (丙④, temporary): the card's animations 8× slower while %LOCALAPPDATA%\IsleBar\slow exists (read at each open).</summary>
+    private bool _slow;
 
     private async Task FetchShot()
     {
@@ -337,6 +394,11 @@ internal sealed class LiftWindow : Window
             AppWindow.Move(new Windows.Graphics.PointInt32(-32000, -32000));
             _request = null;
             _shot.Source = null;
+            if (_live)
+            {
+                _live = false;
+                (SystemBackdrop as TransparentBackdrop)?.HideGlass();
+            }
             _closing = false;
             if (landed)
             {
@@ -427,6 +489,13 @@ internal sealed class LiftWindow : Window
         _frameStretch.CenterY = upright;
         _frameStretch.ScaleY = stretch;
         _fill.Color = Mix(r.PillColor, cardColour, turn);
+        if (_live)
+        {
+            // the card's colour goes over the glass in the glass's own layer (see TransparentBackdrop.MoveGlass); its own fill stays clear
+            var solid = Color.FromArgb((byte)Math.Round(255 * (1 - _glassShare)), _fill.Color.R, _fill.Color.G, _fill.Color.B);
+            _fill.Color = Color.FromArgb(0, _fill.Color.R, _fill.Color.G, _fill.Color.B);
+            MoveGlass(r, box, upright, bottom, stretch, lean, solid);
+        }
         if (!_closing && r.FromGlow is { } glow && r.Style == LiftStyle.Morph)
         {
             // a list pill with a coloured border (done green, waiting orange): the border turns into the card's edge

@@ -25,8 +25,16 @@ internal sealed class SheetView
     private readonly double _width;
     private readonly TextBlock _stateText = Note();
     private readonly ScrollViewer? _scroll;
-    private readonly Microsoft.UI.Xaml.Shapes.Rectangle _fadeTop = new() { Height = CardSheets.Fade, VerticalAlignment = VerticalAlignment.Top, IsHitTestVisible = false };
-    private readonly Microsoft.UI.Xaml.Shapes.Rectangle _fadeBottom = new() { Height = CardSheets.Fade, VerticalAlignment = VerticalAlignment.Bottom, IsHitTestVisible = false };
+    // The scrolling text fades out at a side with more to scroll (user 10-08). The card is glass now (丙④): a band of the card's
+    // colour over the text showed as a dark strip (user 10-10), so the text itself fades — its picture drawn through a gradient mask
+    // (WinUI 3 has no opacity mask), the real text kept under it for the mouse, made invisible on its own composition visual only —
+    // hiding it in XAML (Opacity 0 on a parent) left nothing to draw (user 10-10: the text was gone). CommunityToolkit's
+    // OpacityMaskView does the same.
+    private Microsoft.UI.Composition.CompositionLinearGradientBrush? _fadeMask;
+    private Microsoft.UI.Composition.CompositionColorGradientStop[] _fadeStops = [];
+    private Microsoft.UI.Composition.CompositionVisualSurface? _fadeSurface;
+    private Microsoft.UI.Composition.SpriteVisual? _fadeSprite;
+    private bool _fadesTop, _fadesBottom;
     private readonly FrameworkElement _middle;
     private readonly List<TextBlock> _texts = [];   // title, paragraphs, raw — in that order (text layout)
     private TextBlock? _footnote;
@@ -36,7 +44,7 @@ internal sealed class SheetView
     private Border? _bar;
     private Border? _art;
     private readonly List<TextBlock> _songText = [];   // title, artist
-    private readonly List<Button> _buttons = [];
+    private readonly List<Border> _buttons = [];
     private SheetAction[] _actions = [];
     private Grid? _sourceRow;
     private CardSheet _sheet;
@@ -350,19 +358,34 @@ internal sealed class SheetView
         };
         scroll.ViewChanged += (_, _) => Fades();
         scroll.SizeChanged += (_, _) => Fades();
-        var fade = new LinearGradientBrush { StartPoint = new Windows.Foundation.Point(0, 0), EndPoint = new Windows.Foundation.Point(0, 1) };
-        fade.GradientStops.Add(new GradientStop { Color = _palette.Card, Offset = 0 });
-        fade.GradientStops.Add(new GradientStop { Color = Faint(_palette.Card, 0), Offset = 1 });
-        var fadeUp = new LinearGradientBrush { StartPoint = new Windows.Foundation.Point(0, 1), EndPoint = new Windows.Foundation.Point(0, 0) };
-        fadeUp.GradientStops.Add(new GradientStop { Color = _palette.Card, Offset = 0 });
-        fadeUp.GradientStops.Add(new GradientStop { Color = Faint(_palette.Card, 0), Offset = 1 });
-        _fadeTop.Fill = fade;
-        _fadeBottom.Fill = fadeUp;
-        _fadeTop.Opacity = _fadeBottom.Opacity = 0;
         var box = new Grid();
         box.Children.Add(scroll);
-        box.Children.Add(_fadeTop);
-        box.Children.Add(_fadeBottom);
+        var text = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(scroll);
+        var c = text.Compositor;
+        _fadeSurface = c.CreateVisualSurface();
+        _fadeSurface.SourceVisual = text;
+        var follow = c.CreateExpressionAnimation("text.Size");
+        follow.SetReferenceParameter("text", text);
+        _fadeSurface.StartAnimation("SourceSize", follow);
+        text.Opacity = 0;   // the surface still draws it (it ignores its source's own opacity)
+        _fadeMask = c.CreateLinearGradientBrush();
+        _fadeMask.StartPoint = new System.Numerics.Vector2(0, 0);
+        _fadeMask.EndPoint = new System.Numerics.Vector2(0, 1);
+        _fadeStops = [.. Enumerable.Range(0, 4).Select(_ => c.CreateColorGradientStop())];
+        foreach (var stop in _fadeStops)
+        {
+            stop.Color = Color.FromArgb(255, 255, 255, 255);
+            _fadeMask.ColorStops.Add(stop);
+        }
+
+        var masked = c.CreateMaskBrush();
+        masked.Source = c.CreateSurfaceBrush(_fadeSurface);
+        masked.Mask = _fadeMask;
+        _fadeSprite = c.CreateSpriteVisual();
+        _fadeSprite.Brush = masked;
+        _fadeSprite.RelativeSizeAdjustment = System.Numerics.Vector2.One;
+        Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.SetElementChildVisual(box, _fadeSprite);
+        box.SizeChanged += (_, _) => Fades();
         return box;
     }
 
@@ -564,8 +587,19 @@ internal sealed class SheetView
         }
 
         var scrolls = s.VerticalScrollMode == ScrollMode.Enabled;
-        _fadeTop.Opacity = scrolls && s.VerticalOffset > 1 ? 1 : 0;
-        _fadeBottom.Opacity = scrolls && s.VerticalOffset < s.ScrollableHeight - 1 ? 1 : 0;
+        _fadesTop = scrolls && s.VerticalOffset > 1;
+        _fadesBottom = scrolls && s.VerticalOffset < s.ScrollableHeight - 1;
+        if (_fadeStops.Length == 4 && s.ActualHeight > 2 * CardSheets.Fade)
+        {
+            // clear at a fading side, solid from Fade in
+            var edge = (float)(CardSheets.Fade / s.ActualHeight);
+            (float Offset, bool Clear)[] stops = [(0, _fadesTop), (edge, false), (1 - edge, false), (1, _fadesBottom)];
+            for (var i = 0; i < 4; i++)
+            {
+                _fadeStops[i].Offset = stops[i].Offset;
+                _fadeStops[i].Color = Color.FromArgb(stops[i].Clear ? (byte)0 : (byte)255, 255, 255, 255);
+            }
+        }
     }
 
     /// <summary>One big number, left-aligned, the caption after it on its baseline, the pair centred top to bottom (user 10-08, B).</summary>
@@ -674,18 +708,27 @@ internal sealed class SheetView
         for (var i = 0; i < buttons.Count; i++)
         {
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            var button = new Button
+            // Drawn here, not WinUI's Button: on the glass (丙④) its fill came out darker than the glass around it, and it flashed
+            // lighter then darker as the card's own fill faded out (user 10-10, dark only). Windows' colours for a button's fill:
+            // rest / pointer over / pressed.
+            var button = new Border
             {
                 Height = CardSheets.ButtonHeight,
                 Padding = new Thickness(8, 0, 8, 0),
-                HorizontalAlignment = HorizontalAlignment.Stretch,
-                HorizontalContentAlignment = HorizontalAlignment.Center,
                 CornerRadius = new CornerRadius(4),
-                IsTabStop = false,
+                BorderThickness = new Thickness(1),
+                Background = Brush(ButtonFill(0)),
+                BorderBrush = Brush(Faint(_palette.Fore, _palette.Dark ? 0.09 : 0.1)),
             };
             SetButton(button, buttons[i]);
             var index = i;
-            button.Click += (_, _) => Act?.Invoke(_actions[index]);   // read at click time: pause becomes resume in place
+            var over = false;
+            button.PointerEntered += (_, _) => { over = true; button.Background = Brush(ButtonFill(1)); };
+            button.PointerExited += (_, _) => { over = false; button.Background = Brush(ButtonFill(0)); };
+            button.PointerCanceled += (_, _) => { over = false; button.Background = Brush(ButtonFill(0)); };
+            button.PointerPressed += (_, _) => button.Background = Brush(ButtonFill(2));
+            button.PointerReleased += (_, _) => button.Background = Brush(ButtonFill(over ? 1 : 0));
+            button.Tapped += (_, _) => Act?.Invoke(_actions[index]);   // read at click time: pause becomes resume in place
             Grid.SetColumn(button, i);
             row.Children.Add(button);
             _buttons.Add(button);
@@ -694,12 +737,17 @@ internal sealed class SheetView
         return row;
     }
 
+    /// <summary>A button's fill: 0 rest, 1 pointer over, 2 pressed (Windows' control fills: dark 6 / 8 / 3% white; light 70 / 50 / 30%).</summary>
+    private Color ButtonFill(int state) => _palette.Dark
+        ? Color.FromArgb(state switch { 1 => 0x15, 2 => 0x08, _ => 0x0F }, 255, 255, 255)
+        : Color.FromArgb(state switch { 1 => 0x80, 2 => 0x4D, _ => 0xB3 }, 0xFF, 0xFF, 0xFF);
+
     /// <summary>A button's words or icon (a media button: its icon, its name as a tooltip). Unchanged ones are left alone.</summary>
-    private void SetButton(Button button, SheetButton b)
+    private void SetButton(Border button, SheetButton b)
     {
         if (b.Glyph is { } glyph)
         {
-            if (button.Content is FontIcon icon)
+            if (button.Child is FontIcon icon)
             {
                 if (icon.Glyph != glyph)
                 {
@@ -708,7 +756,7 @@ internal sealed class SheetView
             }
             else
             {
-                button.Content = new FontIcon { FontFamily = new FontFamily("Segoe Fluent Icons"), Glyph = glyph, FontSize = 16 };
+                button.Child = new FontIcon { FontFamily = new FontFamily("Segoe Fluent Icons"), Glyph = glyph, FontSize = 16, Foreground = Brush(_palette.Fore), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
             }
 
             ToolTipService.SetToolTip(button, b.Label);
@@ -716,7 +764,7 @@ internal sealed class SheetView
         }
 
         var label = b.Label ?? string.Empty;
-        if (button.Content is TextBlock text)
+        if (button.Child is TextBlock text)
         {
             if (text.Text != label)
             {
@@ -725,7 +773,11 @@ internal sealed class SheetView
         }
         else
         {
-            button.Content = new TextBlock { Text = label, FontFamily = Fonts(label).Normal, FontSize = CardSheets.TextSize, TextTrimming = TextTrimming.CharacterEllipsis };
+            button.Child = new TextBlock
+            {
+                Text = label, FontFamily = Fonts(label).Normal, FontSize = CardSheets.TextSize, TextTrimming = TextTrimming.CharacterEllipsis,
+                Foreground = Brush(_palette.Fore), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+            };
         }
     }
 

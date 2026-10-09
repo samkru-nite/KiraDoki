@@ -29,6 +29,9 @@
     <SelfContained Condition="'$(Configuration)' == 'Release'">true</SelfContained>
     <SelfContained Condition="'$(Configuration)' != 'Release'">false</SelfContained>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+    <!-- Win2D (the card's glass) copies its native dll only for a known CPU: its targets know x64/x86 by RID, not arm64 nor AnyCPU (debug) -->
+    <win2d-Platform Condition="$(RuntimeIdentifier.EndsWith('-arm64'))">arm64</win2d-Platform>
+    <win2d-Platform Condition="'$(RuntimeIdentifier)' == ''">$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant())</win2d-Platform>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- SetParent onto the taskbar requires the same DPI mode as Explorer (PerMonitorV2). See app.manifest. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -42,6 +45,7 @@
   </PropertyGroup>
 
   <ItemGroup Condition="'$(IsWindowsHost)' == 'true'">
+    <PackageReference Include="Microsoft.Graphics.Win2D" Version="1.2.0" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.6.250602001" />
     <PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.1.5" />
     <!--

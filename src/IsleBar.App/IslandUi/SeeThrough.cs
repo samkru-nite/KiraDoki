@@ -44,6 +44,9 @@ internal static class SeeThrough
         var blur = new BlurBehind { Flags = DWM_BB_ENABLE | DWM_BB_BLURREGION, Enable = true, Region = nothing };
         var hrAlpha = DwmEnableBlurBehindWindow(hwnd, ref blur);
         DeleteObject(nothing);
+        var host = 1;   // the host backdrop brush (the card's live glass: what's behind the window) only draws with this on
+        var hrHost = DwmSetWindowAttribute(hwnd, 17 /* DWMWA_USE_HOSTBACKDROPBRUSH */, ref host, sizeof(int));
+        TaskbarHost.Log($"{name}: host backdrop hr={hrHost:X}");
         TaskbarHost.Log($"{name}: per-pixel alpha (blur behind) hr={hrAlpha:X}");
         TaskbarHost.Log($"{name}: window made, style={Unsigned32(GetWindowLong(hwnd, GWL_STYLE)):X} dwm border={hrBorder:X} corner={hrCorner:X}");
         window.AppWindow.Move(new Windows.Graphics.PointInt32(-32000, -32000));

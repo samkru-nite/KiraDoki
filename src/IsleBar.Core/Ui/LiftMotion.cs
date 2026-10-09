@@ -100,6 +100,15 @@ public static class LiftMotion
     /// card flying there underneath, which by then has its shape.</summary>
     public const double FollowFade = 0.4;
 
+    /// <summary>
+    /// The card's glass (TODO 7.9 丙④, user 10-10): the system's live acrylic all the way, under the card's fill, which fades out
+    /// over the first half of the opening (all glass the second half); closing, the other way round.
+    /// </summary>
+    public const double GlassIn = 0.5;
+
+    /// <summary>How far the fill has thinned (0 solid … 1 glass) at time share <paramref name="t"/>.</summary>
+    public static double GlassAt(double t, bool closing) => closing ? 1 - Window(t, 1 - GlassIn, 1) : Window(t, 0, GlassIn);
+
     /// <summary>Morph: the share of the way over which the frame turns from the pill's colour to the card's.</summary>
     public const double ColourTurn = 0.4;
 
