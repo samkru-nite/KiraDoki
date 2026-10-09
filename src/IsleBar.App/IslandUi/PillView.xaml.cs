@@ -28,9 +28,6 @@ internal interface IPillHost
     /// <summary>The loaded cover of a music card (the pill's 24 one), or null.</summary>
     (BitmapImage Image, Windows.UI.Color? Tint)? Cover(Card? card);
 
-    /// <summary>The colour of a card's icon (its border's on a pinned card).</summary>
-    Windows.UI.Color IconColor(Card? card);
-
     /// <summary>A timer's stopwatch with its turning hand.</summary>
     UIElement Dial(TimerDial dial, Windows.UI.Color color, bool paused);
 
@@ -123,8 +120,8 @@ public sealed partial class PillView : UserControl
         IslandContent.Visibility = Visibility.Visible;
 
         LeadIcon.Glyph = state.IsPaused ? "" : GlyphFor(state);   // paused timer = pause icon
-        LeadIcon.Foreground = BrushOf(plainIcon ? Host.Theme.Icon : Host.IconColor(card));
-        ShowLeadDial(plainIcon ? null : state, Host.IconColor(card));
+        LeadIcon.Foreground = BrushOf(Host.Theme.Icon);   // only small icons are orange / green / red (user 10-10): the border tells it here
+        ShowLeadDial(plainIcon ? null : state, Host.Theme.Icon);
         // Gaps like every other card (user 10-08): 8 between the icon and the text, 8 between the text and the now-playing bars.
         // The cover is 22, 3 past the 16 icon slot on each side, so with a cover the text starts 3 later (it sat 5 from the cover);
         // the bars get 8 too (was 5, to match that 5). Else 12 to the pill's edge (TODO 7.9 D).
@@ -204,6 +201,34 @@ public sealed partial class PillView : UserControl
         CodexGlyph.Visibility = Visibility.Collapsed;
         LeadIcon.Visibility = Visibility.Visible;
     }
+
+    /// <summary>
+    /// Holds still (dimmed under the ⋯ list or a lifted card, user 10-10): a long title rests with "…", the music bars stop, the
+    /// flowing piece and a timer's hand stand. Words and numbers still change. Off again: they move from the next draw on.
+    /// </summary>
+    internal bool Frozen
+    {
+        get => _frozen;
+        set
+        {
+            if (_frozen == value)
+            {
+                return;
+            }
+
+            _frozen = value;
+            _leadDialKey = null;   // the dial again, turning or standing
+            if (value)
+            {
+                RestMarquee();
+                StopMeterBars();
+                StopLoopBars();
+                StopFlow();
+            }
+        }
+    }
+
+    private bool _frozen;
 
     /// <summary>The card this pill last drew.</summary>
     private Card? _card;
@@ -300,6 +325,10 @@ public sealed partial class PillView : UserControl
                     LapAfterFlight = true;
                     ShowMarqueeRest();
                 }
+                else if (_frozen)
+                {
+                    ShowMarqueeRest();   // holding still: "…", the lap waits for a hover
+                }
                 else
                 {
                     StartMarquee();   // new title: one lap
@@ -374,7 +403,7 @@ public sealed partial class PillView : UserControl
     /// <summary>On hover, scroll the title one more lap (if it isn't already scrolling and is long enough to scroll).</summary>
     internal void ReplayMarquee()
     {
-        if (_marqueeText is not null && !_marqueeRunning)
+        if (_marqueeText is not null && !_marqueeRunning && !_frozen)
         {
             StartMarquee();
         }
@@ -764,6 +793,11 @@ public sealed partial class PillView : UserControl
             Eq0.Fill = Eq1.Fill = Eq2.Fill = Eq3.Fill = brush;
         }
 
+        if (_frozen)
+        {
+            return;   // shown, standing
+        }
+
         // Follow the real sound (setting) — a 30 Hz timer reads the speaker meter and sets the bar heights
         var meter = on && Host.Settings.AudioBars;
         if (meter != (_meterTimer is not null))
@@ -835,7 +869,12 @@ public sealed partial class PillView : UserControl
     {
         var now = DateTimeOffset.UtcNow;
         var dial = state is null ? null : TimerDial.Of(state, _card?.Type == CardType.Inform, now);
-        var key = dial is null || state is null ? null : $"{state.SourcePath}|{state.Due}|{state.Total}|{state.Left}|{state.T0}|{_card?.Type}|{color}|{RestFill()}";
+        if (_frozen && dial is not null)
+        {
+            dial = dial with { Turn = 0 };   // the hand stands where it is
+        }
+
+        var key = dial is null || state is null ? null : $"{state.SourcePath}|{state.Due}|{state.Total}|{state.Left}|{state.T0}|{_card?.Type}|{color}|{RestFill()}|{_frozen}";
         if (dial is not null)
         {
             LeadIcon.Visibility = Visibility.Collapsed;
@@ -953,6 +992,13 @@ public sealed partial class PillView : UserControl
             ActivityRunState.Error => Host.Theme.Bad,
             _ => Windows.UI.Color.FromArgb(217, fg.R, fg.G, fg.B),   // the text colour at 85%
         });
+        if (flowing && _frozen)
+        {
+            ProgressLine.Width = 0;   // holding still: just the track
+            StopFlow();
+            return;
+        }
+
         if (flowing)
         {
             ProgressLine.Width = 0;

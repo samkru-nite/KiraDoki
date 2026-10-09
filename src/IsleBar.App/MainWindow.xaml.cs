@@ -284,7 +284,7 @@ public sealed partial class MainWindow : Window
                 return;
             }
 
-            if (IsInside(source, CloseZone))
+            if (IsInside(source, CloseZone) && !BigDimmed)
             {
                 CloseCard(_shownCard);   // an inform card is closed only here or from its menu (TODO 7.2)
                 return;
@@ -356,7 +356,7 @@ public sealed partial class MainWindow : Window
         Root.PointerExited += (_, _) => SetHover(false);
         CloseZone.PointerEntered += (_, _) =>
         {
-            _closeHover = true;
+            _closeHover = !BigDimmed;
             PaintFill();
         };
         CloseZone.PointerExited += (_, _) =>
@@ -1291,14 +1291,14 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>
-    /// The icon as the big pill draws it: an agent's logo in its makers' colours (as <see cref="ShowAgentMark"/>), anything else
-    /// as its small icon (the same look: <see cref="HasBigLook"/> is false).
+    /// The icon as the big pill draws it: an agent's logo in its makers' colours (as PillView.ShowAgentMark), anything else as its
+    /// small icon in the plain icon colour — only small icons are orange / green / red (user 10-10; the border tells it up there).
     /// </summary>
     private UIElement BigIconContent(TaskIcon icon, Microsoft.UI.Xaml.Media.Imaging.BitmapImage? cover)
     {
         if (BrandLogo(icon) is not { } brand)
         {
-            return IconContent(icon, cover);
+            return IconContent(icon with { Tone = IconTone.Plain }, cover);
         }
 
         var box = new Microsoft.UI.Xaml.Controls.Grid { Width = 16, Height = 16, IsHitTestVisible = false };
@@ -1307,8 +1307,17 @@ public sealed partial class MainWindow : Window
         return box;
     }
 
-    /// <summary>The big pill draws this icon otherwise than its cell (an agent's logo in its makers' colours).</summary>
-    private bool HasBigLook(TaskIcon icon) => BrandLogo(icon) is not null;
+    /// <summary>The big pill draws this icon otherwise than its cell: an agent's logo in its makers' colours, or a coloured icon plain.</summary>
+    private bool HasBigLook(TaskIcon icon) => BrandLogo(icon) is not null || icon.Tone != IconTone.Plain;
+
+    /// <summary>A card's icon as the big pill draws it: a timer's turning dial, else <see cref="BigIconContent"/>.</summary>
+    private UIElement BigLook(Card card, DateTimeOffset now)
+    {
+        var cover = CoverOf(card)?.Image;
+        return TimerDial.Of(card.State, card.Type == CardType.Inform, now) is { } dial
+            ? DialContent(dial, _theme.Icon, card.State.IsPaused)
+            : BigIconContent(TaskIcons.For(card, cover is not null, now), cover);
+    }
 
     private ImageSource? BrandLogo(TaskIcon icon) => icon.Logo switch
     {
@@ -1376,7 +1385,7 @@ public sealed partial class MainWindow : Window
         GlassBorder.Radius = r;
         GlowRing.Radius = r;
         DimVeil.Radius = r;
-        CloseChip.Radius = round ? 14 : Math.Max(0, r - 2);   // concentric with the pill's end, 2 in
+        CloseChip.Radius = round ? 11 : Math.Max(0, r - 5);   // concentric with the pill's end, 5 in (2 to the zone, 3 to the chip)
     }
 
     private DateTimeOffset _lastAttachTry = DateTimeOffset.MinValue;
@@ -1458,17 +1467,13 @@ public sealed partial class MainWindow : Window
             _ => ((string?)null, _theme.Ok),
         };
         _animator.UpdateGlow(key, color);
+        if (key is not null && color != _glowColor)
+        {
+            _glowColor = color;
+            PaintGlowDim();   // a new border while dim comes in grey too
+        }
     }
 
-    /// <summary>The colour of a pinned card's icon: the same as its border (TODO 7.9 D).</summary>
-    private Windows.UI.Color IconColorFor(Card? card) => card switch
-    {
-        { Pinned: true, Type: CardType.Pending } => Attention(),
-        { Pinned: true, Type: CardType.Inform } when card.State.RunState == ActivityRunState.Error => Alarm(),
-        { Pinned: true, Type: CardType.Inform } => _theme.Ok,
-        { Pinned: true, Type: CardType.Temporary } when card.State.RunState == ActivityRunState.Error => Alarm(),
-        _ => _theme.Icon,
-    };
 
 
     private string? _lastMusicSig;
@@ -1480,7 +1485,7 @@ public sealed partial class MainWindow : Window
     private string MusicRenderSig(IsleBar.Core.Island.ActivityState m)
         => string.Concat(m.SourcePath, "|", m.Name, "|", m.Msg, "|", m.Stage, "|", m.Done?.ToString(), "|", m.Total?.ToString(),
             "|", Math.Round(Big.AvailableTextWidth()).ToString(System.Globalization.CultureInfo.InvariantCulture),
-            "|", _snapshot.ExtraCount.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            "|", _snapshot.ExtraCount.ToString(System.Globalization.CultureInfo.InvariantCulture), "|", Big.Frozen ? "frozen" : "");
 
     /// <summary>
     /// Taskbar color just left of the pill. The band outside the alert border is painted this color so the pill clip edge (can't be anti-aliased)
@@ -2054,17 +2059,17 @@ public sealed partial class MainWindow : Window
     private void PaintFill()
     {
         var rest = RealSearchBoxFill();
-        var lift = _hoverBig || _typing;
+        // on the close button only the button lights up; elsewhere on the pill only the pill, the button stays as it is (user 10-10)
+        var lift = (_hoverBig && !_closeHover) || _typing;
         var light = ThemeColors.FromSystem().Light;
         PillSurface.Fill = BrushOf(!lift ? rest
             : light ? Blend(rest, Windows.UI.Color.FromArgb(255, 255, 255, 255), 0.55)
             : Blend(rest, Windows.UI.Color.FromArgb(255, 255, 255, 255), 0.05));
         SmallSurface.Fill = BrushOf(rest);   // the small pill lifts only its circle cell (BallHover)
-        // the close button: a step off the pill's colour, one more under the pointer (user 10-08, B5)
-        var lifted = PillSurface.Fill is SolidColorBrush now ? now.Color : rest;
+        // the close button: a step off the resting pill's colour, one more under the pointer (user 10-08, B5)
         CloseChip.Fill = BrushOf(light
-            ? Blend(lifted, Windows.UI.Color.FromArgb(255, 0, 0, 0), _closeHover ? 0.12 : 0.07)
-            : Blend(lifted, Windows.UI.Color.FromArgb(255, 255, 255, 255), _closeHover ? 0.16 : 0.10));
+            ? Blend(rest, Windows.UI.Color.FromArgb(255, 0, 0, 0), _closeHover ? 0.12 : 0.07)
+            : Blend(rest, Windows.UI.Color.FromArgb(255, 255, 255, 255), _closeHover ? 0.16 : 0.10));
         Big.RefreshFades();   // the scrolling text's end fades are the pill colour: repaint them when it lifts (hover) — they showed as dark blocks (user 10-07)
 
         PaintEdge();

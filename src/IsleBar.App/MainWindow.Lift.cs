@@ -96,6 +96,7 @@ public sealed partial class MainWindow
                 }
             };
             _lift.TakeShot = () => Capture(CardRow);
+            _lift.Closing = () => _ = Dim(1, LiftMotion.Close, cells: false);
             _lift.KeepsPress = OnTaskCell;
             _lift.Act = OnSheetAction;
             _lift.Landed = () =>
@@ -117,6 +118,7 @@ public sealed partial class MainWindow
         var look = TaskIcons.For(card, cover is not null, DateTimeOffset.UtcNow);
         _liftIconKey = LiftIconKey(card);
         _liftKept = card.Type == CardType.Temporary ? card.State : null;
+        _ = Dim(ListMotion.Dim, LiftMotion.OpenLength(_settings.Bounce), cells: false);   // the big pill dims under its card, as under the ⋯ list (user 10-10)
         _lift.Open(new LiftRequest(
             card.Key,
             pill,
@@ -131,7 +133,7 @@ public sealed partial class MainWindow
             _settings.Bounce,
             SheetColors(),
             LiftIcon(card),   // as on the big pill: an agent's logo in its makers' colours, a timer's turning dial (user 10-08)
-            new LiftRider(LiftIcon(card), HasBigLook(look) ? IconContent(look, cover) : null),
+            new LiftRider(LiftIcon(card), HasBigLook(look) ? CellContent(card, look, DateTimeOffset.UtcNow) : null),
             CardSheets.Build(card, DateTimeOffset.UtcNow, _text, _feed.Tails.For(card.State)),
             CoverOf(card)?.Large,
             _language,
@@ -286,10 +288,7 @@ public sealed partial class MainWindow
     private Microsoft.UI.Xaml.UIElement LiftIcon(Card card)
     {
         var now = DateTimeOffset.UtcNow;
-        var cover = CoverOf(card)?.Image;
-        var plain = TimerDial.Of(card.State, card.Type == CardType.Inform, now) is { } dial
-            ? DialContent(dial, IconColorFor(card), card.State.IsPaused)
-            : BigIconContent(TaskIcons.For(card, cover is not null, now), cover);
+        var plain = BigLook(card, now);
 
         // music and notifications name their app in the source row, so its own icon goes beside it, as in Windows' notifications
         // (F2b, 10-09); the usual icon stays until it has loaded, and for good if the app has none to give
@@ -320,7 +319,7 @@ public sealed partial class MainWindow
     {
         var s = card.State;
         var look = TaskIcons.For(card, CoverOf(card) is not null, DateTimeOffset.UtcNow);
-        return $"{card.Key}|{card.Type}|{look}|{s.Due}|{s.Left}|{s.Total}|{s.T0}|{s.Stage}|{IconColorFor(card)}|{CoverOf(card)?.Image.GetHashCode()}|{s.AppId}";
+        return $"{card.Key}|{card.Type}|{look}|{s.Due}|{s.Left}|{s.Total}|{s.T0}|{s.Stage}|{_theme.Icon}|{CoverOf(card)?.Image.GetHashCode()}|{s.AppId}";
     }
 
     private string? _liftIconKey;

@@ -20,8 +20,9 @@ public sealed partial class MainWindow
     /// <summary>The left button went down on ⋯; the list opens when it comes back up there.</summary>
     private bool _dotsPress;
 
-    /// <summary>How dim the big pill's content and the task icons are (1 = not; <see cref="ListMotion.Dim"/> while the list is up).</summary>
-    private double _listDim = 1;
+    /// <summary>How dim the big pill is, and the task icons (1 = not; <see cref="ListMotion.Dim"/> while the list or a lifted card is up).</summary>
+    private double _bigDim = 1;
+    private double _cellDim = 1;
 
     /// <summary>The cards for the list: the big pill's first, then the task icons' order, then the rest (behind ⋯, temporary) by stack.</summary>
     private List<Card> ListCards()
@@ -163,36 +164,88 @@ public sealed partial class MainWindow
         }
     }
 
-    /// <summary>Dims (or brightens back) the big pill's content and the task icons to <paramref name="to"/> over <paramref name="length"/>.</summary>
-    private async Task Dim(double to, TimeSpan length)
+    /// <summary>
+    /// Dims (or brightens back) the big pill to <paramref name="to"/> over <paramref name="length"/>, and the task icons too
+    /// (<paramref name="cells"/>: the ⋯ list; not under a lifted card — the icons still swap then). While dim the big pill holds
+    /// still (user 10-10); it moves again once it is bright.
+    /// </summary>
+    private async Task Dim(double to, TimeSpan length, bool cells = true)
     {
-        var from = _listDim;
+        var (fromBig, fromCell) = (_bigDim, _cellDim);
         var run = ++_dimRun;
         DimVeil.Fill = BrushOf(RealSearchBoxFill());
+        if (to < 1)
+        {
+            Big.Frozen = true;
+            if (_closeHover)
+            {
+                _closeHover = false;   // the close button doesn't light up under the pointer while dim
+                PaintFill();
+            }
+        }
+
         await Animate(length, t =>
         {
             if (run == _dimRun)
             {
-                ApplyDim(SwapMotion.Lerp(from, to, SwapMotion.Ease(t)));
+                var e = SwapMotion.Ease(t);
+                ApplyDim(SwapMotion.Lerp(fromBig, to, e), cells ? SwapMotion.Lerp(fromCell, to, e) : fromCell);
             }
         });
+        if (run == _dimRun && to >= 1)
+        {
+            Big.Frozen = false;
+        }
     }
 
     /// <summary>Bumped to stop a running <see cref="Dim"/> (a newer one, or <see cref="SetDim"/>, takes over).</summary>
     private int _dimRun;
 
-    /// <summary>Dims at once, stopping any dimming under way.</summary>
+    /// <summary>
+    /// The big pill is dim under a lifted card or the ⋯ list: its buttons (close) do nothing then — a click anywhere on it only
+    /// puts the card or the list away, like a click outside (user 10-10).
+    /// </summary>
+    private bool BigDimmed => _lift?.OpenKey is not null || _list?.IsOpen == true;
+
+    /// <summary>Dims at once (both), stopping any dimming under way.</summary>
     private void SetDim(double value)
     {
         _dimRun++;
-        ApplyDim(value);
+        ApplyDim(value, value);
+        Big.Frozen = value < 1;
     }
 
-    private void ApplyDim(double value)
+    private void ApplyDim(double big, double cells)
     {
-        _listDim = value;
-        DimVeil.Opacity = 1 - value;
-        ApplyCellDim();
+        _bigDim = big;
+        DimVeil.Opacity = 1 - big;
+        PaintGlowDim();
+        if (Math.Abs(cells - _cellDim) > 0.0001)
+        {
+            _cellDim = cells;
+            ApplyCellDim();
+        }
+    }
+
+    /// <summary>The pinned card's border colour (as the animator set it), so dimming can take its colour out.</summary>
+    private Windows.UI.Color _glowColor;
+
+    /// <summary>
+    /// While dim the border turns grey — its colour goes, its lightness stays (user 10-10: not just fainter) — as far as the pill
+    /// is dimmed; bright again, its own colour.
+    /// </summary>
+    private void PaintGlowDim()
+    {
+        var share = Math.Clamp((1 - _bigDim) / (1 - ListMotion.Dim), 0, 1);
+        GlowRing.Edge = BrushOf(Desaturate(_glowColor, share));
+    }
+
+    /// <summary><paramref name="c"/> with <paramref name="share"/> of its colour taken out, keeping its lightness (luma).</summary>
+    private static Windows.UI.Color Desaturate(Windows.UI.Color c, double share)
+    {
+        var y = (0.299 * c.R) + (0.587 * c.G) + (0.114 * c.B);
+        byte Mix(byte v) => (byte)Math.Round(v + ((y - v) * share));
+        return Windows.UI.Color.FromArgb(c.A, Mix(c.R), Mix(c.G), Mix(c.B));
     }
 
     /// <summary>The task icons (not ⋯) at <see cref="_listDim"/>; called again whenever the cells are built.</summary>
@@ -200,7 +253,7 @@ public sealed partial class MainWindow
     {
         foreach (var cell in TaskCells.Children.OfType<FrameworkElement>())
         {
-            cell.Opacity = cell.Tag as string == DotsTag ? 1 : _listDim;
+            cell.Opacity = cell.Tag as string == DotsTag ? 1 : _cellDim;
         }
     }
 

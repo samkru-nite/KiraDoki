@@ -341,7 +341,7 @@ public sealed partial class MainWindow
                 // an agent's logo goes from the makers' colours to the cell's one colour over the second half (user 10-08: it
                 // switched at once as the card started down)
                 var look = TaskIcons.For(ac, CoverOf(ac) is not null, DateTimeOffset.UtcNow);
-                var big = HasBigLook(look) ? BigGhost(ac, look) : null;
+                var big = HasBigLook(look) ? BigGhost(ac) : null;
                 if (big is not null)
                 {
                     Put(big, 0, row);
@@ -449,10 +449,10 @@ public sealed partial class MainWindow
     }
 
     /// <summary>A stand-in for a card's icon as the big pill draws it, the size of a cell (lined up with <see cref="CellGhost"/>).</summary>
-    private Grid BigGhost(Card card, TaskIcon look)
+    private Grid BigGhost(Card card)
     {
         var cell = new Grid { Width = PillGeometry.Cell, Height = PillGeometry.Height, IsHitTestVisible = false };
-        cell.Children.Add(BigIconContent(look, CoverOf(card)?.Image));
+        cell.Children.Add(BigLook(card, DateTimeOffset.UtcNow));
         return cell;
     }
 

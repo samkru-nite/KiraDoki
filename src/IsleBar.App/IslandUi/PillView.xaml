@@ -45,7 +45,8 @@
                  concentric with the pill's, the left end the mirror of it; smooth corners; "Close" centred by its glyphs both ways.
                  Its colour is a step off the pill's (PaintFill), a step more under the pointer -->
             <Grid x:Name="CloseZone" x:FieldModifier="internal" Grid.Column="4" Width="72" Height="28" Margin="0,0,2,0" VerticalAlignment="Center" Background="Transparent" Visibility="Collapsed">
-                <ui:SmoothBorder x:Name="CloseChip" x:FieldModifier="internal" Radius="14" IsHitTestVisible="False" />
+                <!-- the chip sits 3 in from the zone all round (user 10-10: the pill shows around it), 66×22 -->
+                <ui:SmoothBorder x:Name="CloseChip" x:FieldModifier="internal" Radius="11" Margin="3" IsHitTestVisible="False" />
                 <TextBlock x:Name="CloseLabel" x:FieldModifier="internal" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
                     <TextBlock.RenderTransform>
                         <TranslateTransform x:Name="CloseShift" />
@@ -142,8 +143,9 @@
         </Grid>
 
         <!-- Pinned card's border, 2 wide inside the edge: pending orange, inform green, temporary warning red (turned on by IslandAnimator). Clicks pass through -->
-        <!-- The ⋯ list is up (F3): the pill's colour over the content dims it — over the content, not on it, so snapshots of CardRow stay bright -->
-        <ui:SmoothBorder x:Name="DimVeil" x:FieldModifier="internal" Radius="16" Opacity="0" IsHitTestVisible="False" />
         <ui:SmoothBorder x:Name="GlowRing" x:FieldModifier="internal" EdgeWidth="2" Radius="16" IsHitTestVisible="False" />
+        <!-- The ⋯ list is up (F3): the pill's colour over everything dims it, its border too (user 10-10) — over the content, not
+             on it, so snapshots of CardRow stay bright -->
+        <ui:SmoothBorder x:Name="DimVeil" x:FieldModifier="internal" Radius="16" Opacity="0" IsHitTestVisible="False" />
     </Grid>
 </UserControl>

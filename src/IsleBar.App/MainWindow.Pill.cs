@@ -48,8 +48,6 @@ public sealed partial class MainWindow : IPillHost
 
     (BitmapImage Image, Windows.UI.Color? Tint)? IPillHost.Cover(Card? card) => CoverOf(card) is { } c ? (c.Image, c.Tint) : null;
 
-    Windows.UI.Color IPillHost.IconColor(Card? card) => IconColorFor(card);
-
     UIElement IPillHost.Dial(TimerDial dial, Windows.UI.Color color, bool paused) => DialContent(dial, color, paused);
 
     SolidColorBrush IPillHost.Brush(Windows.UI.Color color) => BrushOf(color);

@@ -104,6 +104,9 @@ internal sealed class LiftWindow : Window
     /// <summary>Called once the card has fully gone (after the closing animation).</summary>
     public Action? Gone { get; set; }
 
+    /// <summary>The card starts going down (however it was closed): the bar brightens the big pill again.</summary>
+    public Action? Closing { get; set; }
+
     /// <summary>Takes a fresh picture of the big pill's content (its text), for the morph to fade out or back in.</summary>
     public Func<Task<ImageSource?>>? TakeShot { get; set; }
 
@@ -196,6 +199,7 @@ internal sealed class LiftWindow : Window
         }
 
         _closing = true;
+        Closing?.Invoke();
         _follow = _request.Style == LiftStyle.Morph ? follow : null;
         _followBounce = bounce;
         if (_follow is not null && _request.Icon is FrameworkElement icon && icon.ActualWidth > 0)
