@@ -193,48 +193,4 @@ public sealed class CliTests
         Assert.Contains("25m", error, StringComparison.Ordinal);   // shows an example
         Assert.Empty(Directory.GetFiles(dir.Path));
     }
-
-    [Fact]
-    public void Args_previews_launch_arguments()
-    {
-        var (code, output, _) = Run("args", "왜 느려?", "--model", "opus", "--rc");
-        Assert.Equal(CommandRunner.ExitOk, code);
-        Assert.Equal("""claude "왜 느려?" --dangerously-skip-permissions --model opus[1m] --remote-control""", output.Trim());
-    }
-
-    [Fact]
-    public void Args_also_does_not_read_option_values_as_question()
-    {
-        var (_, output, _) = Run("args", "--session", "resume", "안녕");
-        Assert.Equal("claude 안녕 --dangerously-skip-permissions --resume", output.Trim());
-    }
-
-    [Fact]
-    public void Aliases_reads_from_fixed_copy()
-    {
-        var fixture = Path.Combine(AppContext.BaseDirectory, "Fixtures", "model-aliases-sample.md");
-        var (code, output, _) = Run("aliases", fixture);
-        Assert.Equal(CommandRunner.ExitOk, code);
-        Assert.Equal("fable sonnet opus haiku", output.Trim());
-    }
-
-    [Fact]
-    public void Untrustworthy_document_reports_failure()
-    {
-        using var dir = new TempDir();
-        var path = dir.File("나쁜문서.md");
-        File.WriteAllText(path, "### Model aliases\n**`opus`**");
-
-        var (code, _, error) = Run("aliases", path);
-        Assert.Equal(CommandRunner.ExitFailed, code);
-        Assert.Contains("unreliable", error, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void Missing_folder_ends_with_error()
-    {
-        var (code, _, error) = Run("aliases", "/없는/파일.md");
-        Assert.Equal(CommandRunner.ExitFailed, code);
-        Assert.NotEqual("", error);
-    }
 }

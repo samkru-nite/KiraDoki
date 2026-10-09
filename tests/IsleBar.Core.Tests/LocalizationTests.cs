@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using IsleBar.Core.Configuration;
 using IsleBar.Core.Localization;
 using Xunit;
@@ -42,13 +42,8 @@ public sealed class LocalizationTests
             .GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Where(p => p.PropertyType == typeof(string))
             .ToArray();
-        var optionProps = typeof(LanguageStrings)
-            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(p => p.PropertyType == typeof(OptionText))
-            .ToArray();
 
-        Assert.Equal(145, textProps.Length);     // 10-10 − 26 with file search, the input box and the Tab order; 10-09 H1b + sort_time, yesterday, mode_ask_tip, mode_files_tip; 10-09 H1 + search_files_hint, ask_agent_hint; 10-09 甲⑤ + pin, unpin; 10-10 丙④ + transparency; 10-10 丙 − card_cancel (timer says Close); 10-10 − crash_reports, check_updates, update_available, update_menu, update_failed (nothing goes to the original author any more); 10-10 F4 − toast_card, − all_notifications; 10-09 F3 +2; 10-09: + card_browser (F2b). 10-08: + 24 lifted card (F2). 10-08: + 3 lift animation (F1).10-07: + agent_interrupted (E3½), + 4 swap animation (E4), − dismiss (E5), + swap_bounce, − web_engine · web_search, + 6 pill corners / small pill side, + close_card, + 4 card text alignment. Notice if the number of string keys drops (includes rc·agent·dismiss·web_engine·tab_order·web_search·timer + 30 system notification keys + advanced_section, 10-01; advanced_section translated in all ten 10-02; + hide_toast_banners 10-01; + replace_timer_ask, needs_answer, agent_done, crash_reports, check_updates, update_available, update_menu, update_failed, connect_agents, connect_agents_card 10-01; + all_notifications, usage_limit, resets_at, usage_high, agent_stopped, stop_login, stop_billing, stop_busy, stop_error, mute_chime_fullscreen 10-03; + toast_card, sort_name, sort_modified, sort_size, open_in_everything, file_results_count, menu_open, menu_open_folder, menu_copy_path, menu_copy_name, file_exclude_label, file_exclude_hint, reset_defaults, no_result_link, es_off_link 10-04; + browser_media 10-04; − native_searchbox, + position ×5, manual_offset, diag ×5 10-05)
-        Assert.Equal(4, optionProps.Length);    // session · model · effort · perm
+        Assert.Equal(138, textProps.Length);     // 10-10 − 7 with launching agents (options, folder, agent, launch failure); 10-10 − 26 with file search, the input box and the Tab order; 10-09 H1b + sort_time, yesterday, mode_ask_tip, mode_files_tip; 10-09 H1 + search_files_hint, ask_agent_hint; 10-09 甲⑤ + pin, unpin; 10-10 丙④ + transparency; 10-10 丙 − card_cancel (timer says Close); 10-10 − crash_reports, check_updates, update_available, update_menu, update_failed (nothing goes to the original author any more); 10-10 F4 − toast_card, − all_notifications; 10-09 F3 +2; 10-09: + card_browser (F2b). 10-08: + 24 lifted card (F2). 10-08: + 3 lift animation (F1).10-07: + agent_interrupted (E3½), + 4 swap animation (E4), − dismiss (E5), + swap_bounce, − web_engine · web_search, + 6 pill corners / small pill side, + close_card, + 4 card text alignment. Notice if the number of string keys drops (includes rc·agent·dismiss·web_engine·tab_order·web_search·timer + 30 system notification keys + advanced_section, 10-01; advanced_section translated in all ten 10-02; + hide_toast_banners 10-01; + replace_timer_ask, needs_answer, agent_done, crash_reports, check_updates, update_available, update_menu, update_failed, connect_agents, connect_agents_card 10-01; + all_notifications, usage_limit, resets_at, usage_high, agent_stopped, stop_login, stop_billing, stop_busy, stop_error, mute_chime_fullscreen 10-03; + toast_card, sort_name, sort_modified, sort_size, open_in_everything, file_results_count, menu_open, menu_open_folder, menu_copy_path, menu_copy_name, file_exclude_label, file_exclude_hint, reset_defaults, no_result_link, es_off_link 10-04; + browser_media 10-04; − native_searchbox, + position ×5, manual_offset, diag ×5 10-05)
 
         foreach (var code in Expected)
         {
@@ -58,19 +53,6 @@ public sealed class LocalizationTests
                 var value = (string?)prop.GetValue(strings);
                 Assert.False(string.IsNullOrWhiteSpace(value), $"{code}.{prop.Name} 이(가) 비었다");
             }
-
-            foreach (var prop in optionProps)
-            {
-                var option = (OptionText?)prop.GetValue(strings);
-                Assert.NotNull(option);
-                Assert.False(string.IsNullOrWhiteSpace(option!.Title), $"{code}.{prop.Name}.Title 이(가) 비었다");
-                Assert.All(option.Choices, c => Assert.False(string.IsNullOrWhiteSpace(c), $"{code}.{prop.Name} 선택지가 비었다"));
-            }
-
-            Assert.Equal(LaunchOptionDefs.SessionChoices.Count, strings.Session.Choices.Count);
-            Assert.Equal(LaunchOptionDefs.EffortChoices.Count, strings.Effort.Choices.Count);
-            Assert.Equal(LaunchOptionDefs.PermChoices.Count, strings.Perm.Choices.Count);
-            Assert.Equal(5, strings.Model.Choices.Count);   // default + 4 aliases from reference
         }
     }
 
@@ -83,7 +65,6 @@ public sealed class LocalizationTests
             Assert.Contains("{m}", strings.MinSec);
             Assert.Contains("{s:02d}", strings.MinSec);
             Assert.Contains("{s}", strings.Sec);
-            Assert.Contains("{}", strings.LaunchFail);
         }
     }
 
@@ -130,56 +111,6 @@ public sealed class LocalizationTests
     [InlineData(double.NaN)]
     public void Invalid_duration_becomes_zero_seconds(double seconds)
         => Assert.Equal("0초", LanguageCatalog.For("ko").FormatDuration(seconds));
-
-    [Fact]
-    public void Launch_failure_string_includes_the_error()
-    {
-        Assert.Equal("실행 실패: 파일을 찾을 수 없음", LanguageCatalog.For("ko").FormatLaunchFail("파일을 찾을 수 없음"));
-        Assert.Equal("Launch failed: boom", LanguageCatalog.For("en").FormatLaunchFail("boom"));
-    }
-
-    [Fact]
-    public void Model_choices_follow_the_alias_list()
-    {
-        var ko = LanguageCatalog.For("ko").ModelFor(["opus", "sonnet", "haiku", "fable"]);
-        Assert.Equal("모델", ko.Title);
-        Assert.Equal(["기본", "Opus", "Sonnet", "Haiku", "Fable"], ko.Choices);
-
-        // When a new family appears, the buttons grow on their own
-        var more = LanguageCatalog.For("en").ModelFor(["opus", "sonnet", "haiku", "fable", "lyric"]);
-        Assert.Equal(["Default", "Opus", "Sonnet", "Haiku", "Fable", "Lyric"], more.Choices);
-
-        // When one disappears, they shrink
-        var fewer = LanguageCatalog.For("en").ModelFor(["opus"]);
-        Assert.Equal(["Default", "Opus"], fewer.Choices);
-    }
-
-    [Fact]
-    public void Option_title_lookup()
-    {
-        var ko = LanguageCatalog.For("ko");
-        Assert.Equal("대화", ko.TitleFor(LaunchOptionDefs.Session));
-        Assert.Equal("모델", ko.TitleFor(LaunchOptionDefs.Model));
-        Assert.Equal("생각 강도", ko.TitleFor(LaunchOptionDefs.Effort));
-        Assert.Equal("권한", ko.TitleFor(LaunchOptionDefs.Perm));
-        Assert.Equal("원격 조종", ko.TitleFor(LaunchOptionDefs.Rc));   // rc has no choices
-        Assert.Null(ko.OptionFor(LaunchOptionDefs.Rc));
-    }
-
-    [Fact]
-    public void Strings_have_no_extra_explanation()
-    {
-        // "No explanatory text (padding)" — choice names must be short words
-        foreach (var code in Expected)
-        {
-            var strings = LanguageCatalog.For(code);
-            foreach (var option in new[] { strings.Session, strings.Model, strings.Effort, strings.Perm })
-            {
-                Assert.All(option.Choices, c => Assert.DoesNotContain('.', c.TrimEnd('.')));
-                Assert.All(option.Choices, c => Assert.True(c.Length <= 12, $"{code} 선택지가 너무 길다: {c}"));
-            }
-        }
-    }
 
     // ---------------- Automatic language selection ----------------
 

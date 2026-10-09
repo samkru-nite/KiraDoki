@@ -11,12 +11,9 @@ public sealed class LanguageStrings
 {
     public required string Finishing { get; init; }
     public required string Paused { get; init; }
-    public required string Options { get; init; }
     public required string Settings { get; init; }
     public required string Quit { get; init; }
 
-    /// <summary>Launch failure notice. The error message goes in <c>{}</c> — use <see cref="FormatLaunchFail"/>.</summary>
-    public required string LaunchFail { get; init; }
 
     public required string Done { get; init; }
     public required string Fail { get; init; }
@@ -30,20 +27,8 @@ public sealed class LanguageStrings
 
     public required string Lang { get; init; }
     public required string Auto { get; init; }
-    public required string Folder { get; init; }
-    public required string FolderChange { get; init; }
-    public required string FolderHome { get; init; }
 
-    public required OptionText Session { get; init; }
-    public required OptionText Model { get; init; }
-    public required OptionText Effort { get; init; }
-    public required OptionText Perm { get; init; }
 
-    /// <summary>Remote control is an on/off toggle, so it has no choices.</summary>
-    public required string Rc { get; init; }
-
-    /// <summary>Title of "Agent" (Claude / Codex picker) in the settings window.</summary>
-    public required string Agent { get; init; }
 
 
     /// <summary>File search result right-click menu (user 10-04).</summary>
@@ -367,9 +352,6 @@ public sealed class LanguageStrings
     public required string CardMicrophone { get; init; }
     public required string CardCamera { get; init; }
 
-    public string FormatLaunchFail(string message)
-        => LaunchFail.Replace("{}", message ?? string.Empty, StringComparison.Ordinal);
-
     /// <summary>
     /// Remaining/elapsed time display. <see cref="MinSec"/> for 60 seconds or more, otherwise <see cref="Sec"/>.
     /// Negative values are treated as 0.
@@ -388,40 +370,4 @@ public sealed class LanguageStrings
             .Replace("{m}", minutes.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)
             .Replace("{s:02d}", rest.ToString("00", CultureInfo.InvariantCulture), StringComparison.Ordinal);
     }
-
-    /// <summary>
-    /// Model option matching the current alias list. Only the first choice (the translated "Default") is kept; the rest use
-    /// each alias with its first letter capitalized — so the buttons follow automatically as aliases are added or removed.
-    /// </summary>
-    public OptionText ModelFor(IReadOnlyList<string> models)
-    {
-        ArgumentNullException.ThrowIfNull(models);
-        var choices = new List<string>(models.Count + 1) { Model.Choices[0] };
-        foreach (var alias in models)
-        {
-            choices.Add(Capitalize(alias));
-        }
-
-        return new OptionText(Model.Title, choices);
-    }
-
-    /// <summary>Same as Python's <c>str.capitalize()</c>: first letter upper-case, the rest lower-case.</summary>
-    internal static string Capitalize(string value)
-        => string.IsNullOrEmpty(value)
-            ? value
-            : char.ToUpperInvariant(value[0]) + value[1..].ToLowerInvariant();
-
-    /// <summary>Finds a choice option's strings by option name. rc has no choices, so null.</summary>
-    public OptionText? OptionFor(string option) => option switch
-    {
-        Configuration.LaunchOptionDefs.Session => Session,
-        Configuration.LaunchOptionDefs.Model => Model,
-        Configuration.LaunchOptionDefs.Effort => Effort,
-        Configuration.LaunchOptionDefs.Perm => Perm,
-        _ => null,
-    };
-
-    /// <summary>Option title used in the pin menu (including rc).</summary>
-    public string TitleFor(string option)
-        => option == Configuration.LaunchOptionDefs.Rc ? Rc : OptionFor(option)?.Title ?? option;
 }

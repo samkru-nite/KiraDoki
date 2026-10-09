@@ -8,7 +8,6 @@ using IsleBar.Core.Configuration;
 using IsleBar.Core.Island;
 using IsleBar.Core.Launch;
 using IsleBar.Core.Localization;
-using IsleBar.Core.Models;
 using IsleBar.Core.Ui;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
@@ -122,7 +121,6 @@ public sealed partial class MainWindow : Window
 
         _watchdog.Start();
         StartIslandPolling();
-        _ = UpdateModelAliasesAsync();
     }
 
     // ---------------- Event wiring (one place only) ----------------
@@ -1226,7 +1224,7 @@ public sealed partial class MainWindow : Window
     private void LoadAgentMarks()
     {
         var light = ThemeColors.FromSystem().Light;
-        var cli = ClaudeExecutable.Resolve(AgentProfiles.Get(AgentKind.Claude));
+        var cli = ClaudeExecutable.Resolve();
         _claudeMask = ClaudeGlyph.Mask(cli, DpiSetup.Px(21))
                       ?? (AgentApps.ClaudeExe() is { } app ? ClaudeGlyph.Mask(app, DpiSetup.Px(21)) : null);
         _codexSvg = null;
@@ -1558,24 +1556,9 @@ public sealed partial class MainWindow : Window
         _settingsWindow.ShowAbove(PopupAnchorX, TaskbarTop());
     }
 
-    /// <summary>
-    /// The model list check writes the lists to the file in the background; keep them current in memory too, or the next save
-    /// (a launch, a settings change) wrote the old ones back (review 10-03).
-    /// </summary>
-    private void TakeBackgroundModelLists()
-    {
-        if (_store.TryLoad() is { } fresh)   // not when the file couldn't be read: defaults would be saved over the lists
-        {
-            _settings.Models = fresh.Models;
-            _settings.CodexModels = fresh.CodexModels;
-            _settings.ModelsChecked = fresh.ModelsChecked;
-        }
-    }
-
     private void OnSettingsChanged()
     {
         _feed.ApplySettings();
-        TakeBackgroundModelLists();
         _store.Save(_settings);
         LayoutPills();   // the small pill's side and the corners are settings
         RenderIsland();  // ...and so is centring the card text
@@ -1687,16 +1670,6 @@ public sealed partial class MainWindow : Window
 
     [System.Runtime.InteropServices.DllImport("kernel32.dll")]
     private static extern ushort GetUserDefaultUILanguage();
-
-    private async Task UpdateModelAliasesAsync()
-    {
-        using var source = new HttpModelAliasSource();
-        var update = await new ModelAliasUpdater(_store, source).RunOnceAsync(DateTimeOffset.UtcNow);
-        if (update.Changed)
-        {
-            RequestExit(ExitCodes.RestartRequested);   // relaunch with the new buttons
-        }
-    }
 
     private const int MenuQuit = 1;
     private const int MenuClose = 2;   // close the card the menu is about

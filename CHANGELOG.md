@@ -9,6 +9,8 @@
 - Timers run side by side, each on its own card, instead of asking to replace the running one.
 - Files can be dropped on the bar only when a drop command is set.
 - Everything is still used, if it runs, to follow an archive Explorer is compressing.
+- Launching Claude Code / Codex from the bar is gone too: the agent, launch options, working folder and model-list settings,
+  the model list check at startup, and `islebar args` / `islebar aliases`.
 
 ### Small pill and card rules (fork, 10-07)
 - The small pill shows one icon for every card behind the big pill (temporary ones excepted), as many as fit before the

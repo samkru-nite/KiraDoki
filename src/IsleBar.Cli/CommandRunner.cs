@@ -2,7 +2,6 @@ using System.Globalization;
 using IsleBar.Core.Configuration;
 using IsleBar.Core.Island;
 using IsleBar.Core.Launch;
-using IsleBar.Core.Models;
 
 namespace IsleBar.Cli;
 
@@ -39,8 +38,6 @@ public static class CommandRunner
                 "show" => Show(args[1..], output, error),
                 "rm" => Remove(args[1..], output, error),
                 "timer" => Timer(args[1..], output, error),
-                "args" => ShowArgs(args[1..], output, error),
-                "aliases" => Aliases(args[1..], output, error),
                 "hook" => Hook(args[1..], input ?? Utf8StandardInput()),
                 "statusline" => StatusLine(args[1..], input ?? Utf8StandardInput(), output),
                 _ => Unknown(args[0], error),
@@ -334,67 +331,6 @@ public static class CommandRunner
 
     // ---------------- help ----------------
 
-    private static int ShowArgs(string[] args, TextWriter output, TextWriter error)
-    {
-        var opts = ArgMap.Parse(args);
-        var question = string.Join(' ', opts.Rest);
-        var options = new IsleBar.Core.Configuration.LaunchOptions
-        {
-            Session = opts.Value("session") ?? "new",
-            Model = opts.Value("model") ?? "default",
-            Effort = opts.Value("effort") ?? "default",
-            Perm = opts.Value("perm") ?? "bypass",
-            Rc = opts.Has("rc"),
-        };
-        var agentName = opts.Value("agent") ?? AgentKind.Claude;
-        if (!AgentKind.IsKnown(agentName))
-        {
-            error.WriteLine($"Unknown agent: {agentName} (available: {string.Join(", ", AgentKind.All)})");
-            return ExitUsage;
-        }
-
-        opts.WarnUnknown(error);
-        var profile = AgentProfiles.Get(agentName);
-
-        // if an option the agent does not use was given, report it rather than silently dropping it
-        foreach (var name in LaunchOptionDefs.All)
-        {
-            if (!profile.Supports(name) && (opts.Value(name) is not null || opts.Has(name)))
-            {
-                error.WriteLine($"{profile.Name} has no --{name} option; ignored.");
-            }
-        }
-
-        var built = profile.BuildArgs(profile.Name, question, options);
-        output.WriteLine(ClaudeArguments.ToDisplayString(built));
-        return ExitOk;
-    }
-
-    private static int Aliases(string[] args, TextWriter output, TextWriter error)
-    {
-        var file = ArgMap.Parse(args).Rest.FirstOrDefault();
-        string? markdown;
-        if (file is not null)
-        {
-            markdown = File.ReadAllText(file);
-        }
-        else
-        {
-            using var source = new HttpModelAliasSource();
-            markdown = source.FetchAsync().GetAwaiter().GetResult();
-        }
-
-        var found = ModelAliasParser.Parse(markdown);
-        if (found is null)
-        {
-            error.WriteLine("islebar: alias list looks unreliable (no table, or fewer than 3 entries). Keeping the current list.");
-            return ExitFailed;
-        }
-
-        output.WriteLine(string.Join(' ', found));
-        return ExitOk;
-    }
-
     private static ActivityStore StoreFor(ArgMap opts)
     {
         var dir = opts.Value("dir");
@@ -413,8 +349,6 @@ public static class CommandRunner
                                           system notices come from Windows, not these files)
           islebar rm <id>                 remove a state
           islebar hook [--agent codex]    post an agent notification to the island (Claude hooks: JSON on stdin, Codex notify: JSON as last argument)
-          islebar args [question] [opts]  preview how claude/codex would be invoked
-          islebar aliases [file]          model alias list (from the file if given, otherwise from the official docs)
 
         push options:
           --kind   transfer | notice | timer | music | agent-working | agent-permission | agent-done | error  (default transfer)

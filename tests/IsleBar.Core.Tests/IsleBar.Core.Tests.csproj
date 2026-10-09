@@ -17,9 +17,4 @@
     <ProjectReference Include="..\..\src\IsleBar.Cli\IsleBar.Cli.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <!-- Fixed copy saved so tests can run without a network -->
-    <None Include="Fixtures\**\*" CopyToOutputDirectory="PreserveNewest" />
-  </ItemGroup>
-
 </Project>

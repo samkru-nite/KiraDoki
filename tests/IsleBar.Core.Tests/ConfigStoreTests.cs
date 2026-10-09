@@ -13,16 +13,10 @@ public sealed class ConfigStoreTests
         var settings = new ConfigStore(dir.File("islebar.json")).Load();
 
         Assert.Equal("auto", settings.Lang);
-        Assert.Equal("auto", settings.Values.Perm);         // fresh installs start on auto (10-01); the owner's file keeps bypass
-        Assert.Equal("new", settings.Values.Session);
-        Assert.Equal("default", settings.Values.Model);
-        Assert.Equal("default", settings.Values.Effort);
-        Assert.False(settings.Values.Rc);
         Assert.True(settings.NotifyPower);
-        Assert.Equal("", settings.Folder);
+        Assert.False(settings.NotifyToasts);
         Assert.Equal("", settings.CalendarIcs);
-        Assert.Equal(LaunchOptionDefs.DefaultModels, settings.Models);
-        Assert.Equal(0, settings.ModelsChecked);
+        Assert.Equal([5, 25], settings.QuickTimers);
     }
 
     [Theory]
@@ -40,7 +34,7 @@ public sealed class ConfigStoreTests
         var settings = new ConfigStore(path).Load();
 
         Assert.Equal("auto", settings.Lang);
-        Assert.Equal("auto", settings.Values.Perm);
+        Assert.True(settings.NotifyPower);
         Assert.True(File.Exists(path));                     // never delete the user's file
         Assert.Equal(content, File.ReadAllText(path));
     }
@@ -74,25 +68,22 @@ public sealed class ConfigStoreTests
         File.WriteAllText(path, """
         {
           "lang": 42,
-          "folder": "/home/ubuntu",
+          "calendar_ics": "https://example.com/cal.ics",
           "notify_power": "yes",
           "download_folders": "문자열인데 목록이어야 함",
-          "models_checked": "어제",
-          "values": { "session": true, "perm": "plan", "rc": 1, "effort": "high" }
+          "manual_offset": "어제",
+          "pomo_focus": 50
         }
         """);
 
         var settings = new ConfigStore(path).Load();
 
         Assert.Equal("auto", settings.Lang);                 // number → default
-        Assert.Equal("/home/ubuntu", settings.Folder);       // survives
+        Assert.Equal("https://example.com/cal.ics", settings.CalendarIcs);   // survives
         Assert.True(settings.NotifyPower);                   // "yes" isn't a bool → default
         Assert.Empty(settings.DownloadFolders);              // not a list → default
-        Assert.Equal(0, settings.ModelsChecked);
-        Assert.Equal("new", settings.Values.Session);        // true isn't a string → default
-        Assert.Equal("plan", settings.Values.Perm);          // survives
-        Assert.False(settings.Values.Rc);                    // 1 isn't a bool → default
-        Assert.Equal("high", settings.Values.Effort);        // survives
+        Assert.Equal(12, settings.ManualOffset);             // not a number → default
+        Assert.Equal(50, settings.PomodoroFocus);            // survives
     }
 
     [Fact]
@@ -101,15 +92,14 @@ public sealed class ConfigStoreTests
         using var dir = new TempDir();
         var path = dir.File("islebar.json");
         File.WriteAllText(path, """
-        { "lang": "sv", "values": { "perm": "nope", "session": "restart", "effort": "turbo" } }
+        { "lang": "sv", "position": "nowhere", "ball_side": "up" }
         """);
 
         var settings = new ConfigStore(path).Load();
 
         Assert.Equal("auto", settings.Lang);
-        Assert.Equal("auto", settings.Values.Perm);     // a weird permission value falls back to the default, not "add no argument"
-        Assert.Equal("new", settings.Values.Session);
-        Assert.Equal("default", settings.Values.Effort);
+        Assert.Equal("left", settings.Position);
+        Assert.Equal("right", settings.BallSide);
     }
 
     [Fact]
@@ -133,13 +123,13 @@ public sealed class ConfigStoreTests
 
         var store = new ConfigStore(path);
         var settings = store.Load();
-        settings.Folder = "/tmp/새폴더";
+        settings.CalendarIcs = "/tmp/새폴더";
         Assert.True(store.Save(settings));
 
         var raw = store.LoadRaw();
         Assert.Equal("dark", (string?)raw["theme"]);
         Assert.Equal(3, raw["내가_나중에_추가할_설정"]!["깊은"]!.AsArray().Count);
-        Assert.Equal("/tmp/새폴더", (string?)raw["folder"]);
+        Assert.Equal("/tmp/새폴더", (string?)raw["calendar_ics"]);
         Assert.Equal("ko", (string?)raw["lang"]);
     }
 
@@ -153,27 +143,19 @@ public sealed class ConfigStoreTests
         var written = new IsleBarSettings
         {
             Lang = "ja",
-            Folder = @"C:\Users\me\Desktop",
             NotifyPower = false,
             DownloadFolders = [@"D:\다운로드", @"E:\받은 파일"],
-            Models = ["opus", "fable"],
-            ModelsChecked = 1_759_000_000,
-            Values = new LaunchOptions { Session = "resume", Model = "opus", Effort = "max", Perm = "plan", Rc = true },
+            QuickTimers = [10, 45],
+            BallSide = "left",
         };
         Assert.True(store.Save(written));
 
         var read = store.Load();
         Assert.Equal("ja", read.Lang);
-        Assert.Equal(@"C:\Users\me\Desktop", read.Folder);
         Assert.False(read.NotifyPower);
         Assert.Equal([@"D:\다운로드", @"E:\받은 파일"], read.DownloadFolders);
-        Assert.Equal(["opus", "fable"], read.Models);
-        Assert.Equal(1_759_000_000, read.ModelsChecked);
-        Assert.Equal("resume", read.Values.Session);
-        Assert.Equal("opus", read.Values.Model);
-        Assert.Equal("max", read.Values.Effort);
-        Assert.Equal("plan", read.Values.Perm);
-        Assert.True(read.Values.Rc);
+        Assert.Equal([10, 45], read.QuickTimers);
+        Assert.Equal("left", read.BallSide);
     }
 
     [Fact]
@@ -190,41 +172,11 @@ public sealed class ConfigStoreTests
     }
 
     [Fact]
-    public void Migrates_legacy_flags_setting()
-    {
-        using var dir = new TempDir();
-        var path = dir.File("islebar.json");
-        File.WriteAllText(path, """{ "flags": ["--remote-control", "--resume"] }""");
-
-        var store = new ConfigStore(path);
-        var settings = store.Load();
-        Assert.True(settings.Values.Rc);
-        Assert.Equal("resume", settings.Values.Session);
-
-        Assert.True(store.Save(settings));
-        Assert.Null(store.LoadRaw()["flags"]);       // migrated, so removed
-    }
-
-    [Fact]
-    public void Flags_are_ignored_when_values_exist()
-    {
-        using var dir = new TempDir();
-        var path = dir.File("islebar.json");
-        File.WriteAllText(path, """
-        { "flags": ["--remote-control"], "values": { "rc": false, "session": "continue" } }
-        """);
-
-        var settings = new ConfigStore(path).Load();
-        Assert.False(settings.Values.Rc);
-        Assert.Equal("continue", settings.Values.Session);
-    }
-
-    [Fact]
     public void Keys_of_removed_features_are_dropped_on_save()
     {
         using var dir = new TempDir();
         var path = dir.File("islebar.json");
-        File.WriteAllText(path, """{ "files": true, "history": ["질문"], "mode_order": ["claude"], "theme": "dark" }""");
+        File.WriteAllText(path, """{ "files": true, "history": ["질문"], "mode_order": ["claude"], "values": { "rc": true }, "flags": [], "theme": "dark" }""");
 
         var store = new ConfigStore(path);
         Assert.True(store.Save(store.Load()));
@@ -233,6 +185,8 @@ public sealed class ConfigStoreTests
         Assert.Null(raw["files"]);
         Assert.Null(raw["history"]);
         Assert.Null(raw["mode_order"]);
+        Assert.Null(raw["values"]);
+        Assert.Null(raw["flags"]);
         Assert.Equal("dark", (string?)raw["theme"]);   // unknown keys still survive
     }
 

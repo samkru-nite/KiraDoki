@@ -1,6 +1,5 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using IsleBar.Core.Launch;
 using IsleBar.Core.Localization;
 
 namespace IsleBar.Core.Configuration;
@@ -12,16 +11,14 @@ namespace IsleBar.Core.Configuration;
 public static class SettingsCodec
 {
     /// <summary>Keys of removed features, dropped from the file on save: the real search box switch (10-05); file search,
-    /// the Tab order and question history (10-10).</summary>
+    /// the Tab order and question history; launching agents — which agent, its options, working folder, model lists, the very
+    /// old "flags" (10-10).</summary>
     private static readonly string[] RemovedKeys =
-        ["native_searchbox", "files", "file_results", "file_sort", "file_exclude", "mode_order", "modes_off", "history"];
+        ["native_searchbox", "files", "file_results", "file_sort", "file_exclude", "mode_order", "modes_off", "history",
+         "agent", "values", "codex_values", "folder", "recent_folders", "models", "codex_models", "models_checked", "flags"];
 
     // JSON key names (same as the Python version's claude_bar.json)
     private const string KeyLang = "lang";
-    private const string KeyValues = "values";
-    private const string KeyCodexValues = "codex_values";
-    private const string KeyRecentFolders = "recent_folders";
-    private const string KeyFolder = "folder";
     private const string KeyDownloadFolders = "download_folders";
     private const string KeyPomoFocus = "pomo_focus";
     private const string KeyPomoBreak = "pomo_break";
@@ -38,11 +35,6 @@ public static class SettingsCodec
     private const string KeyListStagger = "list_stagger";
     private const string KeyCardTextAlign = "card_text_align";
     private const string KeyAudioBars = "audio_bars";
-    private const string KeyAgent = "agent";
-    private const string KeyModels = "models";
-    private const string KeyCodexModels = "codex_models";
-    private const string KeyModelsChecked = "models_checked";
-    private const string KeyFlags = "flags";     // very old version
     private const string KeyNotifyPower = "notify_power";
     private const string KeyNotifyBluetooth = "notify_bluetooth";
     private const string KeyNotifyNetwork = "notify_network";
@@ -69,22 +61,6 @@ public static class SettingsCodec
         if (AsString(raw[KeyLang]) is { } lang && (lang == "auto" || LanguageCatalog.IsKnown(lang)))
         {
             s.Lang = lang;
-        }
-
-        if (AsString(raw[KeyAgent]) is { } agent && AgentKind.IsKnown(agent))
-        {
-            s.Agent = agent;
-        }
-
-        if (raw[KeyCodexModels] is JsonArray codexArr)
-        {
-            var codexModels = StringList(codexArr);
-            s.CodexModels = codexModels.Count > 0 ? codexModels : [.. CodexProfile.Models];
-        }
-
-        if (AsString(raw[KeyFolder]) is { } folder)
-        {
-            s.Folder = folder;
         }
 
         if (raw[KeyDownloadFolders] is JsonArray downloadArr)
@@ -115,17 +91,6 @@ public static class SettingsCodec
 
         s.StyleGlass = AsBool(raw[KeyStyleGlass]) ?? s.StyleGlass;
 
-        if (AsDouble(raw[KeyModelsChecked]) is { } checkedAt && checkedAt >= 0 && !double.IsNaN(checkedAt))
-        {
-            s.ModelsChecked = checkedAt;
-        }
-
-        if (raw[KeyModels] is JsonArray modelArr)
-        {
-            var models = StringList(modelArr);
-            s.Models = models.Count > 0 ? models : [.. LaunchOptionDefs.DefaultModels];
-        }
-
         s.Position = Ui.BarSlot.Key(Ui.BarSlot.Parse(AsString(raw[KeyPosition]) ?? s.Position));
         s.PillCorners = AsString(raw[KeyPillCorners]) == "small" ? "small" : "round";
         s.BallSide = AsString(raw[KeyBallSide]) == "left" ? "left" : "right";
@@ -149,68 +114,8 @@ public static class SettingsCodec
             s.QuickTimers = [.. quickTimerArr.Select(Minutes).OfType<int>().Distinct().Take(6)];
         }
 
-        if (raw[KeyRecentFolders] is JsonArray recentArr)
-        {
-            s.RecentFolders = RecentFolders.Normalize(StringList(recentArr));
-        }
-
-        if (raw[KeyValues] is JsonObject values)
-        {
-            ReadValues(values, s.Values, s.Models);
-        }
-
-        if (raw[KeyCodexValues] is JsonObject codexValues)
-        {
-            ReadValues(codexValues, s.CodexValues, s.CodexModels);
-        }
-
-        // migrate the old "flags" (filled in here rather than read first, so that values win)
-        if (raw[KeyValues] is not JsonObject && raw[KeyFlags] is JsonArray flags)
-        {
-            foreach (var flag in StringList(flags))
-            {
-                if (flag == "--remote-control") s.Values.Rc = true;
-                if (flag == "--resume") s.Values.Session = "resume";
-            }
-        }
-
         return s;
     }
-
-    private static void ReadValues(JsonObject values, LaunchOptions target, IReadOnlyList<string> models)
-    {
-        if (Choice(values[LaunchOptionDefs.Session], LaunchOptionDefs.SessionChoices) is { } session)
-        {
-            target.Session = session;
-        }
-
-        if (Choice(values[LaunchOptionDefs.Effort], LaunchOptionDefs.EffortChoices) is { } effort)
-        {
-            target.Effort = effort;
-        }
-
-        if (Choice(values[LaunchOptionDefs.Perm], LaunchOptionDefs.PermChoices) is { } perm)
-        {
-            target.Perm = perm;
-        }
-
-        // the alias list changes, so allow "default" + the current list + aliases not yet in the list (any string will do)
-        if (AsString(values[LaunchOptionDefs.Model]) is { Length: > 0 } model)
-        {
-            target.Model = model == "default" || models.Contains(model) || IsPlausibleAlias(model)
-                ? model
-                : "default";
-        }
-
-        if (AsBool(values[LaunchOptionDefs.Rc]) is { } rc)
-        {
-            target.Rc = rc;
-        }
-    }
-
-    /// <summary>Whether it looks like a model alias (lowercase, digits, dots, hyphens, brackets). Keeps aliases saved before the list was refreshed.</summary>
-    private static bool IsPlausibleAlias(string value)
-        => value.Length <= 40 && value.All(c => char.IsAsciiLetterLower(c) || char.IsAsciiDigit(c) || c is '.' or '-' or '[' or ']');
 
     /// <summary>Overwrites only known keys. Unknown keys are left untouched and thus preserved.</summary>
     public static void Apply(IsleBarSettings s, JsonObject raw)
@@ -219,8 +124,6 @@ public static class SettingsCodec
         ArgumentNullException.ThrowIfNull(raw);
 
         raw[KeyLang] = s.Lang;
-        raw[KeyAgent] = s.Agent;
-        raw[KeyFolder] = s.Folder;
         foreach (var gone in RemovedKeys)
         {
             raw.Remove(gone);
@@ -249,12 +152,6 @@ public static class SettingsCodec
         raw[KeyPomoBreak] = s.PomodoroBreak;
         raw[KeyPomoLong] = s.PomodoroLong;
         raw[KeyQuickTimers] = new JsonArray([.. s.QuickTimers.Select(m => (JsonNode)m)]);
-        raw[KeyModelsChecked] = s.ModelsChecked;
-        raw[KeyModels] = ToArray(s.Models);
-        raw[KeyCodexModels] = ToArray(s.CodexModels);
-        raw[KeyRecentFolders] = ToArray(s.RecentFolders);
-        raw[KeyValues] = ValuesJson(s.Values);
-        raw[KeyCodexValues] = ValuesJson(s.CodexValues);
         raw[KeyNotifyPower] = s.NotifyPower;
         raw[KeyNotifyBluetooth] = s.NotifyBluetooth;
         raw[KeyNotifyNetwork] = s.NotifyNetwork;
@@ -272,45 +169,7 @@ public static class SettingsCodec
         raw.Remove("style_black");     // removed setting (09-30)
         raw.Remove("advanced");        // removed setting (10-01)
         raw.Remove("drop_transfer");   // removed setting (10-01, the attach/transfer toggle — behaviour now decided by whether drop_command is set)
-        raw.Remove(KeyFlags);   // migrated, so remove it
     }
-
-    private static JsonObject ValuesJson(LaunchOptions v) => new()
-    {
-        [LaunchOptionDefs.Session] = v.Session,
-        [LaunchOptionDefs.Model] = v.Model,
-        [LaunchOptionDefs.Effort] = v.Effort,
-        [LaunchOptionDefs.Perm] = v.Perm,
-        [LaunchOptionDefs.Rc] = v.Rc,
-    };
-
-    private static JsonArray ToArray(IEnumerable<string> items)
-    {
-        var arr = new JsonArray();
-        foreach (var item in items)
-        {
-            arr.Add((JsonNode)item);
-        }
-
-        return arr;
-    }
-
-    private static List<string> StringList(JsonArray arr)
-    {
-        var list = new List<string>(arr.Count);
-        foreach (var node in arr)
-        {
-            if (AsString(node) is { Length: > 0 } text)
-            {
-                list.Add(text);
-            }
-        }
-
-        return list;
-    }
-
-    private static string? Choice(JsonNode? node, IReadOnlyList<string> choices)
-        => AsString(node) is { } text && choices.Contains(text) ? text : null;
 
     // ---- Return a value only when the type matches exactly. "true" (a string) or 1 is not a bool. ----
 
@@ -321,9 +180,6 @@ public static class SettingsCodec
         => node is JsonValue v && v.GetValueKind() == JsonValueKind.True ? true
             : node is JsonValue v2 && v2.GetValueKind() == JsonValueKind.False ? false
             : null;
-
-    private static double? AsDouble(JsonNode? node)
-        => node is JsonValue v && v.GetValueKind() == JsonValueKind.Number && v.TryGetValue<double>(out var d) ? d : null;
 
     /// <summary>A whole number, or null if missing or not one.</summary>
     private static int? AsInt(JsonNode? node)

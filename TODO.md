@@ -35,7 +35,11 @@
 - **圆圈点击改成打开工具菜单**（和右键一样）
 - ⚠ **计时器**：现在开第二个计时器会弹输入框问要不要替换（`StartTimer` → `BeginTyping`）。输入框删了，这里改成**允许多个计时器同时存在**（用户定方案 B，见三-④）
 
-**第 2 次：启动 Claude / Codex**
+**第 2 次：启动 Claude / Codex** —— 10-10 代码删完（构建 0 警告 0 错误，测试 782 → 634，界面文案 145 → 138），**用户试过、已提交**。和清单不同的地方：
+- `Core/Launch` 只留 `AgentKind`（"claude"/"codex" 名字，到处在用）和精简的 `ClaudeExecutable`（只找 claude.exe 给火花 logo，不再找 npm 的 claude.cmd——它没有图标）。`AgentProfiles` 其实命令行只有 `islebar args` 在用，`islebar hook` 不用它，所以一起删了。
+- 命令行 `islebar args`（预览启动参数）、`islebar aliases`（模型列表）删了；`islebar push --agent` 还认 claude/codex。
+- 启动时不再联网查模型列表（原来查到新模型会自动重启一次）。
+- 设置窗口去掉"代理 / 启动选项 / 工作文件夹"三节；旧设置键 agent、values、codex_values、folder、recent_folders、models、codex_models、models_checked、flags 下次保存时清掉。
 - `Engine/AgentLauncher`、`Core/Launch/*`、`Core/Models/*`（模型别名更新）、`RecentFolders`、`FolderTrust`、`LaunchOptions`、启动失败卡片 `ShowLaunchFailure`
 - 设置项：Agent / Models / ModelsChecked
 - ⚠ **保留**：`ClaudeExecutable` 里抠火花 logo 要用的"找 claude.exe"部分（`ClaudeGlyph`）；`AgentProfiles` 命令行（`islebar hook`）也在用，按需保留
@@ -55,6 +59,15 @@
   | 透明模式 | 删开关，只跟随 Windows 透明效果 + 节能模式（`Frost.Allowed` 已有） |
   | 回弹效果 | 删开关，**跟随 Windows"动画效果"**（设置 › 辅助功能 › 视觉效果）：开 = 现在的回弹/按下/跳动；关 = 现有"回弹关"那套（0.28 秒平滑、无按下、不跳） |
   | 旧 `style_glass` | 清理 |
+  | 小胶囊在左 / 右 `BallSide` | **固定左边**（用户 10-10 定；现值就是 left），删"放右边"的布局分支 |
+
+### ①½ 圆圈和"⋯"合成一个"后台键" [ ]（10-10 用户定，三次删除之后做）
+- 小胶囊从"图标 │ ⋯ │ 圆圈"变成"图标 │ **后台键**"。后台键**一直显示"⋯"、永远不消失**（像手机的多任务键）。
+- **左键 = 一键呼出所有卡片，包括大胶囊上正在显示的那张**（用户 10-10 更正；不只是放不下的）；**右键 = 工具菜单**（计时、设置、退出）。
+- 没有卡片时 = 只剩后台键（大胶囊本来就会收起）。**左键这时只有按下回弹动画，不打开任何东西**（用户 10-10 定）。
+- 放不下的图标仍收进后台键（列表里都有）。
+- **小胶囊固定在大胶囊左边**（用户 10-10 定；删开关挪到第 3 次删除的设计开关表里做）。按现在放左边时的镜像排法，后台键在最左（最外侧）：`后台键 │ 图标 ‖ 大胶囊`（用户 10-10 确认）。
+- 取代讨论过的"小球拉长成胶囊再分裂"方案（要逐帧改任务栏窗口的裁剪，有风险）和第 1 次删除里"点圆圈 = 工具菜单"。
 
 ### ② 小修 [ ]
 - [ ] **Bug：系统通知（临时卡片）跑进了小胶囊**，而且只显示"⋯"没有图标。临时卡片本该在大胶囊上停几秒就消失，不该进小胶囊。先加日志查原因。**删除完成后第一个修。**

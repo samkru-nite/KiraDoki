@@ -10,30 +10,6 @@ public sealed class IsleBarSettings
     public string Lang { get; set; } = "auto";
 
     /// <summary>
-    /// The agent to launch (<see cref="Launch.AgentKind"/>). <b>Chosen in settings</b>, not in the
-    /// quick-launch menu — it is not something changed often (decision 2026-09-29).
-    /// </summary>
-    public string Agent { get; set; } = Launch.AgentKind.Claude;
-
-    /// <summary>Claude launch options.</summary>
-    public LaunchOptions Values { get; set; } = new();
-
-    /// <summary>
-    /// Codex launch options. <b>Remembered separately</b> — the two agents use different models
-    /// (Claude <c>opus[1m]</c> / Codex <c>gpt-5.6-sol</c>), and effort/remote control do not exist for Codex.
-    /// </summary>
-    public LaunchOptions CodexValues { get; set; } = new();
-
-    /// <summary>Working folder. Empty string means home.</summary>
-    public string Folder { get; set; } = "";
-
-    /// <summary>
-    /// Recently used working folders. Remembered so they can be picked right from the bar
-    /// (project slash commands only show up when launched from that folder).
-    /// </summary>
-    public List<string> RecentFolders { get; set; } = [];
-
-    /// <summary>
     /// Folders watched for downloads in progress (browsers' .crdownload/.part, Baidu Netdisk's .baiduyun.p.downloading), one per
     /// line — for browsers set to save elsewhere or to ask each time. Empty = the system Downloads folder.
     /// </summary>
@@ -87,17 +63,6 @@ public sealed class IsleBarSettings
 
     /// <summary>Quick timers in the right-click menu (minutes).</summary>
     public List<int> QuickTimers { get; set; } = [5, 25];
-
-    /// <summary>Claude model alias list (button order). Auto-updated from the model docs.</summary>
-    public List<string> Models { get; set; } = [.. LaunchOptionDefs.DefaultModels];
-
-    /// <summary>
-    /// Codex model list. <b>Not auto-updated</b> since there is no doc to fetch — edit it in settings.
-    /// </summary>
-    public List<string> CodexModels { get; set; } = [.. Launch.CodexProfile.Models];
-
-    /// <summary>When the alias list was last checked (Unix seconds). 0 = never checked.</summary>
-    public double ModelsChecked { get; set; }
 
     // ---- System notices (09-30). All on by default — turn off only the unneeded ones in settings. ----
 
@@ -158,22 +123,9 @@ public sealed class IsleBarSettings
     public bool StyleGlass { get; set; }
 
 
-    /// <summary>Launch options for the given agent.</summary>
-    public LaunchOptions ValuesFor(string? agent)
-        => agent == Launch.AgentKind.Codex ? CodexValues : Values;
-
-    /// <summary>Model list for the given agent.</summary>
-    public List<string> ModelsFor(string? agent)
-        => agent == Launch.AgentKind.Codex ? CodexModels : Models;
-
     public IsleBarSettings Clone() => new()
     {
         Lang = Lang,
-        Agent = Agent,
-        Values = Values.Clone(),
-        CodexValues = CodexValues.Clone(),
-        Folder = Folder,
-        RecentFolders = [.. RecentFolders],
         DownloadFolders = [.. DownloadFolders],
         PomodoroFocus = PomodoroFocus,
         PomodoroBreak = PomodoroBreak,
@@ -190,9 +142,6 @@ public sealed class IsleBarSettings
         ListStagger = ListStagger,
         CardTextAlign = CardTextAlign,
         AudioBars = AudioBars,
-        Models = [.. Models],
-        CodexModels = [.. CodexModels],
-        ModelsChecked = ModelsChecked,
         NotifyPower = NotifyPower,
         NotifyBluetooth = NotifyBluetooth,
         NotifyNetwork = NotifyNetwork,

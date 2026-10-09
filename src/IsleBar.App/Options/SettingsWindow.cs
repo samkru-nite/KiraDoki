@@ -135,79 +135,6 @@ internal sealed class SettingsWindow : Window
         };
         _body.Children.Add(lang);
 
-        // Agent
-        Section(_text.Agent);
-        var agents = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2 };
-        foreach (var (name, label) in new[] { (AgentKind.Claude, "Claude"), (AgentKind.Codex, "Codex") })
-        {
-            var button = new ToggleButton { Content = label, IsChecked = _settings.Agent == name, MinWidth = 80 };
-            button.Click += (_, _) =>
-            {
-                if (_settings.Agent != name)
-                {
-                    _settings.Agent = name;
-                    _changed();
-                }
-
-                Build();   // each agent shows different options and models
-                Refit();
-            };
-            agents.Children.Add(button);
-        }
-
-        _body.Children.Add(agents);
-
-        // Launch options
-        Section(_text.Options);
-        foreach (var key in LaunchOptionDefs.All.Where(k => OptionControls.IsShown(_settings, k)))
-        {
-            var row = OptionControls.Row(_settings, _text, key, compact: false, _changed);
-            row.Margin = new Thickness(0, 2, 0, 2);
-            _body.Children.Add(row);
-        }
-
-        // Working folder
-        Section(_text.Folder);
-        var folderRow = new Grid { ColumnSpacing = 6 };
-        folderRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        folderRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        folderRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var folderText = new TextBlock
-        {
-            Text = CurrentFolder(),
-            VerticalAlignment = VerticalAlignment.Center,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            Opacity = 0.75,
-        };
-        ToolTipService.SetToolTip(folderText, CurrentFolder());
-        folderRow.Children.Add(folderText);
-        var change = new Button { Content = _text.FolderChange };
-        change.Click += async (_, _) =>
-        {
-            var picker = new Windows.Storage.Pickers.FolderPicker();
-            picker.FileTypeFilter.Add("*");
-            WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
-            if (await picker.PickSingleFolderAsync() is { } picked)
-            {
-                _settings.Folder = picked.Path;
-                _settings.RecentFolders = RecentFolders.Add(_settings.RecentFolders, picked.Path);
-                _changed();
-                folderText.Text = CurrentFolder();
-            }
-        };
-        Grid.SetColumn(change, 1);
-        folderRow.Children.Add(change);
-        var home = new Button { Content = _text.FolderHome };
-        home.Click += (_, _) =>
-        {
-            _settings.Folder = "";
-            _changed();
-            folderText.Text = CurrentFolder();
-        };
-        Grid.SetColumn(home, 2);
-        folderRow.Children.Add(home);
-        _body.Children.Add(folderRow);
-
         DownloadFoldersRow();
 
         // Island notices (09-30 feature): per-kind on/off + calendar (ICS URL)
@@ -484,16 +411,11 @@ internal sealed class SettingsWindow : Window
         {
             Text = title,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            // 10 (not 14) above: once the rows within a section were tightened, a 14 dip section gap stood out — the space under
-            // the last launch option ("remote control") read as too airy before "working folder" (user feedback 10-01).
+            // 10 (not 14) above: once the rows within a section were tightened, a 14 dip section gap stood out (user feedback 10-01).
             Margin = new Thickness(0, 10, 0, 4),
         });
 
     /// <summary>The current UI language (if auto, the one determined from the Windows language).</summary>
     private string _language => _currentLanguage();
 
-    private string CurrentFolder()
-        => string.IsNullOrEmpty(_settings.Folder)
-            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), FolderTrust.DefaultFolderName)
-            : _settings.Folder;
 }
