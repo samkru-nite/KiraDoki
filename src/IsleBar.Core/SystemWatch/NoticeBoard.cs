@@ -19,8 +19,17 @@ public sealed class NoticeBoard
     public void Flash(string key, ActivityState notice, TimeSpan duration, DateTimeOffset now)
         => Put(key, notice, now + duration);
 
-    /// <summary>A notice that stays until cleared (<see cref="Clear"/>) — for when a human needs to act, like low battery or internet lost.</summary>
-    public void Hold(string key, ActivityState notice) => Put(key, notice, null);
+    /// <summary>
+    /// A notice that stays until cleared (<see cref="Clear"/>), like focus mode being on. Marked <see cref="SystemNotice.HoldStage"/>
+    /// (unless it has a stage of its own): a status card, not a temporary one — it would sit on the big pill for as long as it lasts
+    /// and never go down into a cell (10-10).
+    /// </summary>
+    public void Hold(string key, ActivityState notice)
+    {
+        ArgumentNullException.ThrowIfNull(notice);
+        notice.Stage ??= SystemNotice.HoldStage;
+        Put(key, notice, null);
+    }
 
     /// <summary>Takes down the notice with that key. Does nothing if absent.</summary>
     public void Clear(string key)
@@ -107,6 +116,12 @@ public static class SystemNotice
     /// so it must not collide with other sources (<c>download:</c> etc.).
     /// </summary>
     public const string SourcePrefix = "system:";
+
+    /// <summary>Stage of a notice that lasts while something is on (<see cref="NoticeBoard.Hold"/>): a status card.</summary>
+    public const string HoldStage = "hold";
+
+    /// <summary>Stage of a notice you must act on now (battery under 5%): a pending card — pinned, orange — until it goes.</summary>
+    public const string CriticalStage = "critical";
 
     /// <summary>
     /// One notice. If <paramref name="urgent"/>, State=error (orange border) — only turn it on when a human must do something to resolve it.

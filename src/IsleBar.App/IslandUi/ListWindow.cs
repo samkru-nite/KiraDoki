@@ -24,13 +24,11 @@ internal sealed record ListRequest(
     ScreenRect Ball,
     double PillRadius,
     Color PillColor,
-    Color LabelColor,
     bool Dark,
     int ScreenLeft,
     int ScreenRight,
     int TaskbarTop,
-    bool Bounce,
-    string OnBigLabel);
+    bool Bounce);
 
 /// <summary>
 /// The list (TODO 7.9 F3, user 10-09; opened by the circle since TODO ①½): every card drawn by a pill of its own (<see cref="PillView"/>, the big pill's very
@@ -47,7 +45,6 @@ internal sealed class ListWindow : Window
     private readonly Microsoft.UI.Dispatching.DispatcherQueue _ui = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
     private readonly IntPtr _hwnd;
     private readonly List<Item> _items = [];
-    private readonly Grid _label = new() { IsHitTestVisible = false };
 
     private ListRequest? _request;
     private ScreenRect _window;
@@ -147,7 +144,6 @@ internal sealed class ListWindow : Window
         _root.UpdateLayout();
         Redraw();
 
-        BuildLabel(request);
         _root.Width = _window.Width / s;
         _root.Height = _window.Height / s;
 
@@ -343,41 +339,6 @@ internal sealed class ListWindow : Window
                     break;
             }
         }
-
-        // "on the pill" beside the lowest one, showing as it does
-        if (_items.Count > 0)
-        {
-            var lowest = _items[0];
-            Canvas.SetLeft(_label, lowest.Slot.X - 8 - _label.DesiredSize.Width);
-            Canvas.SetTop(_label, lowest.Slot.Y + ((lowest.Slot.Height - _label.DesiredSize.Height) / 2));
-            _label.Opacity = _phase == Phase.Taking
-                ? Math.Min(_label.Opacity, 1 - LiftMotion.Window(t, 0, ListMotion.OthersOut))
-                : lowest.Box.Opacity * lowest.ContentOpacity;
-        }
-    }
-
-    private void BuildLabel(ListRequest r)
-    {
-        _label.Children.Clear();
-        if (string.IsNullOrEmpty(r.OnBigLabel))
-        {
-            return;   // no card on the big pill (every card pinned)
-        }
-
-        var chip = new SmoothBorder { Fill = new SolidColorBrush(r.PillColor), Radius = 4, IsHitTestVisible = false };
-        var text = new TextBlock
-        {
-            Text = r.OnBigLabel,
-            FontSize = 11,
-            Foreground = new SolidColorBrush(r.LabelColor),
-            Margin = new Thickness(6, 1, 6, 2),
-            IsHitTestVisible = false,
-        };
-        _label.Children.Add(chip);
-        _label.Children.Add(text);
-        _label.Opacity = 0;
-        _label.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
-        _root.Children.Add(_label);
     }
 
     /// <summary>One pill of the list: the pill's surface, a <see cref="PillView"/> drawing the card on it, its border colour over all.</summary>

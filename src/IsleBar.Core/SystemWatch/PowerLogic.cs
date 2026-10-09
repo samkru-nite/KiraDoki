@@ -22,13 +22,16 @@ public enum PowerChange
 /// <summary>
 /// Rules for power notices. Windows events arrive several times over at the moment of plugging in (status, percent and time remaining change separately),
 /// and the state at app startup is not a "change", so we compare with the previous state and report <b>only when plugged/unplugged actually changed</b>.
-/// Low battery is not a change but a <b>state</b>: it stays up while at 20% or less without a charger, and goes away
-/// when plugged in or above 20% (shown even if already low at startup — since a human needs to act).
+/// Low battery (user 10-10): a 6-second notice on reaching 20%, another on reaching 10%; under 5% a pinned card that stays until
+/// plugged in (shown even if already that low at startup — a human needs to act).
 /// </summary>
 public sealed class PowerLogic
 {
-    /// <summary>Low-battery thresholds. Once at 20%, once more at 10% (the text changes so it catches the eye again).</summary>
-    public static readonly int[] LowThresholds = [20, 10];
+    /// <summary>Low-battery thresholds: 20% and 10% (a brief notice each), and <see cref="Critical"/>.</summary>
+    public static readonly int[] LowThresholds = [20, 10, Critical];
+
+    /// <summary>Under 5% (4% or less): the notice stays, pinned, until plugged in (user 10-10).</summary>
+    public const int Critical = 4;
 
     private PowerReading? _last;
 
@@ -51,8 +54,8 @@ public sealed class PowerLogic
     }
 
     /// <summary>
-    /// The low-battery threshold currently in effect (20 or 10). Null when charging or with plenty left — the warning is taken down.
-    /// When the value goes from 20 → 10, the watcher posts the warning anew.
+    /// The low-battery threshold currently in effect (20, 10 or <see cref="Critical"/>). Null when charging or with plenty left.
+    /// Each new value is a new notice.
     /// </summary>
     public static int? LowLevel(PowerReading reading)
     {

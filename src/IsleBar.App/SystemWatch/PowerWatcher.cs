@@ -5,7 +5,8 @@ namespace IsleBar.App.SystemWatch;
 
 /// <summary>
 /// Charger plugged/unplugged and low battery (<see cref="PowerManager"/>). Plugging in shows "Charging · 78%" for 2.5 s, unplugging "Battery · 76%" for 2 s,
-/// and at ≤20% without a charger "Battery 20% · about 45 min" until plugged in or sufficiently charged (red border).
+/// and without a charger "Battery 20% · about 45 min" for 6 s at 20% and again at 10%, and under 5% until plugged in (a pinned
+/// orange card, user 10-10).
 /// On desktops without a battery nothing is shown. Rules are in <see cref="PowerLogic"/>.
 /// PowerManager events come from the thread pool — no UI thread needed.
 /// Even if events are missed (right after waking from sleep, etc.), re-reads every 30 s to keep the low warning and remaining time right.
@@ -18,6 +19,7 @@ internal sealed class PowerWatcher : NoticeWatcher
     private static readonly TimeSpan PluggedShow = NoticeLengths.Glance;
     private static readonly TimeSpan UnpluggedShow = NoticeLengths.Glance;
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan LowShow = NoticeLengths.Read;
 
     private readonly object _gate = new();
     private readonly PowerLogic _logic = new();
@@ -91,16 +93,27 @@ internal sealed class PowerWatcher : NoticeWatcher
                 return;
             }
 
-            if (level != _lowLevel)
+            var fresh = level != _lowLevel;
+            if (fresh)
             {
                 _lowLevel = level;
-                _lowSince = now;   // dropping from 20 → 10 is a new notice (change the timestamp so the island notices again)
+                _lowSince = now;   // 20 → 10 → under 5 is a new notice each time (a new timestamp)
             }
 
-            // Percent and remaining time are rewritten every time, but the timestamp stays at when the threshold was crossed — so it doesn't look like a "new notice" every 30 s
-            Board.Hold(LowKey, SystemNotice.Make(
+            // no gauge — the percent is already in the text (user 10-01)
+            var notice = SystemNotice.Make(
                 NoticeText.BatteryLow(s, reading.Percent, remaining), NoticeGlyphs.Battery(reading.Percent), _lowSince,
-                urgent: true, open: SettingsUri));   // no gauge — the percent is already in the text (user 10-01)
+                urgent: true, open: SettingsUri);
+            if (level == PowerLogic.Critical)
+            {
+                // stays, pinned; percent and time left are rewritten each time, the timestamp stays at when it crossed 5%
+                notice.Stage = SystemNotice.CriticalStage;
+                Board.Hold(LowKey, notice);
+            }
+            else if (fresh)
+            {
+                Board.Flash(LowKey, notice, LowShow, now);   // once at 20%, once at 10%: not again every 30 s
+            }
         }
     }
 

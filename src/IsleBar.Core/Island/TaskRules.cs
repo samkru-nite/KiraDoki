@@ -15,6 +15,8 @@ namespace IsleBar.Core.Island;
 /// <item><term>Copy / unzip / zip</term><description>debut · finished → brief</description></item>
 /// <item><term>Mic / camera</term><description>debut · nothing</description></item>
 /// <item><term>Send to phone</term><description>debut · sent → brief; failed → stays</description></item>
+/// <item><term>Focus mode on</term><description>debut · off → nothing (10-10)</description></item>
+/// <item><term>Battery low</term><description>brief at 20% and at 10%; under 5% pinned orange (pending) · plugged in → nothing (10-10)</description></item>
 /// </list>
 /// </summary>
 public static class TaskRules

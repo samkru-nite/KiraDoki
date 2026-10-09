@@ -1,4 +1,5 @@
 using IsleBar.Core.Island;
+using IsleBar.Core.SystemWatch;
 using Xunit;
 
 namespace IsleBar.Core.Tests;
@@ -42,6 +43,19 @@ public sealed class CardStackTests
     [InlineData(ActivityKind.Transfer, "done", CardType.Temporary)]
     public void Each_kind_has_a_type(ActivityKind kind, string state, CardType expected)
         => Assert.Equal(expected, CardStack.TypeOf(Item(kind, "a", state: state), T0));
+
+    [Fact]
+    public void Lasting_notices_are_status_cards_and_a_critical_battery_is_pending()
+    {
+        var board = new NoticeBoard();
+        board.Hold("focus", SystemNotice.Make("Focus", "x", T0));
+        var critical = SystemNotice.Make("Battery 3%", "x", T0, urgent: true);
+        critical.Stage = SystemNotice.CriticalStage;
+        board.Hold("low", critical);
+        var items = board.Snapshot(T0);
+        Assert.Equal(CardType.Status, CardStack.TypeOf(items[0], T0));
+        Assert.Equal(CardType.Pending, CardStack.TypeOf(items[1], T0));
+    }
 
     [Fact]
     public void An_agents_own_failure_is_an_inform_card()

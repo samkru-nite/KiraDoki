@@ -229,9 +229,6 @@ public sealed class LanguageStrings
 
 
 
-    /// <summary>The ⋯ list: beside the card the big pill is showing.</summary>
-    public required string OnBigPill { get; init; }
-
     /// <summary>The close zone on an inform card (TODO 7.3): closes the card ("I've seen it").</summary>
     public required string CloseCard { get; init; }
 

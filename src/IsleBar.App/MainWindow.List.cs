@@ -136,13 +136,11 @@ public sealed partial class MainWindow
             ball,
             CornerRadiusNow(),
             RealSearchBoxFill(),
-            _theme.Hint,
             !ThemeColors.FromSystem().Light,
             screen.X,
             screen.X + screen.Width,
             taskbarTop,
-            Animations.On,
-            _shownCard is null ? string.Empty : _text.OnBigPill));   // every card pinned: none is on the big pill
+            Animations.On));
         _ = Dim(ListMotion.Dim, ListMotion.Length(Animations.On));
     }
 
