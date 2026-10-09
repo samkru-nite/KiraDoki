@@ -118,7 +118,7 @@ public sealed partial class MainWindow
         var look = TaskIcons.For(card, cover is not null, DateTimeOffset.UtcNow);
         _liftIconKey = LiftIconKey(card);
         _liftKept = card.Type == CardType.Temporary ? card.State : null;
-        _ = Dim(ListMotion.Dim, LiftMotion.OpenLength(_settings.Bounce), cells: false);   // the big pill dims under its card, as under the ⋯ list (user 10-10)
+        _ = Dim(ListMotion.Dim, LiftMotion.OpenLength(Animations.On), cells: false);   // the big pill dims under its card, as under the ⋯ list (user 10-10)
         _lift.Open(new LiftRequest(
             card.Key,
             pill,
@@ -129,8 +129,7 @@ public sealed partial class MainWindow
             screen.X,
             screen.X + screen.Width,
             TaskbarTop(),
-            LiftMotion.Parse(_settings.LiftAnimation),
-            _settings.Bounce,
+            Animations.On,
             SheetColors(),
             LiftIcon(card),   // as on the big pill: an agent's logo in its makers' colours, a timer's turning dial (user 10-08)
             new LiftRider(LiftIcon(card), HasBigLook(look) ? CellContent(card, look, DateTimeOffset.UtcNow) : null),
@@ -138,7 +137,7 @@ public sealed partial class MainWindow
             CoverOf(card)?.Large,
             _language,
             from,
-            glow) { Glass = _settings.Transparency });
+            glow));
     }
 
     /// <summary>The lifted card's colours: Windows 11's popup, the theme's text, the pills' green / orange / red, the system accent for bars.</summary>

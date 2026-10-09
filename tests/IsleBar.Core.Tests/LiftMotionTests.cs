@@ -80,14 +80,6 @@ public sealed class LiftMotionTests
     }
 
     [Fact]
-    public void The_setting_reads_back_and_defaults_to_morph()
-    {
-        Assert.Equal(LiftStyle.Morph, LiftMotion.Parse(null));
-        Assert.Equal(LiftStyle.Morph, LiftMotion.Parse("nonsense"));
-        Assert.Equal(LiftStyle.SlideUp, LiftMotion.Parse(LiftMotion.Key(LiftStyle.SlideUp)));
-    }
-
-    [Fact]
     public void Closing_is_opening_backwards_and_the_sheet_stands_up()
     {
         Assert.Equal(0, LiftMotion.Opening(0, bounce: false), 3);

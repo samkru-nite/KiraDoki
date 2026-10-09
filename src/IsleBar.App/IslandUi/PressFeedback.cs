@@ -25,7 +25,7 @@ internal static class PressFeedback
     private const double Response = 0.35;   // the spring's period (s)
     public const double PillDamping = 0.8;
 
-    /// <summary>Whether presses animate at all: they are part of the bounce setting (user 10-08: bounce off = no press motion).</summary>
+    /// <summary>Whether presses animate at all: they go with the bounce (user 10-08: bounce off = no press motion), which follows Windows' animation effects (<see cref="Animations"/>).</summary>
     public static Func<bool> Enabled { get; set; } = () => true;
 
     /// <summary>The button currently pressed (during animation Visual.Scale differs from the on-screen value, so we track it separately).</summary>

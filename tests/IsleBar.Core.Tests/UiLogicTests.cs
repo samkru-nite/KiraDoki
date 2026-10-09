@@ -87,27 +87,27 @@ public sealed class UiLogicTests
     // ---------- The two pills in the window ----------
 
     [Fact]
-    public void Big_pill_then_gap_then_small_pill_at_200_percent()
+    public void Small_pill_then_gap_then_big_pill_at_200_percent()
     {
-        var l = PillGeometry.Compute(2.0, big: true, smallLeft: false, PillGeometry.SmallWidth(0), round: true);
-        Assert.Equal(2 * (220 + 8 + 32), l.Width);
+        var l = PillGeometry.Compute(2.0, big: true, PillGeometry.SmallWidth(0));
+        Assert.Equal(2 * (32 + 8 + 220), l.Width);
         Assert.Equal(2 * (32 + 14), l.Height);
-        Assert.Equal(new PillRect(0, 14, 441, 79, 64), l.Big);
-        Assert.Equal(new PillRect(456, 14, 521, 79, 64), l.Small);
+        Assert.Equal(new PillRect(0, 14, 65, 79, 64), l.Small);
+        Assert.Equal(new PillRect(80, 14, 521, 79, 64), l.Big);
     }
 
     [Fact]
-    public void Small_pill_on_the_left_comes_first()
+    public void Small_pill_comes_first_at_100_percent()
     {
-        var l = PillGeometry.Compute(1.0, big: true, smallLeft: true, 32, round: false);
-        Assert.Equal(new PillRect(0, 7, 33, 40, 16), l.Small);
-        Assert.Equal(new PillRect(40, 7, 261, 40, 16), l.Big);
+        var l = PillGeometry.Compute(1.0, big: true, 32);
+        Assert.Equal(new PillRect(0, 7, 33, 40, 32), l.Small);
+        Assert.Equal(new PillRect(40, 7, 261, 40, 32), l.Big);
     }
 
     [Fact]
     public void Without_a_card_only_the_small_pill_shows()
     {
-        var l = PillGeometry.Compute(1.5, big: false, smallLeft: false, 32, round: true);
+        var l = PillGeometry.Compute(1.5, big: false, 32);
         Assert.Null(l.Big);
         Assert.Equal(48, l.Width);
         Assert.Equal(0, l.Small.Left);
@@ -119,8 +119,8 @@ public sealed class UiLogicTests
     {
         foreach (var scale in new[] { 1.0, 1.25, 1.5, 1.75, 2.25 })
         {
-            var l = PillGeometry.Compute(scale, big: true, smallLeft: false, 32, round: true);
-            Assert.Equal(l.Width + 1, l.Small.Right);   // the small pill ends at the window's edge
+            var l = PillGeometry.Compute(scale, big: true, 32);
+            Assert.Equal(l.Width + 1, l.Big!.Value.Right);   // the big pill ends at the window's edge
         }
     }
 

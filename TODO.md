@@ -16,7 +16,7 @@
 
 ## 二、接下来的顺序
 
-### ① 三次删除 [~]（第 1 次完成）
+### ① 三次删除 [x]（10-10 三次都已提交）
 每次：删 → 构建 → 测试 → 用户试 → 提交；同时删对应界面文案（10 种语言）和测试，更新 CLAUDE.md 项目地图。
 
 **第 1 次：文件搜索 + 输入面板** —— 10-10 代码删完（构建 0 警告 0 错误，测试 923 → 782，界面文案 171 → 145），**用户试过、已提交**。和清单不同的地方：
@@ -44,7 +44,13 @@
 - 设置项：Agent / Models / ModelsChecked
 - ⚠ **保留**：`ClaudeExecutable` 里抠火花 logo 要用的"找 claude.exe"部分（`ClaudeGlyph`）；`AgentProfiles` 命令行（`islebar hook`）也在用，按需保留
 
-**第 3 次：其他**
+**第 3 次：其他** —— 10-10 代码删完（构建 0 警告 0 错误，测试 634 → 628，界面文案 138 → 115），**用户试过、已提交**。做法：
+- `PhoneDrop` 整个删（它就是"交给命令"）。拖文件到胶囊的悬停/显示文件名代码留在 MW `HookFileDrop`，由 `TakesDrops`（现在 false）关着，做中转站时打开。
+- 回弹跟随 Windows 动画效果：新文件 `IslandUi/Animations.cs`（`UISettings.AnimationsEnabled`，每次用时读，改了立即生效）。
+- 互换只剩线条：弧线、翻转删了；"卡片没有对应小图标时掉出/掉进"那段不是翻转专用（线条也用），保留，常数改名 `SwapMotion.Drop`。「⋯」列表的胶囊自己的弧线（`ListMotion.Box`）是列表的设计，不是开关，保留。
+- 掀起只剩变形；玻璃只看 `Frost.Allowed`。
+- 小胶囊固定左边：`PillGeometry.Compute` 去掉左右参数，XAML 列直接写成左边的排法。
+- 旧设置键（pill_corners、swap_animation、swap_bounce、transparency、lift_animation、list_stagger、card_text_align、drop_command、style_glass、ball_side，和更早的 style_black / advanced / drop_transfer）保存时清掉。
 - `IslandUi/PhoneDrop` 的"运行一条命令"部分 + 设置 DropCommand（**保留"胶囊能接住拖进来的文件"**，给以后的中转站）
 - 死代码：`IslandUi/PeekWindow.cs`、`Interop/ActiveAcrylic.cs`
 - **设计开关全部删掉，定死为用户现在的值**：

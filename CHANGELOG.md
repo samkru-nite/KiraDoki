@@ -9,6 +9,10 @@
 - Timers run side by side, each on its own card, instead of asking to replace the running one.
 - Files can be dropped on the bar only when a drop command is set.
 - Everything is still used, if it runs, to follow an archive Explorer is compressing.
+- The design switches are gone: the swap is the straight morph, the card lifts by morphing, the ⋯ list staggers 20 ms, card
+  text is centred, corners are round, and the small pill sits left of the big one. The bounce follows Windows' animation
+  effects; the card's glass follows Windows' transparency effects and energy saver. The drop command and its phone transfer
+  went too (dropping files on the bar is off until something takes them).
 - Launching Claude Code / Codex from the bar is gone too: the agent, launch options, working folder and model-list settings,
   the model list check at startup, and `islebar args` / `islebar aliases`.
 

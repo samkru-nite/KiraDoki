@@ -2,16 +2,6 @@ using IsleBar.Core.Island;
 
 namespace IsleBar.Core.Ui;
 
-/// <summary>How a card lifts out of the big pill (setting, TODO 7.9 F, user 10-08: both are built, the user picks).</summary>
-public enum LiftStyle
-{
-    /// <summary>The frame grows out of the big pill itself into the card, over the taskbar.</summary>
-    Morph,
-
-    /// <summary>The card slides up out of the taskbar's top edge.</summary>
-    SlideUp,
-}
-
 /// <summary>A rectangle in screen pixels. Right/bottom are one past the edge.</summary>
 public readonly record struct ScreenRect(int Left, int Top, int Right, int Bottom)
 {
@@ -112,14 +102,10 @@ public static class LiftMotion
     /// <summary>Morph: the share of the way over which the frame turns from the pill's colour to the card's.</summary>
     public const double ColourTurn = 0.4;
 
-    public static LiftStyle Parse(string? value) => value == "slide" ? LiftStyle.SlideUp : LiftStyle.Morph;
-
-    public static string Key(LiftStyle style) => style == LiftStyle.SlideUp ? "slide" : "morph";
-
     /// <summary>
     /// The card centred on the big pill, pushed back in when it would come closer than <see cref="ScreenMargin"/> to a screen side,
-    /// its bottom <see cref="TaskbarGap"/> above the taskbar. The window spans the card and the big pill (the morph starts on the pill;
-    /// the slide comes out of the taskbar's top edge). With <paramref name="bar"/> (both pills) it spans them too, a cell wider each
+    /// its bottom <see cref="TaskbarGap"/> above the taskbar. The window spans the card and the big pill (the card grows out of the
+    /// pill — the morph; the slide out of the taskbar's edge went 10-10). With <paramref name="bar"/> (both pills) it spans them too, a cell wider each
     /// side: a swap while the card is up sends the card down into a task cell (user 10-08), and the window can't grow mid-flight
     /// without a jump.
     /// </summary>

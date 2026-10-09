@@ -38,14 +38,6 @@ public sealed class ListMotionTests
     }
 
     [Fact]
-    public void Stagger_setting_is_20_or_40()
-    {
-        Assert.Equal(20, ListMotion.Stagger("20"));
-        Assert.Equal(40, ListMotion.Stagger("40"));
-        Assert.Equal(20, ListMotion.Stagger("nonsense"));
-    }
-
-    [Fact]
     public void Way_out_starts_at_the_dots_circle_ends_in_the_slot_and_bows_up()
     {
         var slot = ListMotion.Slot(2, Pill, 592);

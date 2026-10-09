@@ -16,20 +16,6 @@
              Smooth corners (SmoothBorder, user 10-08), as everything rounded below -->
         <ui:SmoothBorder x:Name="PillSurface" x:FieldModifier="internal" EdgeWidth="1" Radius="16" IsHitTestVisible="False" />
 
-        <!-- Preference C1 (setting "glow border"): faint border + a 1px shine line brightest at top center — adds depth (PILLAR technique, 09-30 design) -->
-        <Grid x:Name="GlassEdge" x:FieldModifier="internal" IsHitTestVisible="False" Visibility="Collapsed">
-            <ui:SmoothBorder x:Name="GlassBorder" x:FieldModifier="internal" EdgeWidth="1" Radius="16" />
-            <Rectangle x:Name="GlassShine" x:FieldModifier="internal" Height="1" Margin="70,0.5,70,0" VerticalAlignment="Top">
-                <Rectangle.Fill>
-                    <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
-                        <GradientStop Color="#00FFFFFF" Offset="0" />
-                        <GradientStop Color="#8CFFFFFF" Offset="0.5" />
-                        <GradientStop Color="#00FFFFFF" Offset="1" />
-                    </LinearGradientBrush>
-                </Rectangle.Fill>
-            </Rectangle>
-        </Grid>
-
         <!-- Transparent background: a snapshot of the row (swap animation) then covers the whole 220×32, not just the drawn bits -->
         <Grid x:Name="CardRow" x:FieldModifier="internal" Background="Transparent">
             <Grid.ColumnDefinitions>

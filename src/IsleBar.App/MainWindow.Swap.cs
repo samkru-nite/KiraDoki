@@ -84,9 +84,7 @@ public sealed partial class MainWindow
         var clock = System.Diagnostics.Stopwatch.StartNew();
         var phases = new System.Text.StringBuilder();
         void Phase(string name) => phases.Append($" {name} {clock.ElapsedMilliseconds}");
-        var style = SwapMotion.Parse(_settings.SwapAnimation);
-        var bounce = _settings.Bounce;
-        var left = _settings.BallSide == "left";
+        var bounce = Animations.On;
         try
         {
             var oldCells = _renderedCells.ToList();
@@ -96,7 +94,7 @@ public sealed partial class MainWindow
             var winY = _placement.Y;
 
             // where the new layout will sit, worked out before drawing it — so the window can grow first
-            var next = PillGeometry.Compute(DpiSetup.Scale, WantedBig is not null, left, PillGeometry.SmallWidth(_cellCards.Count + (_dotsOn ? 1 : 0)), _settings.PillCorners != "small");
+            var next = PillGeometry.Compute(DpiSetup.Scale, WantedBig is not null, PillGeometry.SmallWidth(_cellCards.Count + (_dotsOn ? 1 : 0)));
             var spot = _tracker.PlaceNow(next.Width);
             if (!spot.Visible)
             {
@@ -124,7 +122,7 @@ public sealed partial class MainWindow
             Phase("old-card");
             var smallShot = await Capture(SmallPill);
             Phase("old-small");
-            var before = Lay(0, oldBig, oldShot, oldIconX, oldCells, oldDots, left).Shift(oldShift);
+            var before = Lay(0, oldBig, oldShot, oldIconX, oldCells, oldDots).Shift(oldShift);
 
             // stand-ins for the old look over a taskbar-coloured sheet, while the new state is drawn underneath (no flash of it)
             Put(new Rectangle { Width = spanWidth, Height = _layout.Height / DpiSetup.Scale, Fill = Root.Background }, 0, 0);
@@ -149,7 +147,7 @@ public sealed partial class MainWindow
             var newBig = _bigCard;
             var newShot = newBig is null ? null : newBig.Key == oldBig?.Key ? oldShot : await Capture(CardRow);
             Phase("new-card");
-            var after = Lay(0, newBig, newShot, newBig is null ? 0 : IconX(), _renderedCells.ToList(), DotsDrawn, left).Shift(newShift);
+            var after = Lay(0, newBig, newShot, newBig is null ? 0 : IconX(), _renderedCells.ToList(), DotsDrawn).Shift(newShift);
             if ((oldBig is not null && oldShot is null) || (newBig is not null && newShot is null))
             {
                 return;   // no snapshot (screen locked): just show the result
@@ -159,7 +157,7 @@ public sealed partial class MainWindow
             PillRow.Opacity = 0;
             _oldCardBox = before.BigBox;
             _oldIconCentre = null;
-            var frames = BuildFlight(before, after, style, hoverKey);
+            var frames = BuildFlight(before, after, hoverKey);
             if (_lift?.OpenKey is { } lifted && lifted == oldBig?.Key && newBig?.Key != lifted)
             {
                 // the lifted card goes back with its card, not to where the big pill was (user 10-08)
@@ -230,23 +228,23 @@ public sealed partial class MainWindow
     }
 
     /// <summary>
-    /// Where everything sits for a scene, by the same rules as the XAML (TODO 7.9 D): small pill right of the big one — big 0, gap 8,
-    /// then 4 + cells (⋯ last) + line + circle; left — circle, line, cells (⋯ first) + 4, gap 8, big.
+    /// Where everything sits for a scene, by the same rules as the XAML (TODO 7.9 D): circle, line, cells (⋯ first) + 4, gap 8, big.
     /// </summary>
-    private Scene Lay(double winX, Card? big, ImageSource? shot, double iconX, IReadOnlyList<Card> cells, bool dots, bool smallLeft)
+    private Scene Lay(double winX, Card? big, ImageSource? shot, double iconX, IReadOnlyList<Card> cells, bool dots)
     {
         var keys = cells.Select(c => (c.Key, (Card?)c)).ToList();
         if (dots)
         {
-            keys.Insert(smallLeft ? 0 : keys.Count, (DotsTag, null));
+            keys.Insert(0, (DotsTag, null));
         }
 
         var smallWidth = PillGeometry.SmallWidth(keys.Count);
-        var smallX = big is not null && !smallLeft ? PillGeometry.BigWidth + PillGeometry.Gap : 0;
-        var bigX = smallLeft ? smallWidth + PillGeometry.Gap : 0;
-        var firstCell = smallLeft ? smallX + PillGeometry.BallBox + PillGeometry.Rule : smallX + PillGeometry.CellMargin;
-        var ballX = smallLeft ? smallX + (PillGeometry.BallBox / 2) : smallX + smallWidth - (PillGeometry.BallBox / 2);
-        double? ruleX = keys.Count == 0 ? null : smallLeft ? smallX + PillGeometry.BallBox : firstCell + (keys.Count * PillGeometry.Cell);
+        // the small pill on the left (fixed 10-10): circle │ ⋯ + cells, then the big pill
+        var smallX = 0.0;
+        var bigX = smallWidth + PillGeometry.Gap;
+        var firstCell = smallX + PillGeometry.BallBox + PillGeometry.Rule;
+        var ballX = smallX + (PillGeometry.BallBox / 2);
+        double? ruleX = keys.Count == 0 ? null : smallX + PillGeometry.BallBox;
         var row = PillGeometry.ArcRoom;
         return new Scene(
             winX,
@@ -263,7 +261,7 @@ public sealed partial class MainWindow
     }
 
     /// <summary>The stand-ins and, for each, what it does on a frame (time share t, moved share p — past 1 while bouncing).</summary>
-    private List<Action<double, double>> BuildFlight(Scene a, Scene b, SwapStyle style, string? hoverKey)
+    private List<Action<double, double>> BuildFlight(Scene a, Scene b, string? hoverKey)
     {
         var frames = new List<Action<double, double>>();
         var row = b.RowTop;
@@ -290,7 +288,6 @@ public sealed partial class MainWindow
         });
 
         // cells that stay slide; the ones that come or go grow / shrink in place — unless they are a card going up or down
-        var morph = style != SwapStyle.Flip;
         var cellsA = a.Cells.ToDictionary(c => c.Key);
         var cellsB = b.Cells.ToDictionary(c => c.Key);
         var down = a.Big is { } oldCard && b.Big?.Key != oldCard.Key && cellsB.TryGetValue(oldCard.Key, out var landing) ? landing : default;
@@ -299,7 +296,7 @@ public sealed partial class MainWindow
         {
             var inA = cellsA.TryGetValue(key, out var ca);
             var inB = cellsB.TryGetValue(key, out var cb);
-            if (morph && ((!inB && key == up.Key) || (!inA && key == down.Key)))
+            if ((!inB && key == up.Key) || (!inA && key == down.Key))
             {
                 continue;   // flies as a card below
             }
@@ -323,16 +320,15 @@ public sealed partial class MainWindow
         }
 
         // the cards: down into a cell (below), up from a cell (on top), sliding along, dropping out or in
-        var lift = style == SwapStyle.MorphArc ? SwapMotion.Arc : 0;
         var turn = SwapMotion.BackgroundTurn;
         if (a.Big is { } ac && a.BigBox is { } aBox)
         {
             var mover = new Mover(this, a.Shot!, GlowOf(ac));
             if (b.Big?.Key == ac.Key && b.BigBox is { } same)
             {
-                frames.Add((t, p) => mover.Place(SwapMotion.Between(aBox, same, p, 0), SwapMotion.Lerp(aBox.X, same.X, p), row, a.IconX, 1, 1, 0, 1));
+                frames.Add((t, p) => mover.Place(SwapMotion.Between(aBox, same, p), SwapMotion.Lerp(aBox.X, same.X, p), row, a.IconX, 1, 1, 0, 1));
             }
-            else if (morph && down.Key is not null)
+            else if (down.Key is not null)
             {
                 var circle = SwapMotion.CircleAt(down.CentreX, row);
                 var lit = down.Key == hoverKey;
@@ -359,11 +355,11 @@ public sealed partial class MainWindow
 
                     var back = 1 - Math.Clamp((p - (1 - turn)) / turn, 0, 1);
                     var x = SwapMotion.ContentX(circle, aBox, a.IconX, 1 - p);
-                    var y = row + (lift * Math.Sin(Math.PI * p));
-                    var box = SwapMotion.Between(aBox, circle, p, lift);
+                    var y = row;
+                    var box = SwapMotion.Between(aBox, circle, p);
                     _oldCardBox = box;   // a lifted card follows it down (MainWindow.Lift)
                     mover.Place(box, x, y, a.IconX, 1, 1 - p, lit ? 1 - back : 0,
-                        style == SwapStyle.MorphLine ? SwapMotion.Lerp(1, SwapMotion.FadeTo, Math.Clamp(p, 0, 1)) : 1,
+                        SwapMotion.Lerp(1, SwapMotion.FadeTo, Math.Clamp(p, 0, 1)),
                         content: 1 - Math.Clamp(p / 0.35, 0, 1));
                     Canvas.SetLeft(icon, x + a.IconX - (PillGeometry.Cell / 2));
                     Canvas.SetTop(icon, y);
@@ -381,7 +377,7 @@ public sealed partial class MainWindow
                 frames.Add((t, p) =>
                 {
                     var gone = SwapMotion.EaseIn(t * 2);   // drops out in the first half
-                    var y = row + (SwapMotion.FlipDrop * gone);
+                    var y = row + (SwapMotion.Drop * gone);
                     _oldCardBox = aBox with { Y = y };
                     mover.Place(aBox with { Y = y }, aBox.X, y, a.IconX, 1, 1, 0, 1 - gone);
                 });
@@ -391,7 +387,7 @@ public sealed partial class MainWindow
         if (b.Big is { } bc && b.BigBox is { } bBox && bc.Key != a.Big?.Key)
         {
             var mover = new Mover(this, b.Shot!, GlowOf(bc));
-            if (morph && up.Key is not null)
+            if (up.Key is not null)
             {
                 var circle = SwapMotion.CircleAt(up.CentreX, row);
                 var lit = up.Key == hoverKey;
@@ -401,8 +397,8 @@ public sealed partial class MainWindow
                 {
                     var bg = Math.Clamp(p / turn, 0, 1);
                     var x = SwapMotion.ContentX(circle, bBox, b.IconX, p);
-                    var y = row - (lift * Math.Sin(Math.PI * p));
-                    mover.Place(SwapMotion.Between(circle, bBox, p, -lift), x, y,
+                    var y = row;
+                    mover.Place(SwapMotion.Between(circle, bBox, p), x, y,
                         b.IconX, 1, p, lit ? 1 - bg : 0, 1, content: Math.Clamp((p - 0.45) / 0.4, 0, 1));   // shows once the box is nearly open
                     Canvas.SetLeft(icon, x + b.IconX - (PillGeometry.Cell / 2));
                     Canvas.SetTop(icon, y);
@@ -411,11 +407,11 @@ public sealed partial class MainWindow
             }
             else
             {
-                var bounce = _settings.Bounce;
+                var bounce = Animations.On;
                 frames.Add((t, p) =>
                 {
                     var q = SwapMotion.Move(Math.Clamp((t - 0.3) / 0.7, 0, 1), bounce);   // drops in once the old one is leaving
-                    var y = row - (SwapMotion.FlipDrop * (1 - q));
+                    var y = row - (SwapMotion.Drop * (1 - q));
                     mover.Place(bBox with { Y = y }, bBox.X, y, b.IconX, 1, 1, 0, q);
                 });
             }
@@ -632,7 +628,7 @@ public sealed partial class MainWindow
     /// <summary>The centre x of the card's icon inside the big pill (an inform card's sits right of its close zone).</summary>
     private double IconX() => LeadSlot.TransformToVisual(PillBody).TransformPoint(new Windows.Foundation.Point(8, 8)).X;
 
-    private double CornerRadiusNow() => _settings.PillCorners != "small" ? PillGeometry.Height / 2 : PillGeometry.SmallCorner;
+    private static double CornerRadiusNow() => PillGeometry.Height / 2;
 
     /// <summary>A pinned card's border colour (pending orange, inform green, temporary warning red), as on the big pill; null = none.</summary>
     private Windows.UI.Color? GlowOf(Card? card) => card switch

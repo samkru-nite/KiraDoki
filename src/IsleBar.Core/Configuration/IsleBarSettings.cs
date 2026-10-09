@@ -28,36 +28,6 @@ public sealed class IsleBarSettings
     /// <summary>For "manual": distance from the taskbar's left end, in dip.</summary>
     public int ManualOffset { get; set; } = 12;
 
-    /// <summary>Corners of the big and small pills: "round" (half the height, like Windows' search box — default) · "small" (8 dip). TODO 7.9 D, 10-06.</summary>
-    public string PillCorners { get; set; } = "round";
-
-    /// <summary>Side of the big pill the small pill sits on: "right" (default) · "left". TODO 7.9 D, 10-06.</summary>
-    public string BallSide { get; set; } = "right";
-
-    /// <summary>How a task icon and the big pill swap places: "line" (default) · "arc" · "flip" (<see cref="Ui.SwapMotion"/>).</summary>
-    public string SwapAnimation { get; set; } = "line";
-
-    /// <summary>Card and icon movements end with a small bounce (user 10-07): the swap and, since 10-08, the lifted card. Saved as "swap_bounce".</summary>
-    public bool Bounce { get; set; } = true;
-
-    /// <summary>
-    /// The lifted card is glass — Windows' live acrylic (TODO 7.9 丙④, user 10-10, default on). Off: the same card, solid (Windows'
-    /// own colour with transparency off), nothing read or blurred behind it. Energy saver or Windows' transparency effects off
-    /// also make it solid, without touching this. Saved as "transparency".
-    /// </summary>
-    public bool Transparency { get; set; } = true;
-
-    /// <summary>How a card lifts out of the big pill: "morph" (default) · "slide" (<see cref="Ui.LiftMotion"/>, TODO 7.9 F, user 10-08).</summary>
-    public string LiftAnimation { get; set; } = "morph";
-
-    /// <summary>The ⋯ list: how far apart its pills set off, ms: "20" (default) · "40" (<see cref="Ui.ListMotion"/>; user 10-09 tries
-    /// both, the other goes).</summary>
-    public string ListStagger { get; set; } = "20";
-
-    /// <summary>Card text on the big pill (user 10-07): "left" (default) · "group" = icon and text centred together · "text" = only the
-    /// text centred, the icon stays. Centred only when it fits; text that has to scroll is left-aligned.</summary>
-    public string CardTextAlign { get; set; } = "left";
-
     /// <summary>Music bars follow the actual sound (speaker peak meter) instead of a canned loop. Off by default.</summary>
     public bool AudioBars { get; set; }
 
@@ -113,15 +83,6 @@ public sealed class IsleBarSettings
     /// <summary>ICS URL for calendar notices. Empty string turns calendar notices off.</summary>
     public string CalendarIcs { get; set; } = "";
 
-    /// <summary>
-    /// Command that receives files dropped onto the pill (<c>"executable" args…</c>; file paths are appended). If empty,
-    /// dropped files are attached to the prompt instead.
-    /// </summary>
-    public string DropCommand { get; set; } = "";
-
-    /// <summary>Style (design C1, 09-30): 1-pixel highlight line along the top of the pill + faint border. Most noticeable on a dark taskbar.</summary>
-    public bool StyleGlass { get; set; }
-
 
     public IsleBarSettings Clone() => new()
     {
@@ -133,14 +94,6 @@ public sealed class IsleBarSettings
         QuickTimers = [.. QuickTimers],
         Position = Position,
         ManualOffset = ManualOffset,
-        PillCorners = PillCorners,
-        BallSide = BallSide,
-        SwapAnimation = SwapAnimation,
-        Bounce = Bounce,
-        Transparency = Transparency,
-        LiftAnimation = LiftAnimation,
-        ListStagger = ListStagger,
-        CardTextAlign = CardTextAlign,
         AudioBars = AudioBars,
         NotifyPower = NotifyPower,
         NotifyBluetooth = NotifyBluetooth,
@@ -154,7 +107,5 @@ public sealed class IsleBarSettings
         BrowserMedia = BrowserMedia,
         MuteChimeFullscreen = MuteChimeFullscreen,
         CalendarIcs = CalendarIcs,
-        DropCommand = DropCommand,
-        StyleGlass = StyleGlass,
     };
 }

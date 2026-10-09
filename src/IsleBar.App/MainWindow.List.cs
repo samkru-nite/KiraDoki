@@ -130,10 +130,9 @@ public sealed partial class MainWindow
             screen.X,
             screen.X + screen.Width,
             taskbarTop,
-            _settings.Bounce,
-            ListMotion.Stagger(_settings.ListStagger),
+            Animations.On,
             _text.OnBigPill));
-        _ = Dim(ListMotion.Dim, ListMotion.Length(_settings.Bounce));
+        _ = Dim(ListMotion.Dim, ListMotion.Length(Animations.On));
     }
 
     private void CloseList() => _list?.PutAway();   // its Closing brightens the pills again

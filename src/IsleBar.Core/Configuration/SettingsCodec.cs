@@ -12,10 +12,12 @@ public static class SettingsCodec
 {
     /// <summary>Keys of removed features, dropped from the file on save: the real search box switch (10-05); file search,
     /// the Tab order and question history; launching agents — which agent, its options, working folder, model lists, the very
-    /// old "flags" (10-10).</summary>
+    /// old "flags"; the design switches, now fixed or following Windows, and the drop command (10-10); older ones.</summary>
     private static readonly string[] RemovedKeys =
         ["native_searchbox", "files", "file_results", "file_sort", "file_exclude", "mode_order", "modes_off", "history",
-         "agent", "values", "codex_values", "folder", "recent_folders", "models", "codex_models", "models_checked", "flags"];
+         "agent", "values", "codex_values", "folder", "recent_folders", "models", "codex_models", "models_checked", "flags",
+         "pill_corners", "swap_animation", "swap_bounce", "transparency", "lift_animation", "list_stagger", "card_text_align",
+         "drop_command", "style_glass", "ball_side", "style_black", "advanced", "drop_transfer"];
 
     // JSON key names (same as the Python version's claude_bar.json)
     private const string KeyLang = "lang";
@@ -26,14 +28,6 @@ public static class SettingsCodec
     private const string KeyQuickTimers = "quick_timers";
     private const string KeyPosition = "position";
     private const string KeyManualOffset = "manual_offset";
-    private const string KeyPillCorners = "pill_corners";
-    private const string KeyBallSide = "ball_side";
-    private const string KeySwapAnimation = "swap_animation";
-    private const string KeySwapBounce = "swap_bounce";
-    private const string KeyTransparency = "transparency";
-    private const string KeyLiftAnimation = "lift_animation";
-    private const string KeyListStagger = "list_stagger";
-    private const string KeyCardTextAlign = "card_text_align";
     private const string KeyAudioBars = "audio_bars";
     private const string KeyNotifyPower = "notify_power";
     private const string KeyNotifyBluetooth = "notify_bluetooth";
@@ -47,8 +41,6 @@ public static class SettingsCodec
     private const string KeyBrowserMedia = "browser_media";
     private const string KeyMuteChimeFullscreen = "mute_chime_fullscreen";
     private const string KeyCalendarIcs = "calendar_ics";
-    private const string KeyDropCommand = "drop_command";
-    private const string KeyStyleGlass = "style_glass";
 
     public static IsleBarSettings FromJson(JsonObject? raw)
     {
@@ -84,22 +76,7 @@ public static class SettingsCodec
             s.CalendarIcs = ics.Trim();
         }
 
-        if (AsString(raw[KeyDropCommand]) is { } drop)
-        {
-            s.DropCommand = drop.Trim();
-        }
-
-        s.StyleGlass = AsBool(raw[KeyStyleGlass]) ?? s.StyleGlass;
-
         s.Position = Ui.BarSlot.Key(Ui.BarSlot.Parse(AsString(raw[KeyPosition]) ?? s.Position));
-        s.PillCorners = AsString(raw[KeyPillCorners]) == "small" ? "small" : "round";
-        s.BallSide = AsString(raw[KeyBallSide]) == "left" ? "left" : "right";
-        s.SwapAnimation = Ui.SwapMotion.Key(Ui.SwapMotion.Parse(AsString(raw[KeySwapAnimation])));
-        s.Bounce = AsBool(raw[KeySwapBounce]) ?? s.Bounce;
-        s.Transparency = AsBool(raw[KeyTransparency]) ?? s.Transparency;
-        s.LiftAnimation = Ui.LiftMotion.Key(Ui.LiftMotion.Parse(AsString(raw[KeyLiftAnimation])));
-        s.ListStagger = AsString(raw[KeyListStagger]) == "40" ? "40" : "20";
-        s.CardTextAlign = AsString(raw[KeyCardTextAlign]) is "group" or "text" ? AsString(raw[KeyCardTextAlign])! : "left";
         if (AsInt(raw[KeyManualOffset]) is { } manualOffset)
         {
             s.ManualOffset = Math.Clamp(manualOffset, 0, 10000);
@@ -139,14 +116,6 @@ public static class SettingsCodec
         }
         raw[KeyPosition] = s.Position;
         raw[KeyManualOffset] = s.ManualOffset;
-        raw[KeyPillCorners] = s.PillCorners;
-        raw[KeyBallSide] = s.BallSide;
-        raw[KeySwapAnimation] = s.SwapAnimation;
-        raw[KeySwapBounce] = s.Bounce;
-        raw[KeyTransparency] = s.Transparency;
-        raw[KeyLiftAnimation] = s.LiftAnimation;
-        raw[KeyListStagger] = s.ListStagger;
-        raw[KeyCardTextAlign] = s.CardTextAlign;
         raw[KeyAudioBars] = s.AudioBars;
         raw[KeyPomoFocus] = s.PomodoroFocus;
         raw[KeyPomoBreak] = s.PomodoroBreak;
@@ -164,11 +133,6 @@ public static class SettingsCodec
         raw[KeyBrowserMedia] = s.BrowserMedia;
         raw[KeyMuteChimeFullscreen] = s.MuteChimeFullscreen;
         raw[KeyCalendarIcs] = s.CalendarIcs;
-        raw[KeyDropCommand] = s.DropCommand;
-        raw[KeyStyleGlass] = s.StyleGlass;
-        raw.Remove("style_black");     // removed setting (09-30)
-        raw.Remove("advanced");        // removed setting (10-01)
-        raw.Remove("drop_transfer");   // removed setting (10-01, the attach/transfer toggle — behaviour now decided by whether drop_command is set)
     }
 
     // ---- Return a value only when the type matches exactly. "true" (a string) or 1 is not a bool. ----

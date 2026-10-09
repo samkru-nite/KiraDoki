@@ -92,14 +92,13 @@ public sealed class ConfigStoreTests
         using var dir = new TempDir();
         var path = dir.File("islebar.json");
         File.WriteAllText(path, """
-        { "lang": "sv", "position": "nowhere", "ball_side": "up" }
+        { "lang": "sv", "position": "nowhere" }
         """);
 
         var settings = new ConfigStore(path).Load();
 
         Assert.Equal("auto", settings.Lang);
         Assert.Equal("left", settings.Position);
-        Assert.Equal("right", settings.BallSide);
     }
 
     [Fact]
@@ -146,7 +145,7 @@ public sealed class ConfigStoreTests
             NotifyPower = false,
             DownloadFolders = [@"D:\다운로드", @"E:\받은 파일"],
             QuickTimers = [10, 45],
-            BallSide = "left",
+            Position = "center",
         };
         Assert.True(store.Save(written));
 
@@ -155,7 +154,7 @@ public sealed class ConfigStoreTests
         Assert.False(read.NotifyPower);
         Assert.Equal([@"D:\다운로드", @"E:\받은 파일"], read.DownloadFolders);
         Assert.Equal([10, 45], read.QuickTimers);
-        Assert.Equal("left", read.BallSide);
+        Assert.Equal("center", read.Position);
     }
 
     [Fact]

@@ -18,9 +18,6 @@ namespace IsleBar.App;
 public sealed partial class MainWindow : IPillHost
 {
     private SmoothBorder PillSurface => Big.PillSurface;
-    private Microsoft.UI.Xaml.Controls.Grid GlassEdge => Big.GlassEdge;
-    private SmoothBorder GlassBorder => Big.GlassBorder;
-    private Microsoft.UI.Xaml.Shapes.Rectangle GlassShine => Big.GlassShine;
     private Microsoft.UI.Xaml.Controls.Grid CardRow => Big.CardRow;
     private Microsoft.UI.Xaml.Controls.Grid CloseZone => Big.CloseZone;
     private SmoothBorder CloseChip => Big.CloseChip;

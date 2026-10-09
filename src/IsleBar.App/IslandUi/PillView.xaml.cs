@@ -165,7 +165,6 @@ public sealed partial class PillView : UserControl
         ShowLeadDial(null, Host.Theme.Icon);
         StopMarquee();
         IslandContent.Visibility = Visibility.Collapsed;
-        ShiftIcon(0);   // the icon back at its place
     }
 
     /// <summary>
@@ -176,7 +175,6 @@ public sealed partial class PillView : UserControl
     {
         PillSurface.Fill = BrushOf(fill);
         PillSurface.Opacity = 0;
-        GlassEdge.Visibility = Visibility.Collapsed;
         DimVeil.Visibility = Visibility.Collapsed;
         GlowRing.Visibility = Visibility.Collapsed;
         CloseChip.Fill = BrushOf(chip);
@@ -347,43 +345,28 @@ public sealed partial class PillView : UserControl
     /// <summary>
     /// Up and down: the 20 line box centred in the 32 pill (6 above), moved by <see cref="InkOffset"/> so the glyphs themselves sit
     /// in the middle — centring the line box left the text looking low (user 10-06, TODO 7.9 D).
-    /// <para>Left and right (setting, user 10-07): "left" = icon at 8, text from 32. "group" = icon + 8 + text centred together on the
-    /// card (the icon moves with the text). "text" = the icon stays, the text's middle on the card's middle. The card's middle is the
-    /// pill's (110), or the middle of what is right of an inform card's close zone. Centring inside the text area alone (first try)
+    /// <para>Left and right (user 10-07, fixed 10-10 — the "left" and "icon and text together" choices went): the icon stays at 8,
+    /// the text's middle on the card's middle. The card's middle is the pill's (110), or the middle of what is left of an inform
+    /// card's close zone. Centring inside the text area alone (first try)
     /// put the text 10 right of the pill's middle and left the icon stranded — it didn't look centred. Text too long to fit stays
     /// left-aligned and scrolls.</para>
     /// </summary>
     internal void PlaceText()
     {
         Canvas.SetTop(MarqueePanel, ((BaseHeight - IslandText.LineHeight) / 2) + InkOffset);
-        double text = 0, icon = 0;
-        var mode = Host.Settings.CardTextAlign;
-        if (mode is "group" or "text" && _marqueeText is null)
+        double text = 0;
+        if (_marqueeText is null)
         {
             MarqueePanel.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
             var width = MarqueePanel.DesiredSize.Width;
             var area = AvailableTextWidth();
             var areaLeft = TextStart;
             var middle = (BaseWidth - (CloseZone.Visibility == Visibility.Visible ? CloseZone.Width + CloseZone.Margin.Right : 0)) / 2;   // the card's middle, short of the close button
-            var start = mode == "group"
-                ? middle - ((TextStart - IconStart + width) / 2) + (TextStart - IconStart)   // where the text starts when the group is centred
-                : middle - (width / 2);
+            var start = middle - (width / 2);
             text = Math.Clamp(Math.Round((start - areaLeft) * 2) / 2, 0, Math.Max(0, area - width));   // half DIPs; never past the text area
-            icon = mode == "group" ? text : 0;
         }
 
         Canvas.SetLeft(MarqueePanel, text);
-        ShiftIcon(icon);
-    }
-
-    internal void ShiftIcon(double x)
-    {
-        if (LeadSlot.RenderTransform is not TranslateTransform move)
-        {
-            LeadSlot.RenderTransform = move = new TranslateTransform();
-        }
-
-        move.X = x;
     }
 
     /// <summary>How far to move the text so its glyphs are centred (DIP, measured by MainWindow.MeasureInkAsync; the same for every pill).</summary>

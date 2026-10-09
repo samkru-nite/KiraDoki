@@ -176,9 +176,8 @@ internal sealed class SettingsWindow : Window
                 }
             });
 
-        // Appearance (preference, 09-30 design C1) — off by default
+        // Appearance
         Section(_text.StyleSection);
-        ToggleRow(_text.StyleGlass, () => _settings.StyleGlass, v => _settings.StyleGlass = v);
         ToggleRow(_text.AudioBars, () => _settings.AudioBars, v => _settings.AudioBars = v);
         ToggleRow(_text.BrowserMedia, () => _settings.BrowserMedia, v => _settings.BrowserMedia = v);   // 10-04
         // where on the taskbar (10-05): left end · centre · left of the tray · manual
@@ -199,24 +198,10 @@ internal sealed class SettingsWindow : Window
                     _settings.ManualOffset = Math.Clamp(n, 0, 10000);
                 }
             });
-        ChoiceRow(_text.BallSideLabel, [("right", _text.BallSideRight), ("left", _text.BallSideLeft)],
-            () => _settings.BallSide, v => _settings.BallSide = v);
-        ChoiceRow(_text.CornersLabel, [("round", _text.CornersRound), ("small", _text.CornersSmall)],
-            () => _settings.PillCorners, v => _settings.PillCorners = v);
-        ChoiceRow(_text.SwapAnimLabel, [("line", _text.SwapAnimLine), ("arc", _text.SwapAnimArc), ("flip", _text.SwapAnimFlip)],
-            () => _settings.SwapAnimation, v => _settings.SwapAnimation = v);
-        ChoiceRow(_text.LiftAnimLabel, [("morph", _text.LiftAnimMorph), ("slide", _text.LiftAnimSlide)],
-            () => _settings.LiftAnimation, v => _settings.LiftAnimation = v);
-        ChoiceRow(_text.ListStaggerLabel, [("20", "20 ms"), ("40", "40 ms")],   // try both, keep one (user 10-09)
-            () => _settings.ListStagger, v => _settings.ListStagger = v);
-        ToggleRow(_text.SwapBounce, () => _settings.Bounce, v => _settings.Bounce = v);   // one switch for the swap and the lift (user 10-08)
-        ToggleRow(_text.Transparency, () => _settings.Transparency, v => _settings.Transparency = v);   // the lifted card's glass (丙④, user 10-10)
-        ChoiceRow(_text.CardTextLabel, [("left", _text.CardTextLeft), ("group", _text.CardTextCenterGroup), ("text", _text.CardTextCenterText)],
-            () => _settings.CardTextAlign, v => _settings.CardTextAlign = v);
-        // Advanced: power options, grouped under their own heading but always visible (labelled, not hidden). The drop command runs
-        // a program on dropped files (we use it for phone transfer); the toggle picks whether a drop attaches to the prompt or runs it (10-01).
+        // The design switches went 10-10: fixed, or following Windows (animation effects → the bounce; transparency effects and
+        // energy saver → the card's glass)
+        // Advanced: grouped under their own heading but always visible (labelled, not hidden)
         Section(_text.AdvancedSection);
-        TextRow(_text.DropCommand, _text.DropCommandHint, () => _settings.DropCommand, v => _settings.DropCommand = v);
         ToggleRow(_text.MuteChimeFullscreen, () => _settings.MuteChimeFullscreen, v => _settings.MuteChimeFullscreen = v);   // 10-03
 
         // connect / disconnect Claude Code and Codex without setup (the Store build has none) — 10-01

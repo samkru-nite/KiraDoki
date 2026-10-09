@@ -161,11 +161,7 @@ public sealed class LanguageStrings
     /// <summary>Hint for the ICS input (shown when empty).</summary>
     public required string CalendarIcsHint { get; init; }
 
-    /// <summary>Command that receives dropped files (settings window).</summary>
-    public required string DropCommand { get; init; }
 
-    /// <summary>Drop command description.</summary>
-    public required string DropCommandHint { get; init; }
 
 
 
@@ -178,8 +174,6 @@ public sealed class LanguageStrings
     /// <summary>"Advanced" section heading in the settings window.</summary>
     public string AdvancedSection { get; init; } = "Advanced";
 
-    /// <summary>Style: highlight line + faint border.</summary>
-    public required string StyleGlass { get; init; }
 
     /// <summary>Pomodoro (right-click menu, island label).</summary>
     public required string Pomodoro { get; init; }
@@ -220,46 +214,20 @@ public sealed class LanguageStrings
     /// <summary>Settings: the manual position, distance from the left end (dip).</summary>
     public required string ManualOffsetLabel { get; init; }
 
-    /// <summary>Setting: corners of the pills (TODO 7.9 D).</summary>
-    public required string CornersLabel { get; init; }
 
-    /// <summary>Corners choice: half the height (like Windows' search box).</summary>
-    public required string CornersRound { get; init; }
 
-    /// <summary>Corners choice: small rounded corners (8).</summary>
-    public required string CornersSmall { get; init; }
 
-    /// <summary>Setting: which side of the big pill the small pill sits on.</summary>
-    public required string BallSideLabel { get; init; }
 
-    /// <summary>Small pill side: right of the big pill.</summary>
-    public required string BallSideRight { get; init; }
 
-    /// <summary>Small pill side: left of the big pill.</summary>
-    public required string BallSideLeft { get; init; }
 
-    /// <summary>Setting: how a task icon and the big pill swap places (E4, user 10-07), and its three choices.</summary>
-    public required string SwapAnimLabel { get; init; }
 
-    public required string SwapAnimLine { get; init; }
 
-    public required string SwapAnimArc { get; init; }
 
-    public required string SwapAnimFlip { get; init; }
 
-    /// <summary>Setting: card and icon movements overshoot a little and settle (user 10-07).</summary>
-    public required string SwapBounce { get; init; }
-    public required string Transparency { get; init; }
 
-    /// <summary>Settings: how a card lifts out of the big pill (TODO 7.9 F).</summary>
-    public required string LiftAnimLabel { get; init; }
 
-    public required string LiftAnimMorph { get; init; }
 
-    public required string LiftAnimSlide { get; init; }
 
-    /// <summary>Settings: how far apart the ⋯ list's pills set off (TODO 7.9 F3).</summary>
-    public required string ListStaggerLabel { get; init; }
 
     /// <summary>The ⋯ list: beside the card the big pill is showing.</summary>
     public required string OnBigPill { get; init; }
@@ -279,17 +247,9 @@ public sealed class LanguageStrings
 
 
 
-    /// <summary>Setting: card text left-aligned or centred on the big pill (user 10-07).</summary>
-    public required string CardTextLabel { get; init; }
 
-    /// <summary>Card text choice: left-aligned.</summary>
-    public required string CardTextLeft { get; init; }
 
-    /// <summary>Card text choice: icon and text centred together, when it fits (long text stays left-aligned and scrolls).</summary>
-    public required string CardTextCenterGroup { get; init; }
 
-    /// <summary>Card text choice: only the text centred, the icon stays at the left.</summary>
-    public required string CardTextCenterText { get; init; }
 
     /// <summary>Settings: diagnostics section heading.</summary>
     public required string DiagSection { get; init; }

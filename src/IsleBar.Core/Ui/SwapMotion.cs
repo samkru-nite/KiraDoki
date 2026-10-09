@@ -1,25 +1,13 @@
 namespace IsleBar.Core.Ui;
 
-/// <summary>How a task icon and the big pill swap places (setting, TODO 7.9 D, user 10-07).</summary>
-public enum SwapStyle
-{
-    /// <summary>Morph, symmetric, straight: the clicked icon's circle grows into the pill (on top); the old card shrinks into the
-    /// emptied cell, fading to <see cref="SwapMotion.FadeTo"/>.</summary>
-    MorphLine,
-
-    /// <summary>Morph, symmetric, arcs: the same, the growing one rising <see cref="SwapMotion.Arc"/> and the shrinking one dipping.</summary>
-    MorphArc,
-
-    /// <summary>In place: the old content drops out, the new drops in; nothing moves between the pills.</summary>
-    Flip,
-}
-
 /// <summary>A box in the window (dip).</summary>
 public readonly record struct MotionBox(double X, double Y, double Width, double Height, double Radius);
 
 /// <summary>
-/// <b>Every number of the swap animation in one place</b> (TODO 7.9 E: change the timing, easing or arc only here), and the path
-/// math, so it can be checked without a window. The morph follows preview D v12: a cell is a 24 circle; it opens into the pill
+/// <b>Every number of the swap animation in one place</b> (TODO 7.9 E: change the timing or easing only here), and the path
+/// math, so it can be checked without a window. How a task icon and the big pill swap places — straight lines (user 10-10: the
+/// arc and flip choices went): the clicked icon's circle grows into the pill (on top); the old card shrinks into the emptied cell,
+/// fading to <see cref="FadeTo"/>. The morph follows preview D v12: a cell is a 24 circle; it opens into the pill
 /// box while the card inside slides so its icon stays at the circle's centre ("pulling the curtain open" — content laid out at
 /// its final size, never stretched).
 /// </summary>
@@ -31,7 +19,7 @@ public static class SwapMotion
     /// <summary>Easing: cubic-bezier(.4, 0, .2, 1) — Material's "standard" curve, the one the preview used.</summary>
     public const double X1 = 0.4, Y1 = 0, X2 = 0.2, Y2 = 1;
 
-    /// <summary>With the bounce on (setting, user 10-07) movements take a little longer and overshoot by about this share before settling.</summary>
+    /// <summary>With the bounce on (Windows' animation effects, 10-10; was a setting from 10-07) movements take a little longer and overshoot by about this share before settling.</summary>
     public static readonly TimeSpan BounceDuration = TimeSpan.FromSeconds(0.37);
 
     /// <summary>The bounce is a soft spring (user 10-08, the lifted card's, liked there): damping ratio 0.75 = one small overshoot of
@@ -42,10 +30,7 @@ public static class SwapMotion
     /// <summary>Room kept right of the pills while things fly, for the bounce to overshoot into (dip).</summary>
     public const double Overshoot = 16;
 
-    /// <summary>How far the arcs rise / dip (the taskbar has 7.5 above and below the pills).</summary>
-    public const double Arc = 7;
-
-    /// <summary>The shrinking card's opacity at the end of the straight morph.</summary>
+    /// <summary>The shrinking card's opacity at the end of the morph.</summary>
     public const double FadeTo = 0.55;
 
     /// <summary>The circle a cell stands for.</summary>
@@ -67,26 +52,9 @@ public static class SwapMotion
     /// <inheritdoc cref="CellLookIn"/>
     public static double BigLookOut(double p) => Math.Clamp((p - 0.65) / 0.3, 0, 1);
 
-    /// <summary>Flip: the old content drops this far while fading; the new comes down from as far above.</summary>
-    public const double FlipDrop = 8;
-    public static readonly TimeSpan FlipOut = TimeSpan.FromMilliseconds(150);
-    public static readonly TimeSpan FlipInDelay = TimeSpan.FromMilliseconds(120);
-    public static readonly TimeSpan FlipIn = TimeSpan.FromMilliseconds(180);
-    public static readonly TimeSpan FlipCellIn = TimeSpan.FromMilliseconds(220);
-
-    public static SwapStyle Parse(string? value) => value switch
-    {
-        "arc" => SwapStyle.MorphArc,
-        "flip" => SwapStyle.Flip,
-        _ => SwapStyle.MorphLine,
-    };
-
-    public static string Key(SwapStyle style) => style switch
-    {
-        SwapStyle.MorphArc => "arc",
-        SwapStyle.Flip => "flip",
-        _ => "line",
-    };
+    /// <summary>A card with no cell to go into or come out of (it ends, or a new one arrives) drops out this far while fading;
+    /// the new one comes down from as far above.</summary>
+    public const double Drop = 8;
 
     /// <summary>The eased share of the way at time share <paramref name="t"/> (0–1).</summary>
     public static double Ease(double t)
@@ -123,7 +91,8 @@ public static class SwapMotion
     /// The box at eased share <paramref name="p"/> going from <paramref name="from"/> to <paramref name="to"/>, raised by
     /// <paramref name="lift"/> × sin(πp) (negative = up).
     /// </summary>
-    public static MotionBox Between(MotionBox from, MotionBox to, double p, double lift)
+    /// <param name="lift">How far the way bows (negative = up; the ⋯ list's pills) — the swap and the lifted card go straight.</param>
+    public static MotionBox Between(MotionBox from, MotionBox to, double p, double lift = 0)
         => new(
             Lerp(from.X, to.X, p),
             Lerp(from.Y, to.Y, p) + (lift * Math.Sin(Math.PI * p)),
@@ -160,7 +129,7 @@ public static class SwapMotion
 
     public static TimeSpan Length(bool bounce) => bounce ? BounceDuration : Duration;
 
-    /// <summary>Flip's curves: leaving speeds up (quadratic), arriving slows down (cubic).</summary>
+    /// <summary>Dropping out speeds up (quadratic), dropping in slows down (cubic).</summary>
     public static double EaseIn(double t) => Math.Clamp(t, 0, 1) * Math.Clamp(t, 0, 1);
 
     public static double EaseOut(double t) => 1 - Math.Pow(1 - Math.Clamp(t, 0, 1), 3);

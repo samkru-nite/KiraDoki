@@ -27,25 +27,12 @@ public sealed class SwapMotionTests
         var circle = SwapMotion.CircleAt(300, 7);
         Assert.Equal(new MotionBox(288, 11, 24, 24, 12), circle);
         var pill = new MotionBox(0, 7, 220, 32, 16);
-        Assert.Equal(circle, SwapMotion.Between(circle, pill, 0, -7));
-        var end = SwapMotion.Between(circle, pill, 1, -7);
-        Assert.Equal(pill with { Y = 0 }, end with { Y = 0 });
-        Assert.Equal(7, end.Y, 6);
-        Assert.Equal(7 + 4 + (-7.0 * 1) + (-4 * 0.5), SwapMotion.Between(circle, pill, 0.5, -7).Y, 6);   // the arc peaks halfway
+        Assert.Equal(circle, SwapMotion.Between(circle, pill, 0));
+        Assert.Equal(pill, SwapMotion.Between(circle, pill, 1));
+        Assert.Equal(9, SwapMotion.Between(circle, pill, 0.5).Y, 6);   // a straight line: halfway between 11 and 7
 
         Assert.Equal(300 - 16, SwapMotion.ContentX(circle, pill, 16, 0));   // icon at x 16 sits on the cell's centre
         Assert.Equal(0, SwapMotion.ContentX(circle, pill, 16, 1));
-    }
-
-    [Theory]
-    [InlineData("line", SwapStyle.MorphLine)]
-    [InlineData("arc", SwapStyle.MorphArc)]
-    [InlineData("flip", SwapStyle.Flip)]
-    [InlineData("nonsense", SwapStyle.MorphLine)]
-    public void Settings_value_round_trips(string value, SwapStyle style)
-    {
-        Assert.Equal(style, SwapMotion.Parse(value));
-        Assert.Equal(style, SwapMotion.Parse(SwapMotion.Key(style)));
     }
 
     [Fact]

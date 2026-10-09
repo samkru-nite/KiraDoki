@@ -10,8 +10,8 @@ public readonly record struct PillRect(int Left, int Top, int Right, int Bottom,
 public sealed record PillsLayout(int Width, int Height, PillRect? Big, PillRect Small);
 
 /// <summary>
-/// Where the big and small pills sit in the bar's window (TODO 7.9 D final sizes, dip): big pill 220×32, gap 8, small pill = 4 + 24 per
-/// cell + 4, and <see cref="ArcRoom"/> above and below for the swap animation. Pure math, so it can be checked here without a window —
+/// Where the big and small pills sit in the bar's window (TODO 7.9 D final sizes, dip): small pill = 4 + 24 per cell + 4 on the left
+/// (fixed 10-10, user), gap 8, big pill 220×32, and <see cref="ArcRoom"/> above and below for the swap animation. Pure math, so it can be checked here without a window —
 /// being off by one pixel squashes a pill or shows a seam.
 /// </summary>
 public static class PillGeometry
@@ -26,9 +26,6 @@ public static class PillGeometry
     /// <summary>A task icon's cell on the small pill, and the space left and right of the cells.</summary>
     public const double Cell = 24;
     public const double CellMargin = 4;
-
-    /// <summary>The "small" corner choice (setting): 8, like Windows' cards. "round" = half the height.</summary>
-    public const double SmallCorner = 8;
 
     /// <summary>The circle's box: its cell with <see cref="CellMargin"/> either side.</summary>
     public const double BallBox = Cell + (2 * CellMargin);
@@ -46,13 +43,12 @@ public static class PillGeometry
     public static int Px(double dip, double scale) => (int)Math.Round(dip * scale);
 
     /// <param name="big">A card shows (or typing): the big pill is there.</param>
-    /// <param name="smallLeft">The small pill sits left of the big one (setting).</param>
-    /// <param name="round">Corners are half the height; false = <see cref="SmallCorner"/>.</param>
-    public static PillsLayout Compute(double scale, bool big, bool smallLeft, double smallWidth, bool round)
+    /// <remarks>Corners are half the height, like Windows' search box (the 8 dip choice went 10-10).</remarks>
+    public static PillsLayout Compute(double scale, bool big, double smallWidth)
     {
         var top = Px(ArcRoom, scale);
         var bottom = Px(ArcRoom + Height, scale);
-        var diameter = round ? bottom - top : Px(2 * SmallCorner, scale);
+        var diameter = bottom - top;
         PillRect Rect(double left, double width) => new(Px(left, scale), top, Px(left + width, scale) + 1, bottom + 1, diameter);
 
         var height = Px(Height + (2 * ArcRoom), scale);
@@ -62,8 +58,6 @@ public static class PillGeometry
         }
 
         var total = BigWidth + Gap + smallWidth;
-        return smallLeft
-            ? new PillsLayout(Px(total, scale), height, Rect(smallWidth + Gap, BigWidth), Rect(0, smallWidth))
-            : new PillsLayout(Px(total, scale), height, Rect(0, BigWidth), Rect(BigWidth + Gap, smallWidth));
+        return new PillsLayout(Px(total, scale), height, Rect(smallWidth + Gap, BigWidth), Rect(0, smallWidth));
     }
 }

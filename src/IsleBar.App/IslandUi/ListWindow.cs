@@ -30,7 +30,6 @@ internal sealed record ListRequest(
     int ScreenRight,
     int TaskbarTop,
     bool Bounce,
-    int StaggerMs,
     string OnBigLabel);
 
 /// <summary>
@@ -160,7 +159,7 @@ internal sealed class ListWindow : Window
         SeeThrough.OnTop(_hwnd);
         Start();
         _outside.Arm();
-        TaskbarHost.Log($"list: open {n} ({string.Join(", ", request.Keys)}) stagger {request.StaggerMs} window={_window.Left},{_window.Top} {_window.Width}x{_window.Height}");
+        TaskbarHost.Log($"list: open {n} ({string.Join(", ", request.Keys)}) stagger {ListMotion.StaggerMs} window={_window.Left},{_window.Top} {_window.Width}x{_window.Height}");
     }
 
     /// <summary>Back into ⋯ (nothing happens when it's not up).</summary>
@@ -251,7 +250,7 @@ internal sealed class ListWindow : Window
 
     private TimeSpan Length() => _phase switch
     {
-        Phase.Opening => ListMotion.Total(_items.Count, _request?.Bounce == true, _request?.StaggerMs ?? 0),
+        Phase.Opening => ListMotion.Total(_items.Count, _request?.Bounce == true, ListMotion.StaggerMs),
         Phase.Taking => LiftMotion.OpenLength(_request?.Bounce == true),
         _ => ListMotion.Close,
     };
@@ -326,7 +325,7 @@ internal sealed class ListWindow : Window
             switch (_phase)
             {
                 case Phase.Opening:
-                    var p = ListMotion.Out(i, elapsed, r.Bounce, r.StaggerMs);
+                    var p = ListMotion.Out(i, elapsed, r.Bounce, ListMotion.StaggerMs);
                     item.Place(ListMotion.Box(_dots, item.Slot, p), p);
                     break;
                 case Phase.Closing:

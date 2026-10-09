@@ -34,8 +34,8 @@ public static class ListMotion
     /// <summary>One pill's way out (the swap's and the lift's length, user 10-09: "the bounce as the card's").</summary>
     public static TimeSpan Length(bool bounce) => SwapMotion.Length(bounce);
 
-    /// <summary>"20" / "40" (setting) → ms between two pills setting off.</summary>
-    public static int Stagger(string? setting) => setting == "40" ? 40 : 20;
+    /// <summary>Ms between two pills setting off (user 10-10 kept 20 of 20 / 40).</summary>
+    public const int StaggerMs = 20;
 
     /// <summary>The whole way out: the last pill sets off <paramref name="count"/> − 1 staggers late.</summary>
     public static TimeSpan Total(int count, bool bounce, int staggerMs)

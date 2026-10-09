@@ -38,7 +38,6 @@ internal sealed class ActivityFeed : IDisposable
 
     public DownloadWatcher Downloads { get; }
 
-    public PhoneDrop PhoneDrop { get; } = new();
 
     /// <summary>Brief notices (charging, Bluetooth, internet, focus, copy, overload, calendar, mic/camera; features added 09-30). Null until <see cref="Start"/>.</summary>
     public SystemWatchers? Watchers { get; private set; }
@@ -88,7 +87,6 @@ internal sealed class ActivityFeed : IDisposable
         items.AddRange(Media.Cards);   // one card per media player (user 10-07)
 
         items.AddRange(Downloads.Current);   // browser downloads (in progress / just finished)
-        items.AddRange(PhoneDrop.Current(items));   // dropped files being sent to the phone
         if (Watchers is not null)
         {
             items.AddRange(Watchers.Current);   // brief notices

@@ -35,7 +35,7 @@ public sealed partial class MainWindow : Window
     private static readonly TimeSpan IslandPollInterval = TimeSpan.FromMilliseconds(250);
 
     /// <summary>Where the pills sit in the window and how big it is (pixels). Replaced whole, so the tracker thread may read it.</summary>
-    private PillsLayout _layout = PillGeometry.Compute(DpiSetup.Scale, big: false, smallLeft: false, PillGeometry.SmallWidth(0), round: true);
+    private PillsLayout _layout = PillGeometry.Compute(DpiSetup.Scale, big: false, PillGeometry.SmallWidth(0));
 
     private int _width => _layout.Width;
     private int _height => _layout.Height;
@@ -129,7 +129,7 @@ public sealed partial class MainWindow : Window
     {
         HookFileDrop();
         PressFeedback.Attach(BallCell);
-        PressFeedback.Enabled = () => _settings.Bounce;
+        PressFeedback.Enabled = () => Animations.On;
         PressFeedback.Attach(PillBody, PressFeedback.PillPressed, PressFeedback.PillDamping);   // the big pill too: half on press, the rest + the card on release (user 10-08)
         Root.Loaded += (_, _) => MeasureInkAsync();   // where the card font's glyphs sit (TODO 7.9 D: centre the ink, not the line box)   // pressing makes it sink in and spring back (09-30 design M5)
         // handledEventsToo: a press a child element handled still counts
@@ -434,7 +434,7 @@ public sealed partial class MainWindow : Window
         var big = BigVisible;
         for (var n = wanted; n > 0; n--)
         {
-            var width = PillGeometry.Compute(DpiSetup.Scale, big, false, PillGeometry.SmallWidth(n), true).Width;
+            var width = PillGeometry.Compute(DpiSetup.Scale, big, PillGeometry.SmallWidth(n)).Width;
             if (_tracker.PlaceNow(width).Visible)
             {
                 return n;
@@ -444,16 +444,15 @@ public sealed partial class MainWindow : Window
         return 0;
     }
 
-    /// <summary>Builds the cells when what they show changed: icon or cover, colour, pause bars; ⋯ last (first when the pill sits left).</summary>
+    /// <summary>Builds the cells when what they show changed: icon or cover, colour, pause bars; ⋯ first (next to the circle).</summary>
     private void RenderTaskCells()
     {
-        var left = _settings.BallSide == "left";
         var now = DateTimeOffset.UtcNow;
         var icons = _cellCards.Select(c => (c.Key, Icon: TaskIcons.For(c, CoverOf(c) is not null, now), Card: c)).ToList();
         // a timer's hand turns on its own; it is set again only when the timer itself changes (paused, resumed, lengthened)
         var sig = string.Join("|", icons.Select(i => $"{i.Key}:{i.Icon}" + (i.Card.State.Kind == ActivityKind.Timer
                       ? $":{i.Card.State.Due}:{i.Card.State.Total}:{i.Card.State.Left}:{i.Card.State.T0}" : string.Empty)))
-                  + $"|{_dotsOn}|{left}|{_theme.Icon}|{RealSearchBoxFill()}";
+                  + $"|{_dotsOn}|{_theme.Icon}|{RealSearchBoxFill()}";
         SmallRule.Visibility = TaskCellCount > 0 ? Visibility.Visible : Visibility.Collapsed;
         if (sig == _cellsSig)
         {
@@ -497,7 +496,7 @@ public sealed partial class MainWindow : Window
         });
         if (_dotsOn)
         {
-            TaskCells.Children.Insert(left ? 0 : TaskCells.Children.Count, more);
+            TaskCells.Children.Insert(0, more);
         }
 
         ApplyCellDim();
@@ -682,25 +681,19 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Puts the pills side by side (small one right or left, setting), hides the big pill when there is nothing for it, and when
+    /// Puts the pills side by side (the small one on the left, fixed 10-10), hides the big pill when there is nothing for it, and when
     /// that changes the window's size: re-clips it and moves it to its spot for the new width. Cheap when nothing changed.
     /// </summary>
     private void LayoutPills()
     {
         var big = BigVisible;
-        var left = _settings.BallSide == "left";
-        var round = _settings.PillCorners != "small";
         PillBody.Visibility = big ? Visibility.Visible : Visibility.Collapsed;
         GapColumn.Width = new GridLength(big ? PillGeometry.Gap : 0);
-        Microsoft.UI.Xaml.Controls.Grid.SetColumn(PillBody, left ? 2 : 0);
-        Microsoft.UI.Xaml.Controls.Grid.SetColumn(SmallPill, left ? 0 : 2);
-        // the small pill's own order: task cells │ circle, or circle │ task cells when it sits left (the 4 margin stays on the outer end)
-        Microsoft.UI.Xaml.Controls.Grid.SetColumn(TaskCells, left ? 2 : 0);
-        Microsoft.UI.Xaml.Controls.Grid.SetColumn(BallBox, left ? 0 : 2);
-        TaskCells.Margin = TaskCellCount == 0 ? new Thickness(0) : left ? new Thickness(0, 0, PillGeometry.CellMargin, 0) : new Thickness(PillGeometry.CellMargin, 0, 0, 0);
-        ApplyCorners(round);
+        // the small pill's own order: circle │ task cells (the 4 margin on the outer end, next to the big pill)
+        TaskCells.Margin = TaskCellCount == 0 ? new Thickness(0) : new Thickness(0, 0, PillGeometry.CellMargin, 0);
+        ApplyCorners();
 
-        var layout = PillGeometry.Compute(DpiSetup.Scale, big, left, PillGeometry.SmallWidth(TaskCellCount), round);
+        var layout = PillGeometry.Compute(DpiSetup.Scale, big, PillGeometry.SmallWidth(TaskCellCount));
         if (layout == _layout)
         {
             return;
@@ -711,16 +704,15 @@ public sealed partial class MainWindow : Window
         FollowTaskbar();
     }
 
-    /// <summary>Half the height (like Windows' search box) or 8 (setting) — the drawn edges follow the clip.</summary>
-    private void ApplyCorners(bool round)
+    /// <summary>Half the height, like Windows' search box — the drawn edges follow the clip.</summary>
+    private void ApplyCorners()
     {
-        var r = round ? BaseHeight / 2.0 : PillGeometry.SmallCorner;
+        var r = BaseHeight / 2.0;
         PillSurface.Radius = r;
         SmallSurface.Radius = r;
-        GlassBorder.Radius = r;
         GlowRing.Radius = r;
         DimVeil.Radius = r;
-        CloseChip.Radius = round ? 11 : Math.Max(0, r - 5);   // concentric with the pill's end, 5 in (2 to the zone, 3 to the chip)
+        CloseChip.Radius = 11;   // concentric with the pill's end, 5 in (2 to the zone, 3 to the chip)
     }
 
     private DateTimeOffset _lastAttachTry = DateTimeOffset.MinValue;
@@ -861,7 +853,6 @@ public sealed partial class MainWindow : Window
                 // the pills follow the taskbar (TODO 丙④): everything painted from their colours again
                 TaskbarHost.Log($"pill colours: taskbar {color} → pill {RealSearchBoxFill()}");
                 ApplyTheme();
-                ApplyStyle();
                 Big.RefreshFades();
                 RenderIsland();
             }
@@ -1131,7 +1122,6 @@ public sealed partial class MainWindow : Window
         _bigCard = !_dropHover && _snapshot.IsActive ? _shownCard : null;
         LayoutPills();
         ShowCloseZone();
-        ApplyStyle();
         Big.UpdateProgress(_snapshot.Primary);
         UpdateGlow();
         if (RenderDropHint())
@@ -1152,8 +1142,7 @@ public sealed partial class MainWindow : Window
 
     /// <summary>
     /// While a file is dragged over the pill, show it there instead of only the blue border (user 10-01): a file icon and the file's
-    /// name (whatever the drop command does, you're handing it a file — so no wording that would be wrong for someone else's
-    /// command). Returns false when not dragging.
+    /// name. Returns false when not dragging.
     /// </summary>
     private bool RenderDropHint()
     {
@@ -1323,7 +1312,6 @@ public sealed partial class MainWindow : Window
     {
         ApplyTheme();
         LoadAgentMarks();
-        ApplyStyle();
         Big.RefreshFades();   // the edge fades of a scrolling title keep the old pill colour otherwise (grey boxes)
         RenderIsland();
         foreach (var delay in new[] { 0.8, 2.0, 4.0, 7.0 })
@@ -1331,7 +1319,6 @@ public sealed partial class MainWindow : Window
             _ = Task.Delay(TimeSpan.FromSeconds(delay)).ContinueWith(_ => _ui.TryEnqueue(() =>
             {
                 ApplyTheme();
-                ApplyStyle();
                 Big.RefreshFades();
                 RenderIsland();
             }), TaskScheduler.Default);
@@ -1371,27 +1358,6 @@ public sealed partial class MainWindow : Window
     /// <summary>The pointer is on the close button.</summary>
     private bool _closeHover;
 
-
-    /// <summary>
-    /// Apply preferences: re-apply colors the moment the black background toggles (text color follows actual background brightness);
-    /// the glow border uses the album color for music, otherwise a faint color matching the background. Safe to call on every draw.
-    /// </summary>
-    private void ApplyStyle()
-    {
-        var glass = _settings.StyleGlass;
-        GlassEdge.Visibility = glass ? Visibility.Visible : Visibility.Collapsed;
-        if (!glass)
-        {
-            return;
-        }
-
-        var dark = !(PillSurface.Fill is SolidColorBrush fill && ((fill.Color.R * 0.3) + (fill.Color.G * 0.59) + (fill.Color.B * 0.11)) > 128);
-        var edge = _snapshot.IsActive && _snapshot.Primary?.Kind == ActivityKind.Music && Big.AlbumTint is { } tint
-            ? Windows.UI.Color.FromArgb(140, tint.R, tint.G, tint.B)
-            : dark ? Windows.UI.Color.FromArgb(26, 255, 255, 255) : Windows.UI.Color.FromArgb(22, 0, 0, 0);
-        GlassBorder.Edge = BrushOf(edge);
-        GlassShine.Visibility = dark ? Visibility.Visible : Visibility.Collapsed;   // the white shine line isn't visible on light backgrounds
-    }
 
     /// <summary>Pill background: normal / hovered (slightly brighter — same response as the real search box, Python version's LOOK).</summary>
     private void PaintFill()
@@ -1584,17 +1550,18 @@ public sealed partial class MainWindow : Window
         return area.Y + area.Height;
     }
 
+    /// <summary>Off until something takes dropped files — the transit station (TODO 二-④). Not a const: that made the rest unreachable code.</summary>
+    private static readonly bool TakesDrops = false;
+
     /// <summary>
-    /// Dragging a file onto the pill runs the drop command on it (e.g. a script that sends to a phone — PhoneDrop). With no command
-    /// set the pill doesn't take files (10-10: attaching them to a prompt went with the input box). Blue border while hovering; on
-    /// transfer, the island shows it sending.
+    /// The pill can catch files dragged onto it: blue border and the file's name while hovering. Nothing takes them yet — the
+    /// drop command (send to a phone) went 10-10 and the transit station is still to come — so <see cref="TakesDrops"/> is off.
     /// </summary>
     private void HookFileDrop()
     {
         Root.DragOver += (_, e) =>
         {
-            if (!e.DataView.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.StorageItems)
-                || string.IsNullOrWhiteSpace(_settings.DropCommand))
+            if (!TakesDrops || !e.DataView.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.StorageItems))
             {
                 return;
             }
@@ -1619,8 +1586,7 @@ public sealed partial class MainWindow : Window
         {
             _dropHover = false;
             RenderIsland();
-            if (!e.DataView.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.StorageItems)
-                || string.IsNullOrWhiteSpace(_settings.DropCommand))
+            if (!TakesDrops || !e.DataView.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.StorageItems))
             {
                 return;
             }
@@ -1629,11 +1595,7 @@ public sealed partial class MainWindow : Window
             try
             {
                 var items = await e.DataView.GetStorageItemsAsync();
-                var paths = items.Select(i => i.Path).Where(p => !string.IsNullOrEmpty(p)).ToList();
-                if (!_feed.PhoneDrop.Send(paths, _settings.DropCommand))
-                {
-                    TaskbarHost.Log($"drop→command: nothing to run or not files ({paths.Count})");
-                }
+                TaskbarHost.Log($"drop: {items.Count} item(s) — nothing takes them yet");
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)   // async void: anything escaping ends the app (review 10-03)
             {
@@ -1697,10 +1659,6 @@ public sealed partial class MainWindow : Window
         if (card.State.SourcePath is { } path && File.Exists(path))
         {
             ActivityFeed.DeleteState(path);
-        }
-        else if (card.State.SourcePath is { } drop && drop.StartsWith("drop:", StringComparison.Ordinal))
-        {
-            _feed.PhoneDrop.Forget(drop);   // a failed send stays until closed
         }
         else
         {
