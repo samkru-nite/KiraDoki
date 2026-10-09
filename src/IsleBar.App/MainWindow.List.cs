@@ -68,9 +68,9 @@ public sealed partial class MainWindow
     private string PillSig(Card card, DateTimeOffset now)
     {
         var s = card.State;
-        var fraction = s.Kind == ActivityKind.Timer ? TimerFraction(s, now) : s.Fraction;
-        return $"{card.Type}|{card.Pinned}|{s.Kind}|{PrefixFor(s, now)}|{s.Title}|{s.Msg}|{s.Name}|{s.Stage}|{s.RunState}|{s.MoreCount}|{s.IsPaused}|"
-               + $"{(fraction is { } f ? Math.Round(f * ProgressLength) : -1)}|{CoverOf(card)?.Image.GetHashCode()}|{TaskIcons.For(card, CoverOf(card) is not null, now)}|{IconColorFor(card)}";
+        var fraction = s.Kind == ActivityKind.Timer ? TimerParser.Fraction(s, now) : s.Fraction;
+        return $"{card.Type}|{card.Pinned}|{s.Kind}|{Big.PrefixFor(s, now)}|{s.Title}|{s.Msg}|{s.Name}|{s.Stage}|{s.RunState}|{s.MoreCount}|{s.IsPaused}|"
+               + $"{(fraction is { } f ? Math.Round(f * PillView.ProgressLength) : -1)}|{CoverOf(card)?.Image.GetHashCode()}|{TaskIcons.For(card, CoverOf(card) is not null, now)}|{IconColorFor(card)}";
     }
 
     /// <summary>
@@ -92,7 +92,7 @@ public sealed partial class MainWindow
         var drawn = 0;
         try
         {
-            RestMarquee();
+            Big.RestMarquee();
             var big = _bigCard;
             var (own, ownFlow) = await CaptureRow();
             if (own is null)
@@ -119,7 +119,7 @@ public sealed partial class MainWindow
                     Root.UpdateLayout();
                     RenderIsland();   // the text fitted to the new card's own width (see Transition)
                     Root.UpdateLayout();
-                    RestMarquee();
+                    Big.RestMarquee();
                     var sig = PillSig(card, DateTimeOffset.UtcNow);
                     if (await CaptureRow() is ({ } shot, var flow))
                     {
@@ -162,11 +162,11 @@ public sealed partial class MainWindow
     private async Task<(ImageSource? Shot, ListFlow? Flow)> CaptureRow()
     {
         ListFlow? flow = null;
-        if (FlowTrack.Visibility == Visibility.Visible && _flowWidth > 0)
+        if (FlowTrack.Visibility == Visibility.Visible && Big.FlowWidth > 0)
         {
             var at = FlowTrack.TransformToVisual(CardRow).TransformPoint(default);
             var colour = (FlowPiece.Background as SolidColorBrush)?.Color ?? _theme.Foreground;
-            flow = new ListFlow(at.X, at.Y, _flowWidth, colour, TimeSpan.FromSeconds(FlowSeconds));
+            flow = new ListFlow(at.X, at.Y, Big.FlowWidth, colour, TimeSpan.FromSeconds(PillView.FlowSeconds));
             FlowTrack.Opacity = 0;
         }
 

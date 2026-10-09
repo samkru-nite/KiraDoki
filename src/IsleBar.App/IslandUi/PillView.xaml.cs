@@ -1,0 +1,1240 @@
+using IsleBar.App.Interop;
+using IsleBar.App.Media;
+using IsleBar.Core.Configuration;
+using IsleBar.Core.Island;
+using IsleBar.Core.Localization;
+using IsleBar.Core.Ui;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
+
+namespace IsleBar.App.IslandUi;
+
+/// <summary>What a pill needs from the window that owns it (settings, colours, the agents' logos, covers, …).</summary>
+internal interface IPillHost
+{
+    IsleBarSettings Settings { get; }
+    ThemeColors Theme { get; }
+    LanguageStrings Text { get; }
+    string Language { get; }
+
+    /// <summary>A swap or lift is flying: a new long title rests with "…" until it has landed (it is being snapshotted).</summary>
+    bool Flying { get; }
+
+    ImageSource? ClaudeLogo { get; }
+    ImageSource? CodexLogo { get; }
+
+    /// <summary>The loaded cover of a music card (the pill's 24 one), or null.</summary>
+    (BitmapImage Image, Windows.UI.Color? Tint)? Cover(Card? card);
+
+    /// <summary>The colour of a card's icon (its border's on a pinned card).</summary>
+    Windows.UI.Color IconColor(Card? card);
+
+    /// <summary>A timer's stopwatch with its turning hand.</summary>
+    UIElement Dial(TimerDial dial, Windows.UI.Color color, bool paused);
+
+    SolidColorBrush Brush(Windows.UI.Color color);
+
+    AudioMeter Meter { get; }
+}
+
+/// <summary>
+/// One big pill drawing one card (TODO 7.9 F3, plan B, 10-09): the drawing that lived in MainWindow, moved here unchanged so the
+/// ⋯ list can draw each card with a real pill (step 2) instead of snapshots of the taskbar's. Everything that moves on its own
+/// (scrolling title, rolling digits, the bars, the flowing piece) is this pill's own.
+/// </summary>
+public sealed partial class PillView : UserControl
+{
+    /// <summary>Big pill 220x32 (TODO 7.9 D final sizes).</summary>
+    internal const double BaseWidth = 220;
+    internal const double BaseHeight = 32;
+
+    /// <summary>Left edge of the card icon and of the card text on a plain card (TODO 7.9 D).</summary>
+    internal const double IconStart = 8;
+    internal const double TextStart = 32;
+
+    /// <summary>Text from x 32 to 208 on a plain card (TODO 7.9 D).</summary>
+    private const double CardTextWidth = 176;
+
+    /// <summary>The progress track: 16 in from each end of the big pill, 188 long (TODO 7.9 D).</summary>
+    internal const double ProgressInset = 16;
+    internal const double ProgressLength = BaseWidth - (2 * ProgressInset);
+
+    public PillView()
+    {
+        InitializeComponent();
+        // the title's scroll moves by "Translation", which must be switched on before anything stops or sets it: since the lap holds
+        // first (10-08), a card swap during that hold stopped it while still off → "parameter error", every swap a hard cut (user 10-08)
+        Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.SetIsTranslationEnabled(MarqueePanel, true);
+    }
+
+    internal IPillHost Host { get; set; } = null!;
+
+    /// <summary>The input box, shown in the text column while typing (the taskbar's pill only).</summary>
+    public UIElement? Input
+    {
+        get => InputSlot.Children.Count > 0 ? InputSlot.Children[0] : null;
+        set
+        {
+            InputSlot.Children.Clear();
+            if (value is not null)
+            {
+                InputSlot.Children.Add(value);
+            }
+        }
+    }
+
+    /// <summary>The Tab hint, after the now-playing bars (the taskbar's pill only).</summary>
+    public UIElement? Hint
+    {
+        get => TailRow.Children.Count > 1 ? TailRow.Children[1] : null;
+        set
+        {
+            while (TailRow.Children.Count > 1)
+            {
+                TailRow.Children.RemoveAt(1);
+            }
+
+            if (value is not null)
+            {
+                TailRow.Children.Add(value);
+            }
+        }
+    }
+
+    private SolidColorBrush BrushOf(Windows.UI.Color color) => Host.Brush(color);
+
+    /// <summary>The pill's colour at rest (the real search box's). Light: F2F6FC / dark: 2C2C2C.</summary>
+    internal static Windows.UI.Color RestFill()
+        => ThemeColors.FromSystem().Light
+            ? Windows.UI.Color.FromArgb(255, 242, 246, 252)
+            : Windows.UI.Color.FromArgb(255, 44, 44, 44);
+
+    // ---------------- One card ----------------
+
+    /// <summary>
+    /// Draws <paramref name="state"/> (the card <paramref name="card"/>'s, or the drop hint's) — text, icon, cover, bars. The caller
+    /// sets the lead icon's mode first (MainWindow.UpdateLeadIcon). <paramref name="plainIcon"/>: the drop hint (no card colours).
+    /// </summary>
+    internal void Render(ActivityState state, Card? card, bool plainIcon)
+    {
+        _card = card;
+        IslandContent.Visibility = Visibility.Visible;
+
+        LeadIcon.Glyph = state.IsPaused ? "" : GlyphFor(state);   // paused timer = pause icon
+        LeadIcon.Foreground = BrushOf(plainIcon ? Host.Theme.Icon : Host.IconColor(card));
+        ShowLeadDial(plainIcon ? null : state, Host.IconColor(card));
+        // Gaps like every other card (user 10-08): 8 between the icon and the text, 8 between the text and the now-playing bars.
+        // The cover is 22, 3 past the 16 icon slot on each side, so with a cover the text starts 3 later (it sat 5 from the cover);
+        // the bars get 8 too (was 5, to match that 5). Else 12 to the pill's edge (TODO 7.9 D).
+        var playing = state.Kind == ActivityKind.Music && state.Stage != "paused";
+        var hasCover = state.Kind == ActivityKind.Music && Host.Cover(card) is not null;
+        LeadSlot.Margin = new Thickness(8, 0, hasCover ? 11 : 8, 0);
+        IslandContent.Margin = new Thickness(0, 0, playing || card is { Type: CardType.Inform } ? 8 : 12, 0);   // 8 before the bars or the close button
+        // compressing: the document outline gets zipper teeth (the drop hint uses the same outline without them)
+        ZipTeeth.Opacity = state.Stage == "copy" && state.RunState == ActivityRunState.Running
+                           && state.Glyph == FileOperationWatcher.CompressGlyph ? 1 : 0;
+        ShowAgentMark(state);
+        ShowAlbumArt(state.Kind == ActivityKind.Music);
+        ShowLeadPause(state.Kind == ActivityKind.Music && state.Stage == "paused");
+        SetEqualizer(state.Kind == ActivityKind.Music && state.Stage != "paused");
+        var now = DateTimeOffset.UtcNow;
+        // The done-alert hook only carries the session name (no folder name — user feedback 09-30). Without a name, just "Claude done"
+        var name = state.Name;
+        if (state.Kind == ActivityKind.Timer)
+        {
+            ShowTimerText(state, now);
+        }
+        else if (state.Kind == ActivityKind.Notice)
+        {
+            // brief notice: "Charging · 78%" — title is the key part (bold), description dimmed
+            var tail = string.Join(" · ", new[] { state.Msg, state.Name }.Where(t => !string.IsNullOrWhiteSpace(t)));
+            ShowIslandText(state, (state.Title ?? string.Empty) + (tail.Length == 0 ? string.Empty : " · "), tail);
+        }
+        else if (state.Kind == ActivityKind.Music)
+        {
+            // music: title is the key part (bold), artist dimmed — "title · artist"
+            ShowIslandText(state, state.Msg is null ? string.Empty : (name ?? string.Empty) + " · ", state.Msg ?? name ?? string.Empty);
+        }
+        else
+        {
+            // a download whose name the browser hasn't given yet ("Unconfirmed 123"), or Explorer's progress window (it names no file)
+            name ??= state.Kind != ActivityKind.Transfer ? null : state.Stage == "copy" ? Host.Text.FileTransfer : Host.Text.Downloading;
+            ShowIslandText(state, PrefixFor(state, now), name ?? string.Empty, state.MoreCount > 0 ? $"  +{state.MoreCount}" : string.Empty);
+        }
+        IslandText.Foreground = BrushOf(ForegroundFor(state));
+    }
+
+    /// <summary>No card (typing, nothing to show): the text, cover, bars and dial go; the icon back at its place.</summary>
+    internal void Clear()
+    {
+        SetEqualizer(false);
+        ShowAlbumArt(false);
+        ShowLeadPause(false);
+        ShowLeadDial(null, Host.Theme.Icon);
+        StopMarquee();
+        IslandContent.Visibility = Visibility.Collapsed;
+        ShiftIcon(0);   // typing: the icon is the agent's mark, back at its place
+    }
+
+    /// <summary>The card this pill last drew.</summary>
+    private Card? _card;
+
+    // ---------------- Scrolling title · now-playing bars ----------------
+
+    /// <summary>Scroll speed (DIP/s) and the pause at each lap — relaxed, like music apps.</summary>
+    private const double MarqueeSpeed = 30;
+    private static readonly TimeSpan MarqueeHold = TimeSpan.FromSeconds(2);
+
+    /// <summary>Gap between the two title copies (must equal IslandTextCopy's left margin in XAML so the seam is invisible).</summary>
+    private const double MarqueeGap = 40;
+
+    private string? _marqueeText;
+    private ActivityKind _marqueeKind;
+    private bool _equalizerOn;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _meterTimer;
+    private readonly LevelBars _levelBars = new();
+
+    private void StopLoopBars()
+    {
+        _equalizerOn = false;
+        foreach (var bar in new[] { Eq0, Eq1, Eq2, Eq3 })
+        {
+            Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(bar).StopAnimation("Scale");
+        }
+    }
+
+    /// <summary>
+    /// Bars follow the sound (setting "music bars follow the sound"): 30 times a second the four band levels from the
+    /// loopback capture become heights via Core's LevelBars (fast rise, slow fall). Only runs while the music bars show.
+    /// </summary>
+    private void StartMeterBars()
+    {
+        _meterTimer = DispatcherQueue.CreateTimer();
+        _meterTimer.Interval = TimeSpan.FromMilliseconds(33);
+        _meterTimer.Tick += (_, _) =>
+        {
+            var heights = _levelBars.Update(Host.Meter.Levels());
+            var bars = new[] { Eq0, Eq1, Eq2, Eq3 };
+            for (var i = 0; i < bars.Length; i++)
+            {
+                var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(bars[i]);
+                visual.CenterPoint = new System.Numerics.Vector3((float)bars[i].Width / 2, (float)bars[i].Height / 2, 0f);
+                visual.Scale = new System.Numerics.Vector3(1f, heights[i], 1f);
+            }
+        };
+        _meterTimer.Start();
+    }
+
+    internal void StopMeterBars()
+    {
+        _meterTimer?.Stop();
+        _meterTimer = null;
+    }
+
+    private string? _equalizerTint = "none";
+
+    /// <summary>
+    /// Island text. <b>If a music title is wider than its slot, scroll it left</b> (user feedback 09-30: should loop seamlessly like Galaxy phones).
+    /// Two copies of the title sit side by side and scroll endlessly by "one copy width + gap" — the second copy lands exactly where the first was,
+    /// so jumping back to the start leaves no visible seam. Each lap pauses 2s when the first character is at the front.
+    /// The animation runs on the compositor (Composition) — a Storyboard appeared to stop after one lap (user feedback 09-30).
+    /// Everything else is truncated with "…". If the text is unchanged it doesn't restart (this is called every 250ms).
+    /// </summary>
+    /// <param name="suffix">Kept whole after the name, which is shortened to make room (e.g. "  +2" more downloads).</param>
+    private void ShowIslandText(ActivityState state, string prefix, string name, string suffix = "")
+    {
+        ShowClockDigits(null);   // the timer digit slot is only for timers
+        var width = AvailableTextWidth();
+        ClipMarquee(width);
+        var full = prefix + name;
+        // Music is just playing in the background, so its title uses normal weight — only alerts (done, permission) are bold. Long all-caps titles in bold filled the slot
+        // and grabbed attention (user feedback 09-30: "STUPID IN LOVE" was too loud, while the "Claude done" text weight was just right)
+        _islandStrong = state.Kind != ActivityKind.Music;
+        UseFontsFor(full);   // before measuring — changing the font changes the width
+        var measure = IslandMeasure();
+
+        // Long names scroll through once to show the whole thing: music titles, session names in Claude alerts.
+        // (Transfers are truncated with "…" since the changing percentage would restart the scroll every time)
+        var flows = state.Kind is ActivityKind.Music or ActivityKind.AgentDone or ActivityKind.AgentPermission or ActivityKind.AgentWorking or ActivityKind.Notice;
+        if (flows && measure.Measure(full) > width)
+        {
+            _marqueePrefix = prefix;
+            _marqueeName = name;
+            _marqueeKind = state.Kind;
+            if (_marqueeText != full)
+            {
+                _marqueeText = full;
+                if (Host.Flying)
+                {
+                    // a snapshot is about to be taken: it showed both copies unclipped, over the equalizer and past the pill
+                    // (user 10-07) — rest with "…" now, the lap starts once the card has landed
+                    LapAfterFlight = true;
+                    ShowMarqueeRest();
+                }
+                else
+                {
+                    StartMarquee();   // new title: one lap
+                }
+            }
+            else if (!_marqueeRunning)
+            {
+                ShowMarqueeRest();   // when paused, show "…" (redo every time since color/width may have changed)
+            }
+        }
+        else
+        {
+            StopMarquee();
+            var (head, rest) = TextFit.FitParts(prefix, name, width - (suffix.Length > 0 ? measure.Measure(suffix) : 0), measure);
+            SetStyledText(IslandText, head, rest + suffix);
+        }
+
+        IslandTextCopy.Foreground = IslandText.Foreground;
+
+        PlaceText();
+    }
+
+    /// <summary>
+    /// Up and down: the 20 line box centred in the 32 pill (6 above), moved by <see cref="InkOffset"/> so the glyphs themselves sit
+    /// in the middle — centring the line box left the text looking low (user 10-06, TODO 7.9 D).
+    /// <para>Left and right (setting, user 10-07): "left" = icon at 8, text from 32. "group" = icon + 8 + text centred together on the
+    /// card (the icon moves with the text). "text" = the icon stays, the text's middle on the card's middle. The card's middle is the
+    /// pill's (110), or the middle of what is right of an inform card's close zone. Centring inside the text area alone (first try)
+    /// put the text 10 right of the pill's middle and left the icon stranded — it didn't look centred. Text too long to fit stays
+    /// left-aligned and scrolls.</para>
+    /// </summary>
+    internal void PlaceText()
+    {
+        Canvas.SetTop(MarqueePanel, ((BaseHeight - IslandText.LineHeight) / 2) + InkOffset);
+        double text = 0, icon = 0;
+        var mode = Host.Settings.CardTextAlign;
+        if (mode is "group" or "text" && _marqueeText is null)
+        {
+            MarqueePanel.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+            var width = MarqueePanel.DesiredSize.Width;
+            var area = AvailableTextWidth();
+            var areaLeft = TextStart;
+            var middle = (BaseWidth - (CloseZone.Visibility == Visibility.Visible ? CloseZone.Width + CloseZone.Margin.Right : 0)) / 2;   // the card's middle, short of the close button
+            var start = mode == "group"
+                ? middle - ((TextStart - IconStart + width) / 2) + (TextStart - IconStart)   // where the text starts when the group is centred
+                : middle - (width / 2);
+            text = Math.Clamp(Math.Round((start - areaLeft) * 2) / 2, 0, Math.Max(0, area - width));   // half DIPs; never past the text area
+            icon = mode == "group" ? text : 0;
+        }
+
+        Canvas.SetLeft(MarqueePanel, text);
+        ShiftIcon(icon);
+    }
+
+    internal void ShiftIcon(double x)
+    {
+        if (LeadSlot.RenderTransform is not TranslateTransform move)
+        {
+            LeadSlot.RenderTransform = move = new TranslateTransform();
+        }
+
+        move.X = x;
+    }
+
+    /// <summary>How far to move the text so its glyphs are centred (DIP, measured by MainWindow.MeasureInkAsync; the same for every pill).</summary>
+    internal static double InkOffset { get; set; }
+
+    private string _marqueePrefix = string.Empty;
+    private string _marqueeName = string.Empty;
+    private bool _marqueeRunning;
+
+    /// <summary>On hover, scroll the title one more lap (if it isn't already scrolling and is long enough to scroll).</summary>
+    internal void ReplayMarquee()
+    {
+        if (_marqueeText is not null && !_marqueeRunning)
+        {
+            StartMarquee();
+        }
+    }
+
+    /// <summary>
+    /// Island text is painted two ways: the key part (e.g. "42%", "Claude done", "18:42", track title) bold,
+    /// the rest (e.g. "· 12s", "· session name", file name) dimmed — the same look as the desktop mockup.
+    /// If the prefix contains " · ", everything before it is the key part. Without a prefix (music), the whole name is the key part.
+    /// </summary>
+    private void SetStyledText(TextBlock block, string prefix, string rest)
+    {
+        // "45% · 6s  " + name → bold "45%" / dimmed " · 6s · name";  "Claude done · " + name → "Claude done" / " · name"
+        var head = prefix.Trim().TrimEnd('·').TrimEnd();
+        string main, hint;
+        if (head.Length == 0)
+        {
+            (main, hint) = (rest, string.Empty);   // music: the whole title is the key part
+        }
+        else
+        {
+            var dot = head.IndexOf(" · ", StringComparison.Ordinal);
+            main = dot >= 0 ? head[..dot] : head;
+            var parts = new List<string>();
+            if (dot >= 0)
+            {
+                parts.Add(head[(dot + 3)..]);
+            }
+
+            if (rest.Trim().Length > 0)
+            {
+                parts.Add(rest.Trim());
+            }
+
+            hint = parts.Count > 0 ? " · " + string.Join(" · ", parts) : string.Empty;
+        }
+
+        block.Inlines.Clear();
+        block.Inlines.Add(_islandStrong
+            ? new Microsoft.UI.Xaml.Documents.Run { Text = main, FontFamily = _islandBold, FontWeight = Microsoft.UI.Text.FontWeights.Medium }
+            : new Microsoft.UI.Xaml.Documents.Run { Text = main });
+        if (hint.Trim().Length > 0)
+        {
+            block.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run
+            {
+                Text = hint,
+                Foreground = BrushOf(Host.Theme.Hint),
+            });
+        }
+    }
+
+    /// <summary>
+    /// Resting look: end with "…" so text isn't chopped off abruptly at the edge of the slot (user feedback 09-30: suggested using an ellipsis).
+    /// </summary>
+    private void ShowMarqueeRest()
+    {
+        var measure = IslandMeasure();
+        var (head, rest) = TextFit.FitParts(_marqueePrefix, _marqueeName, AvailableTextWidth(), measure);
+        SetStyledText(IslandText, head, rest);
+        IslandTextCopy.Visibility = Visibility.Collapsed;
+        PlaceText();
+    }
+
+    /// <summary>
+    /// Timer: "Timer 18:42" — label bold, time normal weight (like "Pomodoro 18:42" in the mockup). A named timer uses its name.
+    /// When finished: "Timer done".
+    /// </summary>
+    private void ShowTimerText(ActivityState state, DateTimeOffset now)
+    {
+        StopMarquee();
+        ClipMarquee(AvailableTextWidth());
+        var label = string.IsNullOrWhiteSpace(state.Name) ? Host.Text.Timer : state.Name!;
+        UseFontsFor(label);
+        var left = TimerParser.Elapsed(state, now) ?? TimerRemaining(state, now);   // a stopwatch counts up
+        var running = TimerParser.IsStopwatch(state) || (left is { } l && l > TimeSpan.Zero);
+        IslandText.Inlines.Clear();
+        IslandText.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run { Text = label, FontFamily = _islandBold, FontWeight = Microsoft.UI.Text.FontWeights.Medium });
+        if (!running)
+        {
+            IslandText.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run { Text = "  " + Host.Text.Done });
+        }
+        ShowClockDigits(running ? FormatClock(left!.Value) : null);
+        IslandText.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+        PlaceText();
+    }
+
+    private string _clockShown = string.Empty;
+
+    /// <summary>
+    /// Draws the timer digits one by one. <b>Each digit slot is fixed to the widest digit</b> — drawing them as one string
+    /// made the text jiggle sideways when narrow digits like "1" appeared. <b>Only changed digits</b> roll down from above
+    /// (it's a countdown, so new digits come from above). null hides them.
+    /// </summary>
+    private void ShowClockDigits(string? clock)
+    {
+        if (clock is null)
+        {
+            ClockDigits.Visibility = Visibility.Collapsed;
+            _clockShown = string.Empty;
+            return;
+        }
+
+        ClockDigits.Visibility = Visibility.Visible;
+        if (clock == _clockShown && ClockDigits.Children.Count == clock.Length)
+        {
+            return;
+        }
+
+        var rebuild = ClockDigits.Children.Count != clock.Length;
+        if (rebuild)
+        {
+            ClockDigits.Children.Clear();
+            var digitWidth = DigitWidth();
+            foreach (var c in clock)
+            {
+                var cell = new TextBlock
+                {
+                    FontSize = IslandText.FontSize,
+                    FontFamily = IslandText.FontFamily,
+                    CharacterSpacing = IslandText.CharacterSpacing,
+                    LineHeight = IslandText.LineHeight,
+                    LineStackingStrategy = IslandText.LineStackingStrategy,
+                    Foreground = IslandText.Foreground,
+                    TextAlignment = TextAlignment.Center,
+                };
+                if (char.IsDigit(c))
+                {
+                    cell.Width = digitWidth;
+                }
+
+                ClockDigits.Children.Add(cell);
+            }
+        }
+
+        for (var i = 0; i < clock.Length; i++)
+        {
+            var cell = (TextBlock)ClockDigits.Children[i];
+            var text = clock[i].ToString();
+            cell.Foreground = IslandText.Foreground;
+            if (cell.Text == text)
+            {
+                continue;
+            }
+
+            cell.Text = text;
+            if (!rebuild)
+            {
+                RollIn(cell);
+            }
+        }
+
+        _clockShown = clock;
+    }
+
+    /// <summary>Widest digit width (current font and size).</summary>
+    private double DigitWidth()
+    {
+        var probe = new TextBlock { FontSize = IslandText.FontSize, FontFamily = IslandText.FontFamily, CharacterSpacing = IslandText.CharacterSpacing };
+        double widest = 0;
+        for (var d = '0'; d <= '9'; d++)
+        {
+            probe.Text = d.ToString();
+            probe.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+            widest = Math.Max(widest, probe.DesiredSize.Width);
+        }
+
+        return Math.Ceiling(widest);
+    }
+
+    /// <summary>One changed digit: slides down 7 from above while sharpening (0.25s).</summary>
+    private static void RollIn(UIElement cell)
+    {
+        Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.SetIsTranslationEnabled(cell, true);
+        var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(cell);
+        var compositor = visual.Compositor;
+        var ease = compositor.CreateCubicBezierEasingFunction(new System.Numerics.Vector2(0.2f, 0.8f), new System.Numerics.Vector2(0.2f, 1f));
+        var move = compositor.CreateScalarKeyFrameAnimation();
+        move.InsertKeyFrame(0f, -7f);
+        move.InsertKeyFrame(1f, 0f, ease);
+        move.Duration = TimeSpan.FromMilliseconds(250);
+        visual.StartAnimation("Translation.Y", move);
+        var fade = compositor.CreateScalarKeyFrameAnimation();
+        fade.InsertKeyFrame(0f, 0f);
+        fade.InsertKeyFrame(1f, 1f, ease);
+        fade.Duration = TimeSpan.FromMilliseconds(200);
+        visual.StartAnimation("Opacity", fade);
+    }
+
+    /// <summary>
+    /// One lap. It first holds with the resting look ("…", no fades), the same as when it stands still — and as the swap's snapshot
+    /// shows it, so nothing changes as a card lands (it switched from "…" to the lap's look right then: the "…", the fade flashed,
+    /// user 10-08). The whole title and the fades come in as it starts to move.
+    /// </summary>
+    private void StartMarquee()
+    {
+        var myRun = ++_marqueeRun;
+        _marqueeRunning = true;
+        SetMarqueeFade(false);
+        var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(MarqueePanel);
+        visual.StopAnimation("Translation.X");
+        visual.Properties.InsertVector3("Translation", System.Numerics.Vector3.Zero);
+        ShowMarqueeRest();
+        var hold = DispatcherQueue.CreateTimer();
+        hold.Interval = _marqueeKind == ActivityKind.Notice ? TimeSpan.FromSeconds(1) : MarqueeHold;   // short notices can't wait 2 s
+        hold.IsRepeating = false;
+        hold.Tick += (_, _) =>
+        {
+            if (myRun != _marqueeRun || !_marqueeRunning || _marqueeText is null)
+            {
+                return;   // stopped, rested for a flight, or another lap took over
+            }
+
+            SetStyledText(IslandText, _marqueePrefix, _marqueeName);
+            SetStyledText(IslandTextCopy, _marqueePrefix, _marqueeName);
+            IslandTextCopy.Visibility = Visibility.Visible;
+            IslandText.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+            PlaceText();
+            RunMarquee(myRun, IslandText.DesiredSize.Width + MarqueeGap);
+        };
+        hold.Start();
+    }
+
+    /// <summary>The ends' fades are the pill colour: repaint them after it changed (hover, theme).</summary>
+    internal void RefreshFades() => SetMarqueeFade(_marqueeRunning);
+
+    /// <summary>
+    /// While scrolling, softly cover both ends of the text slot with the pill background (so text isn't chopped at the edge, like music apps).
+    /// Off when resting, since it ends in "…" then.
+    /// </summary>
+    private void SetMarqueeFade(bool on)
+    {
+        FadeLeft.Visibility = FadeRight.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+        if (!on || PillSurface.Fill is not SolidColorBrush fill)
+        {
+            return;
+        }
+
+        var solid = fill.Color;
+        var clear = Windows.UI.Color.FromArgb(0, solid.R, solid.G, solid.B);
+        FadeLeft.Fill = Gradient(solid, clear);
+        FadeRight.Fill = Gradient(clear, solid);
+    }
+
+    private static LinearGradientBrush Gradient(Windows.UI.Color from, Windows.UI.Color to)
+    {
+        var brush = new LinearGradientBrush { StartPoint = new Windows.Foundation.Point(0, 0.5), EndPoint = new Windows.Foundation.Point(1, 0.5) };
+        brush.GradientStops.Add(new GradientStop { Color = from, Offset = 0 });
+        brush.GradientStops.Add(new GradientStop { Color = to, Offset = 1 });
+        return brush;
+    }
+
+    private int _marqueeRun;
+
+    private void RunMarquee(int myRun, double distance)
+    {
+        // Each lap has a number — stopping an earlier lap (e.g. a scrolling music title) delivered its completion signal late
+        // and stopped the new lap (a done alert) instead (measured on PC 09-30). Only react to completion of our own number.
+        SetMarqueeFade(true);
+        Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.SetIsTranslationEnabled(MarqueePanel, true);
+        var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(MarqueePanel);
+        var compositor = visual.Compositor;
+        visual.StopAnimation("Translation.X");
+        visual.Properties.InsertVector3("Translation", System.Numerics.Vector3.Zero);
+
+        // The scroll (the pause before it is StartMarquee's) → ends when the next copy's first character reaches the front.
+        // The end and start positions look identical, so the jump back is invisible
+        // (user feedback 09-30: Galaxy scrolls and stops when the first character comes back to the front).
+        var total = TimeSpan.FromSeconds(distance / MarqueeSpeed);
+        var slide = compositor.CreateScalarKeyFrameAnimation();
+        slide.InsertKeyFrame(0f, 0f);
+        slide.InsertKeyFrame(1f, (float)-distance, compositor.CreateLinearEasingFunction());
+        slide.Duration = total;
+        // Only one lap — scroll once when a track first appears, then stay still once the first character is back at the front (Galaxy style,
+        // user feedback 09-30: asked why it kept moving). Hovering plays one more lap (ReplayMarquee).
+        slide.IterationBehavior = Microsoft.UI.Composition.AnimationIterationBehavior.Count;
+        slide.IterationCount = 1;
+        // Left fade only while the text moves — leaving it on while still (first 2s and at the end) covered the first character
+        // and made it look clipped (user feedback 09-30: the first character was still cut off when a title first appeared).
+        var fadeVisual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(FadeLeft);
+        var edge = (float)Math.Min(0.4 / total.TotalSeconds, 0.05);
+        var fadeIn = compositor.CreateScalarKeyFrameAnimation();
+        fadeIn.InsertKeyFrame(0f, 0f);
+        fadeIn.InsertKeyFrame(Math.Min(edge, 0.5f), 1f);
+        fadeIn.InsertKeyFrame(1f - edge, 1f);
+        fadeIn.InsertKeyFrame(1f, 0f);
+        fadeIn.Duration = total;
+        var batch = compositor.CreateScopedBatch(Microsoft.UI.Composition.CompositionBatchTypes.Animation);
+        visual.StartAnimation("Translation.X", slide);
+        fadeVisual.StartAnimation("Opacity", fadeIn);
+        batch.End();
+        batch.Completed += (_, _) => DispatcherQueue.TryEnqueue(() =>
+        {
+            if (myRun != _marqueeRun || !_marqueeRunning || _marqueeText is null)
+            {
+                return;
+            }
+
+            _marqueeRunning = false;
+            SetMarqueeFade(false);
+            visual.StopAnimation("Translation.X");
+            visual.Properties.InsertVector3("Translation", System.Numerics.Vector3.Zero);
+            ShowMarqueeRest();   // lap finished → "…"
+        });
+    }
+
+    /// <summary>A new title's lap was held back while a transition flew; it runs once the card has landed.</summary>
+    internal bool LapAfterFlight { get; set; }
+
+    /// <summary>
+    /// Stops a lap mid-scroll and shows the "…" look, keeping the title (a snapshot doesn't see the scroll offset nor the clip:
+    /// it showed the whole unscrolled title running past the slot — user 10-07).
+    /// </summary>
+    internal void RestMarquee()
+    {
+        if (!_marqueeRunning)
+        {
+            return;
+        }
+
+        _marqueeRun++;   // the lap's own end mustn't act later
+        _marqueeRunning = false;
+        SetMarqueeFade(false);
+        var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(MarqueePanel);
+        visual.StopAnimation("Translation.X");
+        visual.Properties.InsertVector3("Translation", System.Numerics.Vector3.Zero);
+        ShowMarqueeRest();
+    }
+
+    private void StopMarquee()
+    {
+        ShowClockDigits(null);
+        if (_marqueeText is null)
+        {
+            return;
+        }
+
+        _marqueeText = null;
+        _marqueeRunning = false;
+        SetMarqueeFade(false);
+        IslandTextCopy.Visibility = Visibility.Collapsed;
+        var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(MarqueePanel);
+        visual.StopAnimation("Translation.X");
+        visual.Properties.InsertVector3("Translation", System.Numerics.Vector3.Zero);
+    }
+
+    /// <summary>Album art on the big pill (22) when the shown card is music and its cover is loaded.</summary>
+    private void ShowAlbumArt(bool on)
+    {
+        var cover = on ? Host.Cover(_card) : null;
+        AlbumTint = cover?.Tint;
+        AlbumArt.Visibility = cover is null ? Visibility.Collapsed : Visibility.Visible;
+        if (cover is { } c)
+        {
+            if (!ReferenceEquals(AlbumArtBrush.ImageSource, c.Image))
+            {
+                AlbumArtBrush.ImageSource = c.Image;
+            }
+
+            LeadIcon.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    /// <summary>Dominant color of the shown album (null if none or grayscale → normal color).</summary>
+    internal Windows.UI.Color? AlbumTint { get; private set; }
+
+    /// <summary>
+    /// Claude/Codex alerts (done, permission) show that agent's mark (spark / Codex mark from the user's PC) instead of ✓/🔔 —
+    /// with a small ✓ next to ⌄, two symbols side by side looked flimsy (user feedback 09-30). Done/permission is signalled by the border and text color.
+    /// </summary>
+    private void ShowAgentMark(ActivityState state)
+    {
+        if (state.Kind is not (ActivityKind.AgentDone or ActivityKind.AgentPermission or ActivityKind.AgentWorking)
+            && !(state.Kind == ActivityKind.Notice && state.Agent is not null))
+        {
+            return;   // every stage of an agent's card shows its logo (user 10-07), its notices too
+        }
+
+        var codex = state.AgentLabel == "Codex";
+        if ((codex ? Host.CodexLogo : Host.ClaudeLogo) is null)
+        {
+            return;   // no mark on this PC → keep ✓/🔔
+        }
+
+        ClaudeGlyphImage.Source = Host.ClaudeLogo;   // the makers' colours here: the ring tells the stage (user 10-07)
+        CodexGlyph.Source = Host.CodexLogo;
+
+        ClaudeGlyphImage.Visibility = codex ? Visibility.Collapsed : Visibility.Visible;
+        CodexGlyph.Visibility = codex ? Visibility.Visible : Visibility.Collapsed;
+        LeadIcon.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>Turns the now-playing bars on/off. The animation is built once when turned on (the compositor runs it).</summary>
+    private void SetEqualizer(bool on)
+    {
+        Equalizer.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+        var fillKey = $"{AlbumTint}|{Host.Theme.Icon}";   // repaint only when the color changes (this is called every 250ms)
+        if (on && _equalizerTint != fillKey)
+        {
+            // the brushes are built only here — built on every call before, 4 times a second, and thrown away (review 10-03)
+            Brush brush = BrushOf(Host.Theme.Icon);
+            if (AlbumTint is { } tint)
+            {
+                var top = Windows.UI.Color.FromArgb(255, (byte)Math.Min(255, tint.R + 40), (byte)Math.Min(255, tint.G + 40), (byte)Math.Min(255, tint.B + 40));
+                var gradient = new LinearGradientBrush { StartPoint = new Windows.Foundation.Point(0.5, 0), EndPoint = new Windows.Foundation.Point(0.5, 1) };
+                gradient.GradientStops.Add(new GradientStop { Color = top, Offset = 0 });
+                gradient.GradientStops.Add(new GradientStop { Color = tint, Offset = 1 });
+                brush = gradient;
+            }
+
+            _equalizerTint = fillKey;
+            Eq0.Fill = Eq1.Fill = Eq2.Fill = Eq3.Fill = brush;
+        }
+
+        // Follow the real sound (setting) — a 30 Hz timer reads the speaker meter and sets the bar heights
+        var meter = on && Host.Settings.AudioBars;
+        if (meter != (_meterTimer is not null))
+        {
+            if (meter)
+            {
+                StopLoopBars();
+                StartMeterBars();
+            }
+            else
+            {
+                StopMeterBars();
+            }
+        }
+
+        if (meter)
+        {
+            return;
+        }
+
+        if (on && !_equalizerOn)
+        {
+            _equalizerOn = true;
+
+            // The compositor (Composition) animates the bar sizes — a XAML Storyboard woke the UI and render threads every frame
+            // and used 3–6% CPU for four bars (measured 09-30: music island 6–9% → 3% with bars hidden). Compositor animations don't wake app code.
+            var patterns = new[]
+            {
+                (Values: new[] { 0.35f, 1.0f, 0.5f, 0.85f, 0.3f }, Seconds: 1.1),
+                (Values: new[] { 0.9f, 0.4f, 1.0f, 0.55f, 0.8f }, Seconds: 0.9),
+                (Values: new[] { 0.5f, 0.8f, 0.3f, 1.0f, 0.45f }, Seconds: 1.3),
+                (Values: new[] { 0.75f, 0.35f, 0.9f, 0.4f, 1.0f }, Seconds: 1.0),
+            };
+            var bars = new[] { Eq0, Eq1, Eq2, Eq3 };
+            for (var i = 0; i < bars.Length; i++)
+            {
+                var bar = bars[i];
+                var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(bar);
+                var compositor = visual.Compositor;
+                visual.CenterPoint = new System.Numerics.Vector3((float)bar.Width / 2, (float)bar.Height / 2, 0f);   // centered pivot (09-30 G2)
+                var sine = compositor.CreateCubicBezierEasingFunction(new System.Numerics.Vector2(0.37f, 0f), new System.Numerics.Vector2(0.63f, 1f));
+                var animation = compositor.CreateVector3KeyFrameAnimation();
+                var values = patterns[i].Values;
+                for (var k = 0; k <= values.Length; k++)
+                {
+                    var v = values[k % values.Length];
+                    animation.InsertKeyFrame((float)k / values.Length, new System.Numerics.Vector3(1f, v, 1f), sine);
+                }
+
+                animation.Duration = TimeSpan.FromSeconds(patterns[i].Seconds);
+                animation.IterationBehavior = Microsoft.UI.Composition.AnimationIterationBehavior.Forever;
+                animation.DelayTime = TimeSpan.FromMilliseconds(120 * i);   // stagger each bar — so they don't pump as one block
+                visual.StartAnimation("Scale", animation);
+            }
+        }
+        else if (!on && _equalizerOn)
+        {
+            StopLoopBars();
+        }
+    }
+
+    // ---------------- The icon: timer dial, paused song ----------------
+
+    /// <summary>
+    /// The big pill's timer icon: the same turning dial as the small one (user 10-07: only the small one turned). Built again only
+    /// when the timer itself changes (the pill redraws a timer every tick; the compositor turns the hand in between).
+    /// </summary>
+    private void ShowLeadDial(ActivityState? state, Windows.UI.Color color)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var dial = state is null ? null : TimerDial.Of(state, _card?.Type == CardType.Inform, now);
+        var key = dial is null || state is null ? null : $"{state.SourcePath}|{state.Due}|{state.Total}|{state.Left}|{state.T0}|{_card?.Type}|{color}|{RestFill()}";
+        if (dial is not null)
+        {
+            LeadIcon.Visibility = Visibility.Collapsed;
+        }
+
+        if (key == _leadDialKey)
+        {
+            return;
+        }
+
+        _leadDialKey = key;
+        LeadDial.Children.Clear();
+        if (dial is not null)
+        {
+            LeadDial.Children.Add(Host.Dial(dial, color, state!.IsPaused));
+        }
+    }
+
+    private string? _leadDialKey;
+
+    /// <summary>
+    /// A paused song on the big pill, drawn like its small icon (user 10-07): the cover under a veil of pill colour with two bars, or
+    /// without a cover a pill-coloured notch in the glyph's corner holding them.
+    /// </summary>
+    private void ShowLeadPause(bool on)
+    {
+        var cover = on && AlbumArt.Visibility == Visibility.Visible;
+        var key = !on ? null : $"{cover}|{RestFill()}|{Host.Theme.Foreground}";
+        if (key == _leadPauseKey)
+        {
+            return;
+        }
+
+        _leadPauseKey = key;
+        LeadPause.Children.Clear();
+        if (!on)
+        {
+            return;
+        }
+
+        var pill = RestFill();
+        var ink = BrushOf(Host.Theme.Foreground);
+        if (cover)
+        {
+            // the cover is 22 centred on the 16 slot: the veil the same size, the bars scaled from the 16 icon's
+            LeadPause.Children.Add(new Microsoft.UI.Xaml.Shapes.Ellipse { Width = 22, Height = 22, Margin = new Thickness(-3), Fill = BrushOf(Windows.UI.Color.FromArgb(148, pill.R, pill.G, pill.B)) });
+            var bars = PauseBars(ink, 22, 2.4, 8.2, 7.4, 12.2);
+            bars.Margin = new Thickness(-3);
+            LeadPause.Children.Add(bars);
+            return;
+        }
+
+        AddPauseNotch(LeadPause, BrushOf(pill), ink);
+    }
+
+    private string? _leadPauseKey;
+
+    /// <summary>Paused: a pill-coloured disc cuts the icon's bottom-right corner and the two bars sit in it.</summary>
+    internal static void AddPauseNotch(Grid box, Brush pill, Brush ink)
+    {
+        box.Children.Add(new Microsoft.UI.Xaml.Shapes.Ellipse
+        {
+            Width = 9, Height = 9, Fill = pill, HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, -2, -2),
+        });
+        var bars = PauseBars(ink, 9, 1.5, 5, 2.2, 5.3);
+        bars.HorizontalAlignment = HorizontalAlignment.Right;
+        bars.VerticalAlignment = VerticalAlignment.Bottom;
+        bars.Margin = new Thickness(0, 0, -2, -2);
+        box.Children.Add(bars);
+    }
+
+    /// <summary>Two rounded bars in a <paramref name="size"/> square, at x <paramref name="x1"/> and <paramref name="x2"/>, centred vertically.</summary>
+    internal static FrameworkElement PauseBars(Brush ink, double size, double width, double height, double x1, double x2)
+    {
+        var canvas = new Canvas { Width = size, Height = size, IsHitTestVisible = false };
+        foreach (var x in new[] { x1, x2 })
+        {
+            var bar = new Microsoft.UI.Xaml.Shapes.Rectangle { Width = width, Height = height, RadiusX = width / 2, RadiusY = width / 2, Fill = ink };
+            Canvas.SetLeft(bar, x);
+            Canvas.SetTop(bar, (size - height) / 2);
+            canvas.Children.Add(bar);
+        }
+
+        return canvas;
+    }
+
+    // ---------------- Progress ----------------
+
+    /// <summary>
+    /// Progress: a 2 high track on the bottom edge, the done part filled (TODO 7.9 D). Timers use it too (the ring on the right
+    /// is gone: the text area runs to 208). Unknown size: a short piece flows along the track.
+    /// </summary>
+    internal void UpdateProgress(ActivityState? state)
+    {
+        var now = DateTimeOffset.UtcNow;
+        double? fraction = state is null ? null
+            : state.Kind == ActivityKind.Timer ? (TimerRemaining(state, now) > TimeSpan.Zero ? TimerFraction(state, now) : null)
+            : state.Fraction;
+        var flowing = state is { Kind: ActivityKind.Transfer, RunState: ActivityRunState.Running }
+                      && (state.IsIndeterminate || (state.Stage is "download" or "copy" && state.Fraction is null));
+        ProgressTrackBar.Visibility = fraction is not null || flowing ? Visibility.Visible : Visibility.Collapsed;
+        if (state is null || (fraction is null && !flowing))
+        {
+            ProgressLine.Width = 0;
+            StopFlow();
+            return;
+        }
+
+        var light = ThemeColors.FromSystem().Light;
+        ProgressTrackBar.Fill = BrushOf(light ? Windows.UI.Color.FromArgb(255, 0xD6, 0xD6, 0xD6) : Windows.UI.Color.FromArgb(255, 0x46, 0x46, 0x46));
+        var fg = ForegroundFor(state);
+        ProgressLine.Background = BrushOf(state.RunState switch
+        {
+            ActivityRunState.Error => Host.Theme.Bad,
+            _ => Windows.UI.Color.FromArgb(217, fg.R, fg.G, fg.B),   // the text colour at 85%
+        });
+        if (flowing)
+        {
+            ProgressLine.Width = 0;
+            StartFlow(ProgressLine.Background, ProgressInset, ProgressLength);
+            return;
+        }
+
+        StopFlow();
+        ProgressLine.Width = Math.Max(1, ProgressLength * fraction!.Value);
+    }
+
+    internal const double FlowSeconds = 1.6;   // one pass of the flowing piece across the track
+
+    /// <summary>Track width the running flow animation was built for; -1 = stopped.</summary>
+    internal double FlowWidth { get; private set; } = -1;
+
+    /// <summary>
+    /// The flowing bar runs on the compositor — it used to be moved from the 250ms tick, only 4 frames a second, so it stuttered.
+    /// Called every tick: only the color and position are refreshed; the animation restarts only when the track width changes.
+    /// </summary>
+    private void StartFlow(Brush brush, double left, double track)
+    {
+        FlowPiece.Background = brush;
+        FlowTrack.Margin = new Thickness(left, 0, 0, 0);
+        FlowTrack.Visibility = Visibility.Visible;
+        if (Math.Abs(track - FlowWidth) < 0.5)
+        {
+            return;
+        }
+
+        FlowWidth = track;
+        var piece = track / 4;
+        FlowTrack.Width = track;
+        FlowTrack.Clip = new RectangleGeometry { Rect = new Windows.Foundation.Rect(0, 0, track, 2) };   // the piece slides in and out at the ends
+        FlowPiece.Width = piece;
+
+        Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.SetIsTranslationEnabled(FlowPiece, true);
+        var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(FlowPiece);
+        var compositor = visual.Compositor;
+        var linear = compositor.CreateLinearEasingFunction();
+        var slide = compositor.CreateScalarKeyFrameAnimation();
+        slide.InsertKeyFrame(0f, (float)-piece, linear);
+        slide.InsertKeyFrame(1f, (float)track, linear);
+        slide.Duration = TimeSpan.FromSeconds(FlowSeconds);
+        slide.IterationBehavior = Microsoft.UI.Composition.AnimationIterationBehavior.Forever;
+        visual.StartAnimation("Translation.X", slide);
+    }
+
+    private void StopFlow()
+    {
+        if (FlowWidth < 0)
+        {
+            return;
+        }
+
+        FlowWidth = -1;
+        FlowTrack.Visibility = Visibility.Collapsed;
+        try { Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(FlowPiece).StopAnimation("Translation.X"); } catch (ArgumentException) { }
+    }
+
+    // ---------------- Close button ----------------
+
+    /// <summary>An inform card shows its close button on the right (TODO 7.3, A4; moved right 10-08); every other card and typing don't.</summary>
+    internal void ShowClose(bool show)
+    {
+        CloseZone.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        if (show && _closeInkFor != CloseLabel.Text)
+        {
+            _closeInkFor = CloseLabel.Text;
+            CentreCloseInk();
+        }
+    }
+
+    private string? _closeInkFor;
+
+    /// <summary>
+    /// "Close" centred by its glyphs, not its line box (user 10-07: it sat off-centre up and down): its own inked rows are found in
+    /// a snapshot and the label is moved so their middle is the zone's middle, rounded to 0.5. Again when the text changes.
+    /// </summary>
+    private async void CentreCloseInk()
+    {
+        try
+        {
+            CloseLabel.UpdateLayout();
+            var bitmap = new RenderTargetBitmap();
+            await bitmap.RenderAsync(CloseLabel);
+            var pixels = System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBufferExtensions.ToArray(await bitmap.GetPixelsAsync());
+            int width = bitmap.PixelWidth, height = bitmap.PixelHeight;
+            int top = -1, bottom = -1;
+            for (var y = 0; y < height; y++)
+            {
+                for (var x = 0; x < width; x++)
+                {
+                    if (pixels[(((y * width) + x) * 4) + 3] > 64)
+                    {
+                        top = top < 0 ? y : top;
+                        bottom = y;
+                        break;
+                    }
+                }
+            }
+
+            if (top < 0 || CloseLabel.ActualHeight <= 0)
+            {
+                return;
+            }
+
+            var scale = height / CloseLabel.ActualHeight;
+            var inkMiddle = (top + bottom + 1) / 2.0 / scale;
+            CloseShift.Y = Math.Round(((CloseLabel.ActualHeight / 2) - inkMiddle) * 2) / 2;
+            TaskbarHost.Log($"close ink: rows {top}–{bottom} of {height} px → y {CloseShift.Y}");
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)   // async void: nothing may escape
+        {
+            TaskbarHost.Log("close ink: measure failed — " + ex.Message);
+        }
+    }
+
+    // ---------------- Words ----------------
+
+    /// <summary>Prefix text. Differs by kind, and its length varies by language and progress, so it's included when truncating the name.</summary>
+    internal string PrefixFor(ActivityState state, DateTimeOffset now) => state.Kind switch
+    {
+        ActivityKind.Timer => TimerRemaining(state, now) is { } left && left > TimeSpan.Zero
+            ? $"{FormatClock(left)}  "   // paused shows as the left ⏸ icon + dimmed text (no emoji, it renders as a blue box)
+            : $"{Host.Text.Done}  ",
+        ActivityKind.Music => "",   // paused shows as the left ⏸ icon + dimmed text
+        ActivityKind.AgentDone => string.IsNullOrEmpty(state.Name)
+            ? $"{state.AgentLabel} {Host.Text.AgentDone}"
+            : $"{state.AgentLabel} {Host.Text.AgentDone} · ",   // no emoji, to avoid clashing with the left ✓ icon
+        // "Claude needs you · name" — the orange border alone carried the meaning since the left icon became the agent mark
+        // (the 🔔 used to say it); working and done both name their state, so this one does too (design check 10-01)
+        ActivityKind.AgentPermission => string.IsNullOrEmpty(state.Name)
+            ? $"{state.AgentLabel} {Host.Text.NeedsAnswer}"
+            : $"{state.AgentLabel} {Host.Text.NeedsAnswer} · ",
+        ActivityKind.AgentWorking => string.IsNullOrEmpty(state.Name)
+            ? $"{state.AgentLabel} {Host.Text.Working}"
+            : $"{state.AgentLabel} {Host.Text.Working} · ",
+        _ => state.RunState switch
+        {
+            ActivityRunState.Done => $"{Host.Text.Done}  ",
+            ActivityRunState.Error => $"{Host.Text.Fail}  ",
+            _ when state.IsPausedTransfer => $"{Host.Text.Paused}  ",
+            // browser download: speed (summed over all of them); the bar shows how far, when the total is known. The amount
+            // received said little without a total, so the first second just shows the name
+            _ when state.Stage is "download" or "copy" => state.Speed is { } speed ? $"{FormatBytes((long)speed)}/s  " : "",
+            _ when state.IsIndeterminate => $"{(state.IsFinishing ? Host.Text.Finishing : Host.Text.Prep)}  ",
+            _ => $"{state.Fraction * 100:0}%{TransferEta(state, now)}  ",
+        },
+    };
+
+    /// <summary>"820 KB" · "12.3 MB" · "1.24 GB".</summary>
+    private static string FormatBytes(long bytes) => bytes switch
+    {
+        < 1024 * 1024 => $"{bytes / 1024.0:0} KB",
+        < 1024L * 1024 * 1024 => $"{bytes / 1024.0 / 1024:0.0} MB",
+        _ => $"{bytes / 1024.0 / 1024 / 1024:0.00} GB",
+    };
+
+    private static TimeSpan? TimerRemaining(ActivityState state, DateTimeOffset now) => TimerParser.Remaining(state, now);
+
+    private string? _speedPath;
+    private readonly List<(DateTimeOffset At, long Done)> _speedSamples = [];
+
+    /// <summary>
+    /// Transfer remaining time " · 1m 20s". Speed is measured from the amount moved in the last 5 seconds (same as the Python version).
+    /// Empty text if the speed isn't known yet.
+    /// </summary>
+    private string TransferEta(ActivityState state, DateTimeOffset now)
+    {
+        if (state.Done is not { } done || state.Total is not > 0)
+        {
+            return string.Empty;
+        }
+
+        if (state.SourcePath != _speedPath)
+        {
+            _speedPath = state.SourcePath;
+            _speedSamples.Clear();
+        }
+
+        if (_speedSamples.Count == 0 || _speedSamples[^1].Done != done || now - _speedSamples[^1].At > TimeSpan.FromSeconds(1))
+        {
+            _speedSamples.Add((now, done));
+        }
+
+        _speedSamples.RemoveAll(sample => now - sample.At > TimeSpan.FromSeconds(5));
+        if (_speedSamples.Count < 2)
+        {
+            return string.Empty;
+        }
+
+        var seconds = (_speedSamples[^1].At - _speedSamples[0].At).TotalSeconds;
+        var speed = seconds > 0 ? (_speedSamples[^1].Done - _speedSamples[0].Done) / seconds : 0;
+        return speed > 0 ? $" · {Host.Text.FormatDuration((state.Total.Value - done) / speed)}" : string.Empty;
+    }
+
+    /// <summary>Timer bar: fraction of time elapsed (stops in place when paused).</summary>
+    private static double? TimerFraction(ActivityState state, DateTimeOffset now) => TimerParser.Fraction(state, now);
+
+    /// <summary>Remaining time "12:34" or "1:02:03".</summary>
+    private static string FormatClock(TimeSpan left)
+    {
+        var total = (int)Math.Ceiling(left.TotalSeconds);
+        return total >= 3600
+            ? $"{total / 3600}:{total / 60 % 60:00}:{total % 60:00}"
+            : $"{total / 60}:{total % 60:00}";
+    }
+
+    /// <summary>Left icon. The text uses no emoji (blue boxes, overlaps), so the icon conveys kind, direction and result.</summary>
+    private static string GlyphFor(ActivityState state) => state.Kind switch
+    {
+        ActivityKind.AgentPermission => "",                       // bell
+        ActivityKind.Error => "",                                 // error
+        ActivityKind.Transfer => state.RunState switch
+        {
+            ActivityRunState.Done => "",                          // ✓
+            ActivityRunState.Error => "",
+            _ when state.IsPausedTransfer => "",                  // pause (download stopped growing)
+            _ when state.Stage == "copy" => state.Glyph ?? "",     // Explorer: copy / unzip / compress, chosen by the watcher
+            _ => state.Direction == TransferDirection.Incoming ? "" : "",   // receive ↓ / send ↑
+        },
+        ActivityKind.AgentDone => "",
+        ActivityKind.Timer => "",                                 // stopwatch
+        ActivityKind.Notice => state.Glyph ?? "",                   // icon chosen by the notice (bell if none)
+        ActivityKind.Music => state.Stage == "paused" ? "" : "",
+        ActivityKind.AgentWorking => TaskIcons.Chat,   // same as its small icon (it was the magnifier — a card flying down changed face)
+        _ => "",
+    };
+
+    /// <summary>Card text: the normal colour, dimmed when paused — the card's type shows in its icon and border (TODO 7.9 D).</summary>
+    private Windows.UI.Color ForegroundFor(ActivityState state)
+        => state.IsPaused || state.IsPausedTransfer || (state.Kind == ActivityKind.Music && state.Stage == "paused") ? Host.Theme.Hint : Host.Theme.Foreground;
+
+    /// <summary>Width of the card text (DIP): the text column, 176 on a plain card (108 beside the close zone).</summary>
+    internal double AvailableTextWidth()
+        => IslandContent.ActualWidth > 0 ? IslandContent.ActualWidth : CardTextWidth;
+
+    /// <summary>Clips the text area to <paramref name="width"/> — reusing the clip (a new geometry on every draw before).</summary>
+    private void ClipMarquee(double width)
+    {
+        var rect = new Windows.Foundation.Rect(0, 0, Math.Max(0, width), Math.Max(1, MarqueeHost.ActualHeight));
+        if (MarqueeHost.Clip is RectangleGeometry clip)
+        {
+            if (clip.Rect != rect)
+            {
+                clip.Rect = rect;
+            }
+        }
+        else
+        {
+            MarqueeHost.Clip = new RectangleGeometry { Rect = rect };
+        }
+    }
+
+    // ---------------- Fonts ----------------
+
+    /// <summary>Font for the bold part of the island text (track title, "42%", etc.) — set by UseFontsFor.</summary>
+    private FontFamily _islandBold = new("Segoe UI");
+
+    private TextBlockMeasure? _measure;
+    private FontFamily? _measureBold;
+
+    /// <summary>The pill text's measurer, kept while the bold font stays the same (one per draw before — review 10-03).</summary>
+    private TextBlockMeasure IslandMeasure()
+    {
+        var bold = _islandStrong ? _islandBold : null;
+        if (_measure is null || !ReferenceEquals(_measureBold, bold))
+        {
+            (_measure, _measureBold) = (new TextBlockMeasure(IslandText, bold), bold);
+        }
+
+        return _measure;
+    }
+
+    /// <summary>Whether to bold the key part of the island text (alerts, progress) — music uses normal weight.</summary>
+    private bool _islandStrong = true;
+
+    /// <summary>Island text font, matched to the characters in the text (Latin, Hangul, kana) — UiFonts.Stack.</summary>
+    internal void UseFontsFor(string text)
+    {
+        (var family, _islandBold) = AppFonts.For(text, Host.Language);
+        if (!ReferenceEquals(IslandText.FontFamily, family))
+        {
+            IslandText.FontFamily = IslandTextCopy.FontFamily = family;   // WinUI's Grid has no FontFamily — set it on the text elements directly
+        }
+    }
+}

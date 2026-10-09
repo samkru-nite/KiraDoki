@@ -118,7 +118,7 @@ public sealed partial class MainWindow
             _taskbar.PlaceAt(spanLeftPx, winY, spanRightPx - spanLeftPx, _layout.Height);
             var spanWidth = (spanRightPx - spanLeftPx) / DpiSetup.Scale;
 
-            RestMarquee();   // a scrolling title would be snapshotted whole and unclipped
+            Big.RestMarquee();   // a scrolling title would be snapshotted whole and unclipped
             var oldShot = oldBig is null ? null : await Capture(CardRow);
             var oldIconX = oldBig is null ? 0 : IconX();
             Phase("old-card");
@@ -193,10 +193,10 @@ public sealed partial class MainWindow
             _placement = new BarPlacement(false, int.MinValue, int.MinValue);   // place the window for the new layout now
             RenderTaskCells();
             RenderIsland();
-            if (_lapAfterFlight)
+            if (Big.LapAfterFlight)
             {
-                _lapAfterFlight = false;
-                ReplayMarquee();   // the new title's lap, held back while it flew
+                Big.LapAfterFlight = false;
+                Big.ReplayMarquee();   // the new title's lap, held back while it flew
             }
 
             FollowTaskbar();

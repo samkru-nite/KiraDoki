@@ -27,149 +27,41 @@
             <ColumnDefinition Width="Auto" />
         </Grid.ColumnDefinitions>
     <!-- The whole big pill (background and all content): when a new item appears, this group dips slightly and springs back. The outer Root is the taskbar color.
-         Card layout = TODO 7.9 D final sizes (E2): icon 16 at 8 (centre x 16), text from x 32 to 208 (right margin 12), left-aligned;
-         an inform card puts a 68 close zone first. Music: album art 22, then the now-playing bars before the right margin -->
+         What it draws is a PillView (IslandUi/PillView.xaml, 10-09: the ⋯ list draws its cards with the same) -->
     <Grid x:Name="PillBody" Width="220">
-        <!-- The pill itself: background + thin border drawn with soft edges, on the taskbar colour (Root) — the window clip is a rectangle.
-             Smooth corners (SmoothBorder, user 10-08), as everything rounded below -->
-        <ui:SmoothBorder x:Name="PillSurface" EdgeWidth="1" Radius="16" IsHitTestVisible="False" />
-
-        <!-- Preference C1 (setting "glow border"): faint border + a 1px shine line brightest at top center — adds depth (PILLAR technique, 09-30 design) -->
-        <Grid x:Name="GlassEdge" IsHitTestVisible="False" Visibility="Collapsed">
-            <ui:SmoothBorder x:Name="GlassBorder" EdgeWidth="1" Radius="16" />
-            <Rectangle x:Name="GlassShine" Height="1" Margin="70,0.5,70,0" VerticalAlignment="Top">
-                <Rectangle.Fill>
-                    <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
-                        <GradientStop Color="#00FFFFFF" Offset="0" />
-                        <GradientStop Color="#8CFFFFFF" Offset="0.5" />
-                        <GradientStop Color="#00FFFFFF" Offset="1" />
-                    </LinearGradientBrush>
-                </Rectangle.Fill>
-            </Rectangle>
-        </Grid>
-
         <!-- When typing ends, focus moves here (so no blinking caret is left in the input box). Invisible -->
         <ContentControl x:Name="FocusSink" Width="0" Height="0" IsTabStop="True" UseSystemFocusVisuals="False" />
 
-        <!-- Transparent background: a snapshot of the row (swap animation) then covers the whole 220×32, not just the drawn bits -->
-        <Grid x:Name="CardRow" Background="Transparent">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />   <!-- close zone (inform cards only) -->
-                <ColumnDefinition Width="Auto" />   <!-- icon -->
-                <ColumnDefinition Width="*" />      <!-- text / input box -->
-                <ColumnDefinition Width="Auto" />   <!-- now-playing bars, Tab hint -->
-                <ColumnDefinition Width="Auto" />   <!-- close button (inform cards only) -->
-            </Grid.ColumnDefinitions>
-
-            <!-- Inform card: a "Close" button on the right (user 10-08, B5): 72×28, 2 in from the pill's edge so its round right end is
-                 concentric with the pill's, the left end the mirror of it; smooth corners; "Close" centred by its glyphs both ways.
-                 Its colour is a step off the pill's (PaintFill), a step more under the pointer -->
-            <Grid x:Name="CloseZone" Grid.Column="4" Width="72" Height="28" Margin="0,0,2,0" VerticalAlignment="Center" Background="Transparent" Visibility="Collapsed">
-                <ui:SmoothBorder x:Name="CloseChip" Radius="14" IsHitTestVisible="False" />
-                <TextBlock x:Name="CloseLabel" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
-                    <TextBlock.RenderTransform>
-                        <TranslateTransform x:Name="CloseShift" />
-                    </TextBlock.RenderTransform>
-                </TextBlock>
-            </Grid>
-
-            <!-- Left icon 16. Glyphs are Segoe Fluent Icons (part of Windows; no third-party icon sets) -->
-            <Grid x:Name="LeadSlot" Grid.Column="1" Width="16" Height="16" Margin="8,0,8,0" VerticalAlignment="Center">
-                <!-- Claude mode: spark extracted from claude.exe's official icon (ClaudeGlyph); the image has padding, hence larger than 16 -->
-                <Image x:Name="ClaudeGlyphImage" Width="20" Height="20" Margin="-2" Visibility="Collapsed" />
-                <!-- Codex mode: the mark from the user's own Codex extension for VS Code/Cursor (CodexMark) — IsleBar ships no OpenAI logo -->
-                <Image x:Name="CodexGlyph" Width="19" Height="19" Margin="-1.5" Visibility="Collapsed" />
-                <!-- Music: album art 22 centred on the icon spot (x 5–27), so the text still starts at 32 -->
-                <Border x:Name="AlbumArt" Width="22" Height="22" Margin="-3" CornerRadius="11" Visibility="Collapsed">
-                    <Border.Background>
-                        <ImageBrush x:Name="AlbumArtBrush" Stretch="UniformToFill" />
-                    </Border.Background>
-                </Border>
-                <FontIcon x:Name="LeadIcon" FontFamily="Segoe Fluent Icons" FontSize="16" Width="16" Height="16" Glyph="&#xE721;"
-                          HorizontalAlignment="Center" VerticalAlignment="Center" />
-                <!-- Compressing: zipper teeth over the font's document outline (E8A5) — drawn for the old 18 glyph in a 23 box, scaled to 16 -->
-                <Canvas
-                    x:Name="ZipTeeth"
-                    Width="23"
-                    Height="23"
-                    Margin="-3.5"
-                    Opacity="0"
-                    IsHitTestVisible="False"
-                    RenderTransformOrigin="0.5,0.5"
-                    Visibility="{Binding ElementName=LeadIcon, Path=Visibility}">
-                    <Canvas.RenderTransform>
-                        <ScaleTransform ScaleX="0.8889" ScaleY="0.8889" />
-                    </Canvas.RenderTransform>
-                    <Path
-                        Fill="{Binding ElementName=LeadIcon, Path=Foreground}"
-                        Data="M7.9,3.6 h1.2 v1.2 h-1.2 Z M9.1,4.8 h1.2 v1.2 h-1.2 Z M7.9,6 h1.2 v1.2 h-1.2 Z M9.1,7.2 h1.2 v1.2 h-1.2 Z M7.9,8.4 h1.2 v1.2 h-1.2 Z M9.1,9.6 h1.2 v1.2 h-1.2 Z M7.9,11.1 h2.4 v2.2 h-2.4 Z" />
-                </Canvas>
-                <!-- Paused song: veil + two bars over the cover, or a notch with them in the glyph's corner (ShowLeadPause) -->
-                <!-- Timer: a stopwatch whose hand turns (ShowLeadDial; the font's stopwatch can't move its hand) -->
-                <Grid x:Name="LeadDial" IsHitTestVisible="False" />
-                <Grid x:Name="LeadPause" IsHitTestVisible="False" />
-            </Grid>
-
-            <!-- Input box (typing until the input panel of step H). Placeholder text is always English regardless of language (Placeholders) -->
-            <TextBox
-                x:Name="Entry"
-                Grid.Column="2"
-                VerticalAlignment="Center"
-                BorderThickness="0"
-                Background="Transparent"
-                PlaceholderText="Ask Claude"
-                TextWrapping="NoWrap"
-                AcceptsReturn="False"
-                IsSpellCheckEnabled="False"
-                FontSize="14"
-                CharacterSpacing="-11"
-                MinHeight="0"
-                VerticalContentAlignment="Center"
-                Padding="0,0,0,1">
-                <!-- Keep the pill background while typing: remove the white box, border and blue underline (like the native search box) -->
-                <TextBox.Resources>
-                    <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
-                    <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
-                    <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent" />
-                    <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="Transparent" />
-                    <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent" />
-                    <Thickness x:Key="TextControlBorderThemeThickness">0</Thickness>
-                    <Thickness x:Key="TextControlBorderThemeThicknessFocused">0</Thickness>
-                </TextBox.Resources>
-            </TextBox>
-
-            <!--
-              Card text. Shown instead of the input box when not typing. The right margin (12, or 8 before the music bars) is set in code.
-              Text lives in a canvas — scrolling a long title left requires placing it wider than the slot and moving it; the visible part
-              is clipped in code. Vertical place = the 20 line box centred, moved by the measured ink offset (glyphs, not the line box, centred).
-            -->
-            <Grid x:Name="IslandContent" Grid.Column="2" Visibility="Collapsed">
-                <Canvas x:Name="MarqueeHost">
-                    <!-- Two copies of the same title side by side — after scrolling one copy width + gap, the second copy lands exactly on the first (seamless) -->
-                    <StackPanel x:Name="MarqueePanel" Orientation="Horizontal">
-                        <!-- Letter spacing −11 (1/1000em): a common tracking value for size 14 — makes the text look solid and cohesive (09-30 design T1) -->
-                        <TextBlock x:Name="IslandText" FontSize="14" CharacterSpacing="-11" LineHeight="20" LineStackingStrategy="BlockLineHeight" TextTrimming="None" TextWrapping="NoWrap" />
-                        <!-- Timer digits: one per slot (fixed width + only changed digits roll, 09-30 design M4) -->
-                        <StackPanel x:Name="ClockDigits" Orientation="Horizontal" Margin="7,0,0,0" Visibility="Collapsed" />
-                        <TextBlock x:Name="IslandTextCopy" FontSize="14" CharacterSpacing="-11" LineHeight="20" LineStackingStrategy="BlockLineHeight" TextTrimming="None" TextWrapping="NoWrap"
-                                   Margin="40,0,0,0" Visibility="Collapsed" />
-                    </StackPanel>
-                </Canvas>
-                <!-- While scrolling, the ends fade into the pill colour: left 10 (only while moving), right 18 (code paints the colour) -->
-                <Rectangle x:Name="FadeLeft" Width="10" Height="20" HorizontalAlignment="Left" VerticalAlignment="Center" IsHitTestVisible="False" Visibility="Collapsed" />
-                <Rectangle x:Name="FadeRight" Width="18" Height="20" HorizontalAlignment="Right" VerticalAlignment="Center" IsHitTestVisible="False" Visibility="Collapsed" />
-            </Grid>
-
-            <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
-                <!-- Music playing: four dancing bars, 7 from the right edge: their middle 16 from it, like the cover / icon on the left (user 10-07: lopsided at 12). Purely decorative and animated by the compositor -->
-                <StackPanel x:Name="Equalizer" Orientation="Horizontal" Spacing="2" Height="14"
-                            Margin="0,0,7,0" VerticalAlignment="Center" Visibility="Collapsed">
-                    <Rectangle x:Name="Eq0" Width="3" Height="14" RadiusX="1.5" RadiusY="1.5" />
-                    <Rectangle x:Name="Eq1" Width="3" Height="14" RadiusX="1.5" RadiusY="1.5" />
-                    <Rectangle x:Name="Eq2" Width="3" Height="14" RadiusX="1.5" RadiusY="1.5" />
-                    <Rectangle x:Name="Eq3" Width="3" Height="14" RadiusX="1.5" RadiusY="1.5" />
-                </StackPanel>
-
+        <ui:PillView x:Name="Big">
+            <ui:PillView.Input>
+                <!-- Input box (typing until the input panel of step H). Placeholder text is always English regardless of language (Placeholders) -->
+                <TextBox
+                    x:Name="Entry"
+                    VerticalAlignment="Center"
+                    BorderThickness="0"
+                    Background="Transparent"
+                    PlaceholderText="Ask Claude"
+                    TextWrapping="NoWrap"
+                    AcceptsReturn="False"
+                    IsSpellCheckEnabled="False"
+                    FontSize="14"
+                    CharacterSpacing="-11"
+                    MinHeight="0"
+                    VerticalContentAlignment="Center"
+                    Padding="0,0,0,1">
+                    <!-- Keep the pill background while typing: remove the white box, border and blue underline (like the native search box) -->
+                    <TextBox.Resources>
+                        <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
+                        <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
+                        <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent" />
+                        <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="Transparent" />
+                        <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent" />
+                        <Thickness x:Key="TextControlBorderThemeThickness">0</Thickness>
+                        <Thickness x:Key="TextControlBorderThemeThicknessFocused">0</Thickness>
+                    </TextBox.Resources>
+                </TextBox>
+            </ui:PillView.Input>
+            <ui:PillView.Hint>
                 <!-- Tab hint: dim [Tab] + next mode icon, only while typing with the input box empty (09-30 design decision B) -->
                 <StackPanel x:Name="TabHint" Orientation="Horizontal" Spacing="5" Opacity="0.6" VerticalAlignment="Center"
                             Margin="0,0,10,0" Visibility="Collapsed" IsHitTestVisible="False">
@@ -179,26 +71,8 @@
                     <FontIcon x:Name="TabNextIcon" FontFamily="Segoe Fluent Icons" FontSize="13" VerticalAlignment="Center" />
                     <Image x:Name="TabNextMark" Width="13" Height="13" VerticalAlignment="Center" Visibility="Collapsed" />
                 </StackPanel>
-
-            </StackPanel>
-
-            <!-- Progress: a 2 high track on the bottom edge, 16 in from each end (188 long); the filled part on top. Inside CardRow so the
-                 swap's snapshot of the card carries it (it popped in on landing, user 10-08) -->
-            <Rectangle x:Name="ProgressTrackBar" Grid.ColumnSpan="4" Height="2" Margin="16,0,16,0" RadiusX="1" RadiusY="1" VerticalAlignment="Bottom"
-                       IsHitTestVisible="False" Visibility="Collapsed" />
-            <Border x:Name="ProgressLine" Grid.ColumnSpan="4" Height="2" Width="0" CornerRadius="1" Margin="16,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Bottom"
-                    IsHitTestVisible="False" />
-
-            <!-- Flowing bar (transfer with unknown size): a quarter-length piece slides along the track, animated by the compositor -->
-            <Grid x:Name="FlowTrack" Grid.ColumnSpan="4" Height="2" Margin="16,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Bottom" Visibility="Collapsed" IsHitTestVisible="False">
-                <Border x:Name="FlowPiece" HorizontalAlignment="Left" CornerRadius="1" />
-            </Grid>
-        </Grid>
-
-        <!-- Pinned card's border, 2 wide inside the edge: pending orange, inform green, temporary warning red (turned on by IslandAnimator). Clicks pass through -->
-        <!-- The ⋯ list is up (F3): the pill's colour over the content dims it — over the content, not on it, so snapshots of CardRow stay bright -->
-        <ui:SmoothBorder x:Name="DimVeil" Radius="16" Opacity="0" IsHitTestVisible="False" />
-        <ui:SmoothBorder x:Name="GlowRing" EdgeWidth="2" Radius="16" IsHitTestVisible="False" />
+            </ui:PillView.Hint>
+        </ui:PillView>
     </Grid>
 
     <!-- Small pill (TODO 7.9 D): task icons + ⋯ │ circle (or circle │ ⋯ + task icons when it sits left — code swaps the columns).
