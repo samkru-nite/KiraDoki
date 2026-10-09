@@ -58,13 +58,13 @@ internal sealed class ActivityFeed : IDisposable
     public void ApplySettings() => Watchers?.Apply(WatchOptions(_settings()));
 
     /// <summary>
-    /// Notice settings for the watchers. The Store build leaves updates to the Store (its policy forbids self-updating) and
-    /// doesn't offer hiding Windows' banners (it has no uninstaller that could give them back).
+    /// Notice settings for the watchers. The Store build doesn't offer hiding Windows' banners (it has no uninstaller that could
+    /// give them back).
     /// </summary>
     private static SystemWatchOptions WatchOptions(IsleBarSettings settings)
     {
         var options = SystemWatchOptions.From(settings);
-        return AppPaths.IsPackaged ? options with { Updates = false, HideBanners = false } : options;
+        return AppPaths.IsPackaged ? options with { HideBanners = false } : options;
     }
 
     /// <summary>One tick: every item the pill could show right now, after the rules that act on them have run.</summary>

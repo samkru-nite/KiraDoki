@@ -71,17 +71,6 @@ public sealed class ToastBannerPlanTests
     }
 
     [Fact]
-    public void Message_card_is_off_by_default_and_saved()
-    {
-        Assert.False(new IsleBarSettings().ToastCard);
-        var raw = new System.Text.Json.Nodes.JsonObject();
-        SettingsCodec.Apply(new IsleBarSettings { ToastCard = true }, raw);
-        Assert.True(raw["toast_card"]!.GetValue<bool>());
-        Assert.True(SettingsCodec.FromJson(raw).ToastCard);
-        Assert.True(new IsleBarSettings { ToastCard = true }.Clone().ToastCard);
-    }
-
-    [Fact]
     public void Browser_media_is_off_by_default_and_saved()
     {
         Assert.False(new IsleBarSettings().BrowserMedia);

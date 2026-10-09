@@ -16,11 +16,10 @@ public sealed record SystemWatchOptions(
     bool Privacy = true,
     string CalendarIcs = "",
     bool Toasts = false,
-    bool HideBanners = false,
-    bool Updates = true)
+    bool HideBanners = false)
 {
     /// <summary>Everything off.</summary>
-    public static SystemWatchOptions None { get; } = new(false, false, false, false, false, false, false, "", Toasts: false, HideBanners: false, Updates: false);
+    public static SystemWatchOptions None { get; } = new(false, false, false, false, false, false, false, "", Toasts: false, HideBanners: false);
 
     /// <summary>Calendar notices are on only when a URL is set.</summary>
     public bool Calendar => !string.IsNullOrWhiteSpace(CalendarIcs);
@@ -38,7 +37,6 @@ public sealed record SystemWatchOptions(
             settings.NotifyPrivacy,
             settings.CalendarIcs?.Trim() ?? "",
             settings.NotifyToasts,
-            settings.NotifyToasts && settings.HideToastBanners,   // hiding Windows' banners only makes sense while the bar shows them
-            settings.CheckUpdates);
+            settings.NotifyToasts && settings.HideToastBanners);   // hiding Windows' banners only makes sense while the bar shows them
     }
 }

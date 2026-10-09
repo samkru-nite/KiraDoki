@@ -50,8 +50,6 @@
       Item to check in phase 0: whether the version matches.
     -->
     <PackageReference Include="Interop.UIAutomationClient" Version="10.19041.0" />
-    <!-- opt-in crash reports (10-01) — see Interop/CrashReports.cs and docs/privacy.html -->
-    <PackageReference Include="Sentry" Version="6.11.1" />
     <ProjectReference Include="..\IsleBar.Core\IsleBar.Core.csproj" />
   </ItemGroup>
 

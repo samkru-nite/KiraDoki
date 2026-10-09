@@ -110,7 +110,6 @@ public sealed partial class MainWindow : Window
         _settings = _store.Load();
         _language = LanguageResolver.Resolve(_settings.Lang, CurrentUiLanguageId());
         _text = LanguageCatalog.For(_language);
-        SystemWatch.Updater.Strings = () => _text;
         _theme = ThemeColors.FromSystem();
         _history = new HistoryNavigator(_settings.History);
 
@@ -968,7 +967,7 @@ public sealed partial class MainWindow : Window
 
             FollowTaskbar();
             RefreshBesideColor();
-            var items = _feed.Collect(DateTimeOffset.UtcNow);
+            var items = KeepLiftedCard(_feed.Collect(DateTimeOffset.UtcNow));
             EndStaleHover();
 
             _cards.Update(items, DateTimeOffset.UtcNow);
@@ -978,7 +977,6 @@ public sealed partial class MainWindow : Window
             var next =_shownCard is { } shown ? new IslandSnapshot(shown.State, _cards.Cards.Count - 1) : IslandSnapshot.Empty;
             _snapshot = next;
             LoadAlbumArt();
-            ExpandIfMessage(items);   // feed EVERY new message notice to the expanded card, not just the primary one (bursts dropped middles — user 09-30)
             if (_flying)
             {
                 return;   // a transition is flying — it draws the latest state when it lands
@@ -2409,85 +2407,6 @@ public sealed partial class MainWindow : Window
         Entry.SelectionStart = Entry.Text.Length;
     }
 
-    private ExpandedNotice? _expanded;
-    private DateTimeOffset _lastExpandedAt = DateTimeOffset.MinValue;   // high-water mark so an older notice resurfacing (e.g. after X dismisses a newer one) doesn't re-open the card
-
-    /// <summary>
-    /// A message (Windows notification, KakaoTalk) grows out of the pill as a card, then shrinks back; the pill keeps the
-    /// compact line for the rest of the notice's time. Not while typing (the card would cover what you are writing).
-    /// </summary>
-    /// <summary>
-    /// Grows the expanded card for every message notice we haven't shown yet — fed the whole activity list, not just the
-    /// primary one, so a burst of messages all reach the card and stack (relying on the single primary dropped the middle
-    /// ones — user 09-30). The high-water mark on UpdatedAt means each message opens once, and an older one resurfacing
-    /// (e.g. after the pill's X removes a newer one) does not re-open it.
-    /// </summary>
-    private void ExpandIfMessage(IReadOnlyList<ActivityState> items)
-    {
-        if (_typing)
-        {
-            return;
-        }
-
-        var fresh = items
-            .Where(s => s is { Kind: ActivityKind.Notice, Stage: "expand" } && s.UpdatedAt > _lastExpandedAt)
-            .OrderBy(s => s.UpdatedAt)
-            .ToList();
-        if (fresh.Count == 0)
-        {
-            return;
-        }
-
-        // Mark these as shown NOW so the next tick doesn't re-feed them, but show the card OUTSIDE this tick: showing a card
-        // creates/moves windows and runs composition, which pumps the message loop and stalled the island timer (the pill and
-        // card then froze after a couple of messages — root cause found 09-30). Decoupling it keeps the tick fast and alive.
-        _lastExpandedAt = fresh[^1].UpdatedAt;
-        if (!_settings.ToastCard)
-        {
-            // card off (default, user 10-04): Windows messages stay as text on the pill. IsleBar's own cards (connect agents,
-            // update available) still open — clicking the card is how you act on them.
-            fresh.RemoveAll(s => s.Name != "IsleBar");
-            if (fresh.Count == 0)
-            {
-                return;
-            }
-        }
-
-        _ui.TryEnqueue(() =>
-        {
-            try
-            {
-                ExpandCards(fresh);
-            }
-            catch
-            {
-                // showing the card must never take the island timer down with it
-            }
-        });
-    }
-
-    private void ExpandCards(List<ActivityState> fresh)
-    {
-        if (_expanded is null)
-        {
-            _expanded = new ExpandedNotice();
-            AppFonts.Apply(_expanded, _language);
-        }
-
-        foreach (var state in fresh)
-        {
-            _expanded.Show(
-                new Windows.Graphics.RectInt32(Spot.X, Spot.Y, _width, _height),
-                state.Glyph ?? "",
-                state.Title ?? string.Empty,
-                state.Msg,
-                state.Name,
-                state.Open,
-                state.AppId);
-            _lastExpandedAt = state.UpdatedAt;
-        }
-    }
-
     /// <summary>Mode icon (Segoe Fluent Icons) — shared by the left icon and the Tab hint.</summary>
     private static string ModeGlyph(BarMode mode) => mode switch
     {
@@ -2759,8 +2678,6 @@ public sealed partial class MainWindow : Window
     private const int MenuQuickBase = 20;   // quick timers (from settings, up to 6)
     private const int MenuPomodoro = 13;
     private const int MenuStopwatch = 14;
-    private const int MenuUpdate = 15;   // "Download update (x.y.z)" while a newer release is out
-    private const int MenuNotifications = 16;   // opens the Windows notification centre
     private const int MenuSettings = 17;
 
     /// <summary>A new timer waiting for "Replace the running timer?" to be answered (Enter = replace, Esc = keep).</summary>
@@ -2908,13 +2825,7 @@ public sealed partial class MainWindow : Window
         timers.Add(new MenuItem(MenuPomodoro, _text.Pomodoro));
         timers.Add(new MenuItem(MenuStopwatch, _text.Stopwatch));
 
-        var items = new List<MenuItem> { new(0, _text.Timer, Sub: timers), new(MenuNotifications, _text.AllNotifications) };
-        var update = _settings.CheckUpdates ? SystemWatch.UpdateWatcher.Available : null;
-        if (update is { } u)
-        {
-            items.Add(new MenuItem(MenuUpdate, $"{_text.UpdateMenu} ({u.Version.ToString(3)})"));   // a newer release is out (10-01)
-        }
-
+        var items = new List<MenuItem> { new(0, _text.Timer, Sub: timers) };
         items.Add(MenuItem.Separator);
         items.Add(new MenuItem(MenuSettings, _text.Settings));
         items.Add(new MenuItem(MenuQuit, _text.Quit));
@@ -2928,19 +2839,6 @@ public sealed partial class MainWindow : Window
         else if (chosen == MenuSettings)
         {
             ShowSettings();
-        }
-        else if (chosen == MenuNotifications)
-        {
-            // the full list is Windows' own notification centre (user 10-03: a list of our own would only duplicate it).
-            // Win+N opens it; the "ms-actioncenter:" link did nothing on Windows 11 (measured 10-03).
-            NativeMethods.keybd_event(NativeMethods.VK_LWIN, 0, 0, IntPtr.Zero);
-            NativeMethods.keybd_event((byte)'N', 0, 0, IntPtr.Zero);
-            NativeMethods.keybd_event((byte)'N', 0, NativeMethods.KEYEVENTF_KEYUP, IntPtr.Zero);
-            NativeMethods.keybd_event(NativeMethods.VK_LWIN, 0, NativeMethods.KEYEVENTF_KEYUP, IntPtr.Zero);
-        }
-        else if (chosen == MenuUpdate && update is not null)
-        {
-            SystemWatch.Updater.Start();   // one-click update: download, check, install, restart
         }
         else if (chosen >= MenuQuickBase && chosen - MenuQuickBase < quick.Count)
         {
@@ -3025,7 +2923,7 @@ public sealed partial class MainWindow : Window
         _foreground?.Dispose();
         // every window closed, so the app ends by itself instead of waiting 4 s for the forced exit (review 10-03) — first, while
         // the meter and timers still exist (closing compose re-renders the pill)
-        foreach (var close in new Action?[] { _settingsWindow is null ? null : _settingsWindow.Close, _expanded is null ? null : _expanded.CloseAll, _lift is null ? null : _lift.Close, _preview is null ? null : _preview.Close, _compose is null ? null : _compose.Close })
+        foreach (var close in new Action?[] { _settingsWindow is null ? null : _settingsWindow.Close, _lift is null ? null : _lift.Close, _preview is null ? null : _preview.Close, _compose is null ? null : _compose.Close })
         {
             try
             {

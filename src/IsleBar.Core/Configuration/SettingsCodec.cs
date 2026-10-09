@@ -54,9 +54,7 @@ public static class SettingsCodec
     private const string KeyNotifyPrivacy = "notify_privacy";
     private const string KeyNotifyToasts = "notify_toasts";
     private const string KeyHideToastBanners = "hide_toast_banners";
-    private const string KeyToastCard = "toast_card";
     private const string KeyBrowserMedia = "browser_media";
-    private const string KeyCheckUpdates = "check_updates";
     private const string KeyMuteChimeFullscreen = "mute_chime_fullscreen";
     private const string KeyCalendarIcs = "calendar_ics";
     private const string KeyDropCommand = "drop_command";
@@ -121,9 +119,7 @@ public static class SettingsCodec
         s.NotifyPrivacy = AsBool(raw[KeyNotifyPrivacy]) ?? s.NotifyPrivacy;
         s.NotifyToasts = AsBool(raw[KeyNotifyToasts]) ?? s.NotifyToasts;
         s.HideToastBanners = AsBool(raw[KeyHideToastBanners]) ?? s.HideToastBanners;
-        s.ToastCard = AsBool(raw[KeyToastCard]) ?? s.ToastCard;
         s.BrowserMedia = AsBool(raw[KeyBrowserMedia]) ?? s.BrowserMedia;
-        s.CheckUpdates = AsBool(raw[KeyCheckUpdates]) ?? s.CheckUpdates;
         s.MuteChimeFullscreen = AsBool(raw[KeyMuteChimeFullscreen]) ?? s.MuteChimeFullscreen;
         if (AsString(raw[KeyCalendarIcs]) is { } ics)
         {
@@ -314,9 +310,7 @@ public static class SettingsCodec
         raw[KeyNotifyPrivacy] = s.NotifyPrivacy;
         raw[KeyNotifyToasts] = s.NotifyToasts;
         raw[KeyHideToastBanners] = s.HideToastBanners;
-        raw[KeyToastCard] = s.ToastCard;
         raw[KeyBrowserMedia] = s.BrowserMedia;
-        raw[KeyCheckUpdates] = s.CheckUpdates;
         raw[KeyMuteChimeFullscreen] = s.MuteChimeFullscreen;
         raw[KeyCalendarIcs] = s.CalendarIcs;
         raw[KeyDropCommand] = s.DropCommand;

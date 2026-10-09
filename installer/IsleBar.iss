@@ -63,21 +63,11 @@ de.TaskStartup=IsleBar bei der Anmeldung starten
 it.TaskStartup=Avvia IsleBar all'accesso
 pt.TaskStartup=Iniciar o IsleBar ao entrar
 es.TaskStartup=Iniciar IsleBar al iniciar sesión
-en.TaskCrash=Send crash reports (the error, app and Windows version, basic device info — no files, titles or questions)
-ko.TaskCrash=오류 보고 보내기 (오류 내용·앱/Windows 버전·기본 기기 정보만 — 파일·창 제목·질문은 보내지 않음)
-ja.TaskCrash=クラッシュレポートを送信(エラー・アプリと Windows のバージョン・基本的な機器情報のみ — ファイル・タイトル・質問は送りません)
-fr.TaskCrash=Envoyer les rapports de plantage (erreur, versions de l’app et de Windows, infos de base sur l’appareil — ni fichiers, ni titres, ni questions)
-de.TaskCrash=Absturzberichte senden (Fehler, App- und Windows-Version, Basisdaten zum Gerät – keine Dateien, Titel oder Fragen)
-it.TaskCrash=Invia segnalazioni di arresto anomalo (errore, versione app e Windows, dati base del dispositivo — niente file, titoli o domande)
-pt.TaskCrash=Enviar relatórios de falha (erro, versão do app e do Windows, dados básicos do aparelho — sem arquivos, títulos ou perguntas)
-es.TaskCrash=Enviar informes de errores (error, versión de la app y de Windows, datos básicos del equipo — sin archivos, títulos ni preguntas)
 
 [Tasks]
 Name: "startup"; Description: "{cm:TaskStartup}"
 ; not offered after the person disconnected in IsleBar's settings (reconnect there) — a reinstall used to undo that (review 10-03)
 Name: "hooks"; Description: "{cm:TaskHooks}"; Check: not HooksTurnedOff
-; opt-in, unticked by default — the same switch is in IsleBar's settings (10-01)
-Name: "crashreports"; Description: "{cm:TaskCrash}"; Flags: unchecked
 
 [Files]
 Source: "{#PublishDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -93,10 +83,6 @@ Source: "..\licenses\*"; DestDir: "{app}\licenses"; Flags: ignoreversion
 Type: files; Name: "{app}\Assets\codex-blossom-*.svg"
 
 [Registry]
-; Written only on the first install: Inno re-applies the remembered tasks on every update (the one-click update runs setup
-; silently), which used to switch crash reports back on after the user had turned them off in settings (code review 10-02).
-Root: HKCU; Subkey: "Software\IsleBar"; ValueType: dword; ValueName: "CrashReports"; ValueData: 1; Flags: uninsdeletekey createvalueifdoesntexist; Tasks: crashreports
-Root: HKCU; Subkey: "Software\IsleBar"; ValueType: dword; ValueName: "CrashReports"; ValueData: 0; Flags: uninsdeletekey createvalueifdoesntexist; Tasks: not crashreports
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "IsleBar"; \
   ValueData: """{app}\IsleBar.App.exe"""; Flags: uninsdeletevalue; Tasks: startup
 

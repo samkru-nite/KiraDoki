@@ -158,17 +158,11 @@ public sealed class IsleBarSettings
     /// </summary>
     public bool HideToastBanners { get; set; }
 
-    /// <summary>Grow a message card out of the pill for Windows notifications. Off by default (user 10-04: the card looked bad; the pill text is enough).</summary>
-    public bool ToastCard { get; set; }
-
     /// <summary>
     /// Also show what plays in a browser (YouTube, Bilibili…) on the music isle. Off by default — browser playback was filtered out
     /// on purpose (user feedback 09-30); this puts it back for those who want it (10-04).
     /// </summary>
     public bool BrowserMedia { get; set; }
-
-    /// <summary>Look for a newer IsleBar on GitHub once a day and say so on the bar (10-01). On by default; sends nothing about the person.</summary>
-    public bool CheckUpdates { get; set; } = true;
 
     /// <summary>
     /// No chime while a full-screen app (game, video, presentation) is in front (10-03). Off by default — some people wait for an
@@ -239,9 +233,7 @@ public sealed class IsleBarSettings
         NotifyPrivacy = NotifyPrivacy,
         NotifyToasts = NotifyToasts,
         HideToastBanners = HideToastBanners,
-        ToastCard = ToastCard,
         BrowserMedia = BrowserMedia,
-        CheckUpdates = CheckUpdates,
         MuteChimeFullscreen = MuteChimeFullscreen,
         CalendarIcs = CalendarIcs,
         DropCommand = DropCommand,

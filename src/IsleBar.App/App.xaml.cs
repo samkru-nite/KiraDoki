@@ -27,16 +27,13 @@ public partial class App : Application
 
         // Record why the process died before it goes. The watchdog/launcher brings the bar back, but until now nothing said what
         // crashed it (10-01). We log and let it fall through — a clean restart beats limping on in an unknown state.
-        CrashReports.StartIfAllowed();   // opt-in only (setup checkbox or settings) — 10-01
         UnhandledException += (_, e) =>
         {
             AppLog.Write($"FATAL (ui) {e.Message}{Environment.NewLine}{e.Exception}");
-            CrashReports.Capture(e.Exception, "ui");
         };
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
         {
             AppLog.Write($"FATAL (background thread) isTerminating={e.IsTerminating}{Environment.NewLine}{e.ExceptionObject}");
-            CrashReports.Capture(e.ExceptionObject as Exception, "background");
         };
         System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (_, e) =>
         {

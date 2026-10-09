@@ -153,26 +153,8 @@ public sealed class LanguageStrings
     /// <summary>Settings toggle: hide Windows' own notification pop-ups, show them only on the bar.</summary>
     public required string HideToastBanners { get; init; }
 
-    /// <summary>Settings toggle: pop a message card out of the pill for Windows notifications.</summary>
-    public required string ToastCard { get; init; }
-
     /// <summary>Settings toggle: also show browser playback (videos) on the music isle.</summary>
     public required string BrowserMedia { get; init; }
-
-    /// <summary>Settings: opt-in crash reports — says plainly what is (and isn't) sent (10-01).</summary>
-    public required string CrashReports { get; init; }
-
-    /// <summary>Settings: daily check for a newer version (10-01).</summary>
-    public required string CheckUpdates { get; init; }
-
-    /// <summary>Card text when a newer IsleBar is out: "Update available — click to install".</summary>
-    public required string UpdateAvailable { get; init; }
-
-    /// <summary>Right-click menu item while an update is available: "Update now".</summary>
-    public required string UpdateMenu { get; init; }
-
-    /// <summary>Right-click menu: open the Windows notification centre (10-03 — the full notification list lives there).</summary>
-    public required string AllNotifications { get; init; }
 
     /// <summary>An agent hit its plan's usage limit; {a} = agent name.</summary>
     public required string UsageLimit { get; init; }
@@ -203,9 +185,6 @@ public sealed class LanguageStrings
 
     /// <summary>When the usage limit lifts; {} = local time (HH:mm).</summary>
     public required string ResetsAt { get; init; }
-
-    /// <summary>Card when a one-click update could not be downloaded or checked: "Update failed — click to download it yourself".</summary>
-    public required string UpdateFailed { get; init; }
 
     /// <summary>Settings: connect / disconnect Claude Code and Codex (writes or removes IsleBar's hooks).</summary>
     public required string ConnectAgents { get; init; }

@@ -27,7 +27,6 @@ internal sealed class SystemWatchers : IDisposable
     private CalendarWatcher? _calendar;
     private PrivacyWatcher? _privacy;
     private ToastWatcher? _toasts;
-    private UpdateWatcher? _updates;
     private AgentRecordWatcher? _codex;   // always on: a Codex turn that fails and a Claude turn interrupted with Esc fire no hook (10-03)
     private bool? _hidingBanners;   // null until the first Apply (which also cleans up after a crash with the option off)
     private bool _disposed;
@@ -60,7 +59,6 @@ internal sealed class SystemWatchers : IDisposable
             Toggle(ref _load, options.Load, () => new LoadWatcher(_strings));
             Toggle(ref _privacy, options.Privacy, () => new PrivacyWatcher(_strings));
             Toggle(ref _toasts, options.Toasts, () => new ToastWatcher(_strings));
-            Toggle(ref _updates, options.Updates, () => new UpdateWatcher(_strings));
             Toggle(ref _codex, true, () => new AgentRecordWatcher(_strings));
             if (_toasts is not null)
             {
@@ -90,7 +88,7 @@ internal sealed class SystemWatchers : IDisposable
             NoticeWatcher?[] watchers;
             lock (_gate)
             {
-                watchers = [_power, _bluetooth, _network, _focus, _clipboard, _load, _calendar, _privacy, _toasts, _updates, _codex];
+                watchers = [_power, _bluetooth, _network, _focus, _clipboard, _load, _calendar, _privacy, _toasts, _codex];
             }
 
             List<ActivityState>? all = null;
@@ -137,7 +135,6 @@ internal sealed class SystemWatchers : IDisposable
             Toggle(ref _calendar, false, null!);
             Toggle(ref _privacy, false, null!);
             Toggle(ref _toasts, false, null!);
-            Toggle(ref _updates, false, null!);
             Toggle(ref _codex, false, null!);
             ApplyBanners(false, wait: true);   // quitting the bar gives Windows its pop-ups back (nothing would show the notifications otherwise)
         }

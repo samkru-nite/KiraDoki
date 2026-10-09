@@ -53,7 +53,6 @@ public static partial class Program
 
         try
         {
-            Interop.CrashReports.StartIfAllowed();
             var backoff = new IsleBar.Core.Supervisor.RelaunchBackoff();
             while (true)
             {
@@ -71,11 +70,6 @@ public static partial class Program
                 }
 
                 Interop.TaskbarHost.Log($"supervisor: bar exited with code {code} (ran {(DateTime.UtcNow - started).TotalSeconds:0}s)");
-                if (IsleBar.Core.Diagnostics.CrashText.IsNativeCrash(code))
-                {
-                    Interop.CrashReports.StartIfAllowed();   // the person may have opted in since the supervisor started
-                    Interop.CrashReports.BarExited(code, DateTime.UtcNow - started);
-                }
                 if (!ExitCodes.ShouldRelaunch(code))
                 {
                     return code;

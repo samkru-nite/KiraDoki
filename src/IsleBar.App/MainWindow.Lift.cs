@@ -87,6 +87,7 @@ public sealed partial class MainWindow
             _lift = new LiftWindow();
             _lift.Gone = () =>
             {
+                CloseKeptCard();
                 _cards.SetHover(_hovering, DateTimeOffset.UtcNow);
                 PressFeedback.LetGo(PillBody);   // the slide doesn't land in the pill: a pill held by its click comes up here
                 if (_hoverBig)
@@ -115,6 +116,7 @@ public sealed partial class MainWindow
         var cover = CoverOf(card)?.Image;
         var look = TaskIcons.For(card, cover is not null, DateTimeOffset.UtcNow);
         _liftIconKey = LiftIconKey(card);
+        _liftKept = card.Type == CardType.Temporary ? card.State : null;
         _lift.Open(new LiftRequest(
             card.Key,
             pill,
@@ -241,6 +243,44 @@ public sealed partial class MainWindow
     }
 
     private void CloseLift() => _lift?.Collapse();
+
+    /// <summary>
+    /// A temporary card (a notification, "copied") while it is lifted (TODO 7.9 F4): its countdown stops — it stays even after its
+    /// source has let it go — and it goes away when the card is put down (<see cref="CloseKeptCard"/>).
+    /// </summary>
+    private ActivityState? _liftKept;
+
+    /// <summary>The items of this tick, with the lifted temporary card put back if its source has let it go.</summary>
+    private IReadOnlyList<ActivityState> KeepLiftedCard(IReadOnlyList<ActivityState> items)
+    {
+        if (_liftKept is not { } kept)
+        {
+            return items;
+        }
+
+        var key = CardStack.KeyOf(kept);
+        if (items.FirstOrDefault(s => CardStack.KeyOf(s) == key) is { } now)
+        {
+            _liftKept = now;   // still there: the latest of it
+            return items;
+        }
+
+        return [.. items, kept];
+    }
+
+    /// <summary>The lifted temporary card has been put down: it goes, as if closed.</summary>
+    private void CloseKeptCard()
+    {
+        if (_liftKept is not { } kept)
+        {
+            return;
+        }
+
+        _liftKept = null;
+        var key = CardStack.KeyOf(kept);
+        TaskbarHost.Log($"lift: temporary {key} put down — closed");
+        CloseCard(_cards.Cards.FirstOrDefault(c => c.Key == key));
+    }
 
     /// <summary>The lifted card's icon: as on the big pill — a timer's dial turning on its own, an agent's logo in its own colours.</summary>
     private Microsoft.UI.Xaml.UIElement LiftIcon(Card card)

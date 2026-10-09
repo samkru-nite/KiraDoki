@@ -287,7 +287,6 @@ internal sealed class SettingsWindow : Window
         ToggleRow(_text.NotifyLoad, () => _settings.NotifyLoad, v => _settings.NotifyLoad = v);
         ToggleRow(_text.NotifyPrivacy, () => _settings.NotifyPrivacy, v => _settings.NotifyPrivacy = v);
         ToggleRow(_text.NotifyToasts, () => _settings.NotifyToasts, v => _settings.NotifyToasts = v);
-        ToggleRow(_text.ToastCard, () => _settings.ToastCard, v => _settings.ToastCard = v);
         if (!Interop.AppPaths.IsPackaged)   // the Store build has no uninstaller that could give the banners back
         {
             ToggleRow(_text.HideToastBanners, () => _settings.HideToastBanners, v => _settings.HideToastBanners = v);   // user 10-01 — a toggle, so it can ship
@@ -358,13 +357,7 @@ internal sealed class SettingsWindow : Window
         // a program on dropped files (we use it for phone transfer); the toggle picks whether a drop attaches to the prompt or runs it (10-01).
         Section(_text.AdvancedSection);
         TextRow(_text.DropCommand, _text.DropCommandHint, () => _settings.DropCommand, v => _settings.DropCommand = v);
-        // opt-in crash reports (10-01): stored in the registry next to the setup choice, not in islebar.json
-        ToggleRow(_text.CrashReports, () => Interop.CrashReports.Consent, v => Interop.CrashReports.Consent = v);
         ToggleRow(_text.MuteChimeFullscreen, () => _settings.MuteChimeFullscreen, v => _settings.MuteChimeFullscreen = v);   // 10-03
-        if (!Interop.AppPaths.IsPackaged)   // the Store updates its own apps
-        {
-            ToggleRow(_text.CheckUpdates, () => _settings.CheckUpdates, v => _settings.CheckUpdates = v);
-        }
 
         // connect / disconnect Claude Code and Codex without setup (the Store build has none) — 10-01
         // the script takes seconds: the switch is held until it ends and then shows what the files really say — a quick
