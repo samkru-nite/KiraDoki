@@ -353,6 +353,12 @@ internal sealed class SettingsWindow : Window
         ToggleRow(_text.Transparency, () => _settings.Transparency, v => _settings.Transparency = v);   // the lifted card's glass (丙④, user 10-10)
         ChoiceRow(_text.CardTextLabel, [("left", _text.CardTextLeft), ("group", _text.CardTextCenterGroup), ("text", _text.CardTextCenterText)],
             () => _settings.CardTextAlign, v => _settings.CardTextAlign = v);
+        // the input panel's file list: how many rows (user 10-09: 8 by default, yours to change; more than fit the screen scroll)
+        var rowChoices = new[] { 5, 6, 8, 10, 12, 15 }.Append(_settings.FileResults).Distinct().Order()
+            .Select(n => n.ToString(System.Globalization.CultureInfo.InvariantCulture)).Select(v => (v, v)).ToArray();
+        ChoiceRow(_text.FileResultsCount, rowChoices,
+            () => _settings.FileResults.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            v => _settings.FileResults = IsleBar.Core.Search.FileSearchQuery.ClampCount(int.Parse(v, System.Globalization.CultureInfo.InvariantCulture)));
 
         // Advanced: power options, grouped under their own heading but always visible (labelled, not hidden). The drop command runs
         // a program on dropped files (we use it for phone transfer); the toggle picks whether a drop attaches to the prompt or runs it (10-01).

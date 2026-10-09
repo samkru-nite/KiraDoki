@@ -23,7 +23,7 @@ internal sealed record PanelRequest(
     double ListHeight);
 
 /// <summary>
-/// The input panel (TODO 7.9 H, user 10-09): grows out of the small pill's circle into a 361-wide sheet over the taskbar — the list
+/// The input panel (TODO 7.9 H, user 10-09): grows out of the small pill's circle into a 409-wide sheet over the taskbar — the list
 /// on top (file results / recent chats), the input box at the bottom — in the lifted card's glass and time, and shrinks back into
 /// the circle. Unlike the card and the ⋯ list it <b>takes the keyboard</b>: a plain foreground window, so typing (and the IME) no
 /// longer needs the bar to leave the taskbar. Closes on Esc, a click elsewhere (it loses the foreground), or the circle again.
@@ -36,9 +36,17 @@ internal sealed class InputPanel : Window
     private readonly SmoothBorder _frame = new() { EdgeWidth = 1, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, IsHitTestVisible = false };
     private readonly Grid _content = new() { HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Width = PanelMotion.Width };
     private readonly RectangleGeometry _contentClip = new();
-    private readonly Grid _field = new() { ColumnSpacing = 4 };
+    private readonly Grid _field = new() { ColumnSpacing = ModeGap };
     private readonly SmoothBorder _fieldBack = new() { Radius = 4, EdgeWidth = 1, IsHitTestVisible = false };
     private readonly Button _mode = new() { Width = 28, Height = 28, Padding = new Thickness(0), VerticalAlignment = VerticalAlignment.Bottom, IsTabStop = false };
+
+    /// <summary>
+    /// The mode button's hover square: 4 from the field's left edge and 4 before the text, so it sits in the middle of its room (user
+    /// 10-09: it touched the field's edge). The text ends 8 before the field's right edge.
+    /// </summary>
+    private const double ModeGap = 4;
+
+    private const double TextEnd = 8;
     private readonly SolidColorBrush _fill = new();
     private readonly SolidColorBrush _edge = new();
     private readonly System.Diagnostics.Stopwatch _clock = new();
@@ -76,7 +84,7 @@ internal sealed class InputPanel : Window
         BorderThickness = new Thickness(0),
         Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
         Padding = new Thickness(0, 4, 0, 4),
-        MinHeight = 28,   // one line: as tall as the mode button beside it, so their middles line up
+        MinHeight = PanelMotion.FieldLeast,   // one line: as tall as a card's buttons (user 10-09)
         VerticalAlignment = VerticalAlignment.Center,
         VerticalContentAlignment = VerticalAlignment.Center,
     };
@@ -93,6 +101,10 @@ internal sealed class InputPanel : Window
     /// <summary>A key the box doesn't use itself (Enter, ↑↓, Esc…), before the box sees it. Return true when handled.</summary>
     public Func<Windows.System.VirtualKey, bool>? Key { get; set; }
 
+    /// <summary>Something of the panel's is open past its edge (the file list's right-click menu): a press or losing the foreground then
+    /// mustn't put the panel away.</summary>
+    public Func<bool>? Busy { get; set; }
+
     /// <summary>When it last started going down — the click on the circle that took the foreground away mustn't reopen it.</summary>
     public DateTimeOffset ClosedAt { get; private set; } = DateTimeOffset.MinValue;
 
@@ -105,18 +117,20 @@ internal sealed class InputPanel : Window
         _frame.Edge = _edge;
 
         // inside: the list, then the input box (the mode button on its left, at the bottom line)
-        _content.Padding = new Thickness(PanelMotion.Pad);
-        _content.RowSpacing = 4;
+        _content.Padding = new Thickness(PanelMotion.Pad, PanelMotion.Pad, PanelMotion.Pad, PanelMotion.FieldInset);
+        _content.RowSpacing = PanelMotion.FieldGap;
         _content.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         _content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         _content.Children.Add(List);
         _field.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         _field.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        _field.Padding = new Thickness(4, 4, 8, 4);
+        // the field's box is the grid itself (its padding used to inset the box too: 11 from the panel on the left, 15 on the right)
+        _field.Margin = new Thickness(PanelMotion.FieldInset - PanelMotion.Pad, 0, PanelMotion.FieldInset - PanelMotion.Pad, 0);
         _field.Children.Add(_fieldBack);
         Grid.SetColumnSpan(_fieldBack, 2);
-        _mode.Margin = new Thickness(0, 0, 0, 0);
+        _mode.Margin = new Thickness(ModeGap, 0, 0, (PanelMotion.FieldLeast - 28) / 2);   // 28 square, centred on the one-line field and staying by the last line as it grows
         _field.Children.Add(_mode);
+        Box.Margin = new Thickness(0, PanelMotion.FieldPad, TextEnd, PanelMotion.FieldPad);
         Grid.SetColumn(Box, 1);
         _field.Children.Add(Box);
         _caret.Fill = _caretInk;
@@ -152,7 +166,7 @@ internal sealed class InputPanel : Window
         // that didn't get the foreground never hears "deactivated" (user 10-09: a click outside sometimes did nothing)
         _outside = new OutsideClick((x, y) => _ui.TryEnqueue(() =>
         {
-            if (IsOpen && _request is { } r && !Inside(_panelOnScreen, x, y) && !Inside(r.Circle, x, y))
+            if (IsOpen && _request is { } r && !Inside(_panelOnScreen, x, y) && !Inside(r.Circle, x, y) && Busy?.Invoke() != true)
             {
                 TaskbarHost.Log("panel: press outside");
                 Collapse();
@@ -196,7 +210,7 @@ internal sealed class InputPanel : Window
                 timer.IsRepeating = false;
                 timer.Tick += (_, _) =>
                 {
-                    if (!IsOpen)
+                    if (!IsOpen || Busy?.Invoke() == true)
                     {
                         return;
                     }
@@ -236,10 +250,23 @@ internal sealed class InputPanel : Window
         ToolTipService.SetToolTip(_mode, tip);
     }
 
+    /// <summary>Puts the keyboard back in the box after a click on the list (a header, a link, the menu) took it.</summary>
+    public void TakeKeyboard()
+    {
+        if (!IsOpen)
+        {
+            return;
+        }
+
+        SetFocus(_hwnd);
+        Box.Focus(FocusState.Programmatic);
+    }
+
     public void Open(PanelRequest request)
     {
         _request = request;
         _closing = false;
+        _measured = false;
         _openedAt = DateTimeOffset.UtcNow;
         var s = DpiSetup.Scale;
         _root.RequestedTheme = request.Dark ? ElementTheme.Dark : ElementTheme.Light;
@@ -337,12 +364,12 @@ internal sealed class InputPanel : Window
     private int Lines()
     {
         var probe = new TextBlock { Text = Box.Text.Length == 0 ? " " : Box.Text, FontSize = Box.FontSize, TextWrapping = TextWrapping.Wrap, FontFamily = Box.FontFamily };
-        var width = PanelMotion.Width - (2 * PanelMotion.Pad) - 4 - 8 - 28 - 4 - 8;   // the field's paddings, the mode button, the box's own room
+        var width = PanelMotion.Width - (2 * PanelMotion.FieldInset) - ModeGap - 28 - ModeGap - TextEnd - 8;   // the field, the mode button, the box's own room
         probe.Measure(new Windows.Foundation.Size(width, double.PositiveInfinity));
         return Math.Max(1, (int)Math.Round(probe.DesiredSize.Height / _pitch));
     }
 
-    private double Height() => (2 * PanelMotion.Pad) + (_request?.ListHeight ?? 0) + 4 + PanelMotion.FieldHeight(_lines, _pitch);
+    private double Height() => PanelMotion.Height(_request?.ListHeight ?? 0, PanelMotion.FieldHeight(_lines, _pitch));
 
     /// <summary>The text got a line longer or shorter: the panel grows / shrinks upwards (up to 4 lines, then the box scrolls).</summary>
     private void Regrow()
@@ -397,6 +424,106 @@ internal sealed class InputPanel : Window
     {
         var p = _panelOnScreen;
         SetWindowRgn(_hwnd, CreateRectRgn(p.Left - _window.Left, p.Top - _window.Top, p.Right - _window.Left, p.Bottom - _window.Top), redraw: true);
+    }
+
+    // ---------------- spacing check ----------------
+
+    private bool _measured;
+
+    /// <summary>
+    /// Once per opening, a moment after the list has rows: draws the panel's content into a bitmap (its background is see-through, so
+    /// only ink and the field's fill show) and logs the spacings the user set on 10-09, measured on the ink as on a screenshot —
+    /// header ink → the panel's top, header ink → first row ink, last row ink → the field, the field → the panel's bottom / left /
+    /// right (15 / 11 / 11 / 15 / 15 / 15; the panel's edge line, 1 wide, not counted). Log "panel: spacing …".
+    /// </summary>
+    public void CheckSpacing()
+    {
+        if (_measured || !IsOpen)
+        {
+            return;
+        }
+
+        _measured = true;
+        var timer = _ui.CreateTimer();
+        timer.Interval = TimeSpan.FromMilliseconds(500);   // after the animation, the icons and the layout pass
+        timer.IsRepeating = false;
+        timer.Tick += async (_, _) =>
+        {
+            try
+            {
+                await MeasureSpacing();
+            }
+            catch (Exception ex)
+            {
+                TaskbarHost.Log($"panel: spacing check failed: {ex.Message}");
+            }
+        };
+        timer.Start();
+    }
+
+    private async System.Threading.Tasks.Task MeasureSpacing()
+    {
+        if (!IsOpen || _animating)
+        {
+            return;
+        }
+
+        var bitmap = new Microsoft.UI.Xaml.Media.Imaging.RenderTargetBitmap();
+        await bitmap.RenderAsync(_content);
+        var pixels = System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBufferExtensions.ToArray(await bitmap.GetPixelsAsync());
+        var (pw, ph) = (bitmap.PixelWidth, bitmap.PixelHeight);
+        var scale = pw / _content.ActualWidth;
+        Windows.Foundation.Rect Bounds(FrameworkElement e) => e.TransformToVisual(_content).TransformBounds(new Windows.Foundation.Rect(0, 0, e.ActualWidth, e.ActualHeight));
+        var field = Bounds(_field);
+        var list = Bounds(List);
+        var mode = Bounds(_mode);
+        var box = Bounds(Box);
+
+        // rows of the list's area holding ink (alpha over 100)
+        bool Ink(int y)
+        {
+            for (var x = (int)(list.Left * scale); x < (int)(list.Right * scale) && x < pw; x++)
+            {
+                if (pixels[(((y * pw) + x) * 4) + 3] > 100)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        var top = (int)(list.Top * scale);
+        var bottom = Math.Min(ph, (int)(list.Bottom * scale));
+        var headTop = top;
+        while (headTop < bottom && !Ink(headTop)) headTop++;
+        var headEnd = headTop;
+        while (headEnd < bottom && Ink(headEnd)) headEnd++;
+        var rowTop = headEnd;
+        while (rowTop < bottom && !Ink(rowTop)) rowTop++;
+        var lastEnd = bottom;
+        while (lastEnd > rowTop && !Ink(lastEnd - 1)) lastEnd--;
+
+        double D(double px) => px / scale;
+
+        // every run of ink rows (dip from the panel's top), to see what the check picked when it disagrees with a screenshot
+        var runs = new System.Text.StringBuilder();
+        for (var y = top; y < bottom; y++)
+        {
+            if (Ink(y) && (y == top || !Ink(y - 1)))
+            {
+                var end = y;
+                while (end < bottom && Ink(end)) end++;
+                runs.Append(FormattableString.Invariant($" {D(y):0.#}-{D(end):0.#}"));
+            }
+        }
+
+        TaskbarHost.Log(FormattableString.Invariant($"panel: spacing bitmap {pw}x{ph} for {_content.ActualWidth:0.#}x{_content.ActualHeight:0.#}, list {list.Top:0.#}-{list.Bottom:0.#}, ink rows{runs}"));
+        TaskbarHost.Log(FormattableString.Invariant(
+            $"panel: spacing (want 15/11/11/15/15/15) header ink→top {D(headTop) - 1:0.#}, header ink→row ink {D(rowTop - headEnd):0.#}, ") + FormattableString.Invariant(
+            $"last row ink→field {field.Top - D(lastEnd):0.#}, field→bottom {_content.ActualHeight - 1 - field.Bottom:0.#}, ") + FormattableString.Invariant(
+            $"field→left {field.Left - 1:0.#}, field→right {_content.ActualWidth - 1 - field.Right:0.#}; ") + FormattableString.Invariant(
+            $"mode square: field→it {mode.Left - field.Left:0.#}, it→text {box.Left - mode.Right:0.#}, text end→field {field.Right - box.Right:0.#}; scale {scale:0.##}"));
     }
 
     // ---------------- the caret ----------------

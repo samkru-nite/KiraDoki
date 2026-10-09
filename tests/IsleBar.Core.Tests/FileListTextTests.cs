@@ -58,4 +58,20 @@ public class FileListTextTests
     [Fact]
     public void Very_narrow_keeps_the_tail()
         => Assert.Equal("…sentry", FileListText.MiddleEllipsis(Long, t => t.Length <= 7));
+
+    private static readonly DateTime Now = new(2026, 10, 9, 20, 0, 0);
+
+    [Theory]
+    [InlineData("2026-10-09 18:21", "zh-CN", "18:21")]
+    [InlineData("2026-10-09 08:05", "en-US", "08:05")]
+    [InlineData("2026-10-08 23:59", "zh-CN", "昨天")]
+    [InlineData("2026-10-07 10:00", "zh-CN", "10/7")]
+    [InlineData("2026-03-15 10:00", "en-US", "3/15")]
+    [InlineData("2026-03-15 10:00", "de-DE", "15.3")]
+    [InlineData("2025-10-08 10:00", "zh-CN", "2025/10/8")]
+    [InlineData("2025-10-08 10:00", "en-US", "10/8/2025")]
+    [InlineData("2025-10-08 10:00", "de-DE", "8.10.2025")]
+    public void Short_times(string when, string culture, string text)
+        => Assert.Equal(text, FileListText.ShortTime(DateTime.Parse(when, System.Globalization.CultureInfo.InvariantCulture), Now, "昨天",
+            new System.Globalization.CultureInfo(culture)));
 }

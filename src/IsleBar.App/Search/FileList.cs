@@ -1,7 +1,7 @@
 using IsleBar.App.Interop;
-using IsleBar.App.Options;
 using IsleBar.Core.Localization;
 using IsleBar.Core.Search;
+using IsleBar.Core.Ui;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -11,64 +11,86 @@ using System.Runtime.InteropServices.WindowsRuntime;
 namespace IsleBar.App.Search;
 
 /// <summary>
-/// File search results list. Pops up right above the search box.
-/// <b>Does not take focus</b> (NOACTIVATE) — typing must continue in the input box while the list is shown.
-/// Selection (↑↓) and open (Enter) keys are received by the input box and forwarded to this window.
-/// <para>
-/// Made to look like Windows' own lists (user 10-04): Explorer-style column headers on top that sort when clicked (on top so the
-/// IME candidate bar, which opens under the input box, never covers them), the system ListView for selection/hover/scrolling,
-/// the shell's file icons, and acrylic like the Start menu's search. Always the same width (the old one's); long names and paths
-/// are shortened in the middle. Right-click a result for open / file location / copy / Everything.
-/// </para>
+/// The file search list inside the input panel (TODO 7.9 H1b, user 10-09) — the old results window's list moved in: Explorer-style
+/// headers that sort when clicked, the system ListView for selection/hover/scrolling, the shell's icons, long names and paths
+/// shortened in the middle, right-click for open / file location / copy / Everything. New for the 409-wide panel: the cards' type
+/// (14 / 12), the time and the size side by side in their own columns, centred on the row's two lines, the time written short
+/// (<see cref="FileListText.ShortTime"/>, the full one in its tip), and a fixed height of <c>rows</c> rows so the panel doesn't jump
+/// as results come and go.
 /// </summary>
-internal sealed class ResultsWindow : Window
+internal sealed partial class FileList : UserControl
 {
-    private const int WidthDip = 480;
-    private const uint WS_EX_NOACTIVATE = 0x08000000;
-
-    /// <summary>About the height 12 rows of the old list took (user 10-04: "at most about 12"); the rest scrolls.</summary>
-    private const double MaxListHeight = 534;
-
-    // One spacing rhythm, measured on the user's screenshots (10-04): window top → header text, header text → first row,
-    // row → row and last row → window bottom are all ~14. Before: 11 / 21 / 14 / 16, which the first row's highlight hid.
-    private const double HeaderTop = 11;      // + the window's own ~3 above = 14 to the header text
-    private const double HeaderBottom = 4;    // + the first row's own ~10 above its text = 14 (1 measured 11 — "a little tight", user 10-04)
+    // Type as the cards' rule (user 10-09): the name 14/20, the path, time and size 12/16, the header 12. Spacing by ink, as on a
+    // screenshot: the 12 px header's ink starts 3 below its 16 line and ends 1 above it (measured 10-09) — the panel's 8 + 5 + 3 =
+    // 16 from the panel's outer edge = 15 inside its 1-wide edge line; a row's ink starts about 8 below its slot (1 + 3 centring +
+    // ~4 in the 20 line) — header ink → first row ink = 1 + 2 + 8 = 11 (user 10-09). The log "panel: spacing" checks both.
+    private const double HeaderTop = 5;
+    private const double HeaderBottom = 0;   // measured 10-09 on the 14/12 rows: 2 gave 13, not 11
     private const double HeaderText = 16;     // line height of the 12 px header labels
-    private const double HeaderHeight = HeaderTop + HeaderText + HeaderBottom;
+    public const double HeaderHeight = HeaderTop + HeaderText + HeaderBottom;
     private const double HoverPad = 4;        // hover background around a header label: the same above and below it
     private const double IconSize = 20;
-    private const double DateWidth = 100;     // "2026/10/14 18:34"
-    private const double SizeWidth = 58;      // "238.8 MB"
     private const double ColumnGap = 12;      // the same between every column (user 10-04)
-    private const double ItemPadding = 12;    // the ListViewItem's side padding
-    private const double ListPadding = 4;
-    private const double ListBottom = 2;      // + the last row's own ~12 below its text = 14 to the window edge
 
-    /// <summary>Room left for the name and path.</summary>
-    private const double NameWidth = WidthDip - (2 * ListPadding) - (2 * ItemPadding) - IconSize - DateWidth - SizeWidth - (3 * ColumnGap);
+    // Across, measured on the user's screenshots (10-09, inside the panel's 1-wide edge line). A row's hover fill is drawn 4 inside
+    // the row; the list reaches 1 past the panel's 8 (ListBleed), so the rows start 6 in and their hover fill 10 (user: 10, was 11).
+    // The shell's icons carry ~3 of see-through edge: an icon box 12 in shows its picture from ~15 (user: icons 15 from the edge,
+    // was 18). A size's ink ends ~1 past its box: the box 14 in ends the ink at 15 (user: 15, was 16).
+    private const double ListBleed = 1;
+
+    private const double ItemLeft = 7;   // user 10-09: the icons (and the names with them) 1 further in — 6 showed them at 15
+
+    private const double ItemRight = 9;   // user 10-09: the sizes (and the times) 1 further in — 8 ended them at 15
+
+    /// <summary>The "Size" header's ink ended 1 past the numbers' (measured 10-09): pulled in by as much.</summary>
+    private const double SizeHeaderNudge = 1;
+
+    /// <summary>The icon box → the name: the picture ends ~3.5 inside its box, so the name's ink starts 15 after it (user 10-09: as
+    /// far as the icon is from the panel's edge).</summary>
+    private const double IconGap = 11;
+
+    /// <summary>The header's "Name" starts with the icons' pictures (15), not their boxes (user 10-09: the header follows the rows).</summary>
+    private const double HeaderLeft = 8.5;
+
+    /// <summary>Time and size side by side, each its own column (user 10-09): "2025/10/28" in 12 px is ~61, "238.8 MB" ~55.</summary>
+    private const double TimeWidth = 64;
+
+    private const double SizeWidth = 58;
+
+    private const double ArrowWidth = 8;
+
+    /// <summary>One row: its own 42 + 1 above and below (set here, so the panel's height is known before any row exists).</summary>
+    public const double RowPitch = 44;
+
+    private const double RowHeight = RowPitch - 2;
+
+    /// <summary>Room left for the name and path: 409 − 16 + 2 − 7 − 9 − 20 − 11 − 64 − 58 − 2 × 12 = 202.</summary>
+    private const double NameWidth = PanelMotion.Width - (2 * PanelMotion.Pad) + (2 * ListBleed) - ItemLeft - ItemRight - IconSize - IconGap - TimeWidth - SizeWidth - (2 * ColumnGap);
 
     private readonly ListView _list = new()
     {
         SelectionMode = ListViewSelectionMode.Single,
         IsItemClickEnabled = true,
         IsTabStop = false,
-        Padding = new Thickness(ListPadding, 0, ListPadding, ListBottom),
+        AllowFocusOnInteraction = false,   // a click on a row / the scrollbar leaves the keyboard (and the caret) in the input box
+        Padding = new Thickness(0),
     };
 
     private readonly Grid _header = new()
     {
-        Padding = new Thickness(ListPadding + ItemPadding, HeaderTop, ListPadding + ItemPadding, HeaderBottom),
+        Padding = new Thickness(HeaderLeft, HeaderTop, ItemRight, HeaderBottom),
         ColumnSpacing = ColumnGap,
+        Height = HeaderHeight,
     };
 
     private readonly StackPanel _empty = new() { Padding = new Thickness(16, 10, 16, 14) };
-    private readonly Grid _root = new() { Width = WidthDip };   // fixed: long names used to stretch the window (user 10-04)
+    private readonly Grid _root = new();
     private readonly MenuFlyout _menu = new();
     private readonly ShellIcons _shellIcons = new();
 
     // measuring text is the slow part of building a row — the same names and folders come back on every keystroke
-    private readonly TextBlock _nameProbe = new() { FontSize = 13, TextWrapping = TextWrapping.NoWrap };
-    private readonly TextBlock _pathProbe = new() { FontSize = 11, TextWrapping = TextWrapping.NoWrap };
+    private readonly TextBlock _nameProbe = new() { FontSize = 14, TextWrapping = TextWrapping.NoWrap };
+    private readonly TextBlock _pathProbe = new() { FontSize = 12, TextWrapping = TextWrapping.NoWrap };
     private readonly Dictionary<string, string> _shortNames = [];
     private readonly Dictionary<string, string> _shortPaths = [];
 
@@ -78,28 +100,25 @@ internal sealed class ResultsWindow : Window
 
     private IReadOnlyList<FileHit> _hits = [];
     private LanguageStrings? _text;
-    private int _anchorX;
-    private int _bandTop;
     private int _menuIndex = -1;
     private bool _menuOpen;
 
-    public ResultsWindow()
+    public FileList()
     {
-        SystemBackdrop = new ActiveAcrylic();
-        PopupPlacement.MakeToolPopup(this);
-
         _root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        _root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        _root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         Grid.SetRow(_list, 1);
         Grid.SetRow(_empty, 1);
         _root.Children.Add(_header);
         _root.Children.Add(_list);
         _root.Children.Add(_empty);
         Content = _root;
+        IsTabStop = false;
+        Margin = new Thickness(-ListBleed, 0, -ListBleed, 0);
 
         _header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(IconSize) });
         _header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        _header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(DateWidth) });
+        _header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(TimeWidth) });
         _header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(SizeWidth) });
 
         _list.ItemClick += (_, e) =>
@@ -122,24 +141,15 @@ internal sealed class ResultsWindow : Window
                 _list.SelectedIndex = _menuIndex;
             }
         };
-        _menu.Closed += (_, _) => _menuOpen = false;
-        Closed += (_, _) => _shellIcons.Dispose();
-
-        Handle = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        var ex = NativeMethods.Unsigned32(NativeMethods.GetWindowLong(Handle, NativeMethods.GWL_EXSTYLE));
-        NativeMethods.SetWindowLong(Handle, NativeMethods.GWL_EXSTYLE, NativeMethods.Signed32(ex | WS_EX_NOACTIVATE));
+        _menu.Closed += (_, _) =>
+        {
+            _menuOpen = false;
+            KeepTyping?.Invoke();
+        };
+        Unloaded += (_, _) => _shellIcons.Dispose();
     }
 
-    /// <summary>This window's handle — the bar checks whether it's the one in front.</summary>
-    public IntPtr Handle { get; }
-
-    /// <summary>
-    /// Whether the mouse is over the list right now. A click on it still takes activation from the bar (NOACTIVATE or not), and
-    /// the bar used to end typing on that — closing the list before the click arrived, so clicking a result did nothing (10-03).
-    /// </summary>
-    public bool UnderCursor() => PopupPlacement.UnderCursor(this);
-
-    /// <summary>The right-click menu is open — the bar must not end typing (that would close the list under it).</summary>
+    /// <summary>The right-click menu is open — a press on it (it may reach past the panel) mustn't put the panel away.</summary>
     public bool MenuOpen => _menuOpen;
 
     /// <summary>A row was clicked (mouse) or "Open" chosen. Argument = row index.</summary>
@@ -154,78 +164,55 @@ internal sealed class ResultsWindow : Window
     /// <summary>"Open in Everything" (menu, or the link under an empty result).</summary>
     public event Action? OpenInEverything;
 
-    /// <summary>Something on the list was used that leaves the search going (a copy) — the bar takes the keyboard back.</summary>
+    /// <summary>Something on the list was used that leaves the search going (a copy, a sort) — the input box takes the keyboard back.</summary>
     public event Action? KeepTyping;
 
-    public int Selected { get; private set; }
+    public int Selected { get; private set; } = -1;
 
     public FileHit? SelectedHit => Selected >= 0 && Selected < _hits.Count ? _hits[Selected] : null;
 
     /// <summary>The top row — what Enter opens when nothing is selected (as the Start menu's search does).</summary>
     public FileHit? FirstHit => _hits.Count > 0 ? _hits[0] : null;
 
-    public bool HasHits => _hits.Count > 0;
+    /// <summary>The list's height for <paramref name="rows"/> rows under the header.</summary>
+    public static double HeightFor(int rows) => HeaderHeight + (rows * RowPitch);
 
     /// <summary>
     /// Shows results (or a single hint line under the header). Nothing starts selected — ↓ selects the first row, Enter opens
-    /// the top one, Esc closes (user 10-04: a pre-selected first row read as a choice already made).
+    /// the top one (user 10-04: a pre-selected first row read as a choice already made).
     /// </summary>
     /// <param name="noteAction">What clicking the hint does (it's then drawn as a link): search in Everything, start it…</param>
     /// <param name="sort">Current sort setting value — its header shows the arrow.</param>
-    public void Show(IReadOnlyList<FileHit> hits, string? note, Action? noteAction, int anchorX, int bandTop, string sort, LanguageStrings text)
+    public void Show(IReadOnlyList<FileHit> hits, string? note, Action? noteAction, string sort, LanguageStrings text)
     {
         var clock = System.Diagnostics.Stopwatch.StartNew();
-        (_hits, _anchorX, _bandTop, Selected, _text) = (hits, anchorX, bandTop, -1, text);
-        if ((Content as Control)?.FontFamily is { } font)
-        {
-            _nameProbe.FontFamily = font;   // measure in the font the list is drawn in (set per language by AppFonts)
-            _pathProbe.FontFamily = font;
-        }
+        (_hits, Selected, _text) = (hits, -1, text);
+        _nameProbe.FontFamily = FontFamily;   // measure in the font the list is drawn in
+        _pathProbe.FontFamily = FontFamily;
 
         BuildHeader(sort, text);
         _waiting.Clear();
         _list.Items.Clear();
+        var now = DateTime.Now;
         for (var i = 0; i < hits.Count; i++)
         {
-            _list.Items.Add(Row(hits[i], i));
+            _list.Items.Add(Row(hits[i], i, now));
         }
 
         BuildEmpty(hits.Count == 0 ? note : null, noteAction);
         // the header always stays — the frame doesn't change, only what's in it (user 10-04)
         _list.Visibility = hits.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-
-        // at most about 12 old rows tall, and never past the top of the screen — the rest scrolls (wheel / two-finger swipe)
-        _list.MaxHeight = Math.Max(120, Math.Min(MaxListHeight, PopupPlacement.MaxHeightAbove(anchorX, bandTop) - HeaderHeight - 8));
         _list.SelectedIndex = -1;
         if (hits.Count > 0)
         {
             _list.ScrollIntoView(_list.Items[0]);
         }
 
-        _root.UpdateLayout();
-
-        // only whole rows: a half-cut last row made the bottom margin look larger than the top one (user 10-04)
-        if (hits.Count > 0 && _list.ContainerFromIndex(0) is ListViewItem first && first.ActualHeight > 0)
-        {
-            var pitch = first.ActualHeight + first.Margin.Top + first.Margin.Bottom;
-            var room = _list.MaxHeight - ListBottom;
-            if (hits.Count * pitch > room)
-            {
-                _list.MaxHeight = (Math.Floor(room / pitch) * pitch) + ListBottom;
-                _root.UpdateLayout();
-            }
-        }
-
-        PopupPlacement.SizeToContent(this, _root, WidthDip);
-        PopupPlacement.PlaceAbove(this, _anchorX, _bandTop);
-        AppWindow.Show(activateWindow: false);
         if (clock.ElapsedMilliseconds >= 30)
         {
             TaskbarHost.Log($"file search: drew {hits.Count} rows in {clock.ElapsedMilliseconds} ms");
         }
     }
-
-    public void Hide() => AppWindow.Hide();
 
     /// <summary>Moves the selected row. False if the list is empty.</summary>
     public bool Move(int delta)
@@ -259,101 +246,102 @@ internal sealed class ResultsWindow : Window
 
     // ---------------- header ----------------
 
-    /// <summary>Explorer-style headers: name · date modified · size. The one sorted by shows a small arrow; a click sorts by it.</summary>
+    /// <summary>
+    /// Explorer-style headers over their columns: name · time · size, each lined up with the values under it — name and time from
+    /// the left, size from the right (its numbers are right-aligned, as in Explorer: user 10-09). All keep room for the arrow, so
+    /// nothing moves when the sort changes; the sorted one is white and shows the arrow — on the size its arrow goes before the word,
+    /// so the word's right end meets the numbers' (user 10-09).
+    /// </summary>
     private void BuildHeader(string sort, LanguageStrings text)
     {
         _header.Children.Clear();
-        // every header and column starts at its left edge, as the name lines up with its icon (user 10-04, option A)
-        AddHeader(0, 2, FileSearchQuery.SortName, text.SortName, sort);
-        AddHeader(2, 1, FileSearchQuery.SortModified, text.SortModified, sort);
-        AddHeader(3, 1, FileSearchQuery.SortSize, text.SortSize, sort);
+        AddHeader(0, 2, HeaderButton(FileSearchQuery.SortName, text.SortName, sort));
+        AddHeader(2, 1, HeaderButton(FileSearchQuery.SortModified, text.SortTime, sort));
+        AddHeader(3, 1, HeaderButton(FileSearchQuery.SortSize, text.SortSize, sort, right: true));
     }
 
-    private void AddHeader(int column, int span, string value, string label, string sort)
+    private void AddHeader(int column, int span, Button button)
+    {
+        Grid.SetColumn(button, column);
+        Grid.SetColumnSpan(button, span);
+        _header.Children.Add(button);
+    }
+
+    private Button HeaderButton(string value, string label, string sort, bool right = false)
     {
         const double pad = 6;
         var on = value == sort;
         var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
-        var arrow = new FontIcon
-        {
-            Glyph = "",   // chevron down on every column — the same mark means "sorted by this" (user 10-04)
-            FontSize = 8,
-            Foreground = Brush("TextFillColorSecondaryBrush"),
-            VerticalAlignment = VerticalAlignment.Center,
-            Visibility = on ? Visibility.Visible : Visibility.Collapsed,
-        };
-        var title = new TextBlock
+        content.Children.Add(new TextBlock
         {
             Text = label,
             FontSize = 12,
             Foreground = Brush(on ? "TextFillColorPrimaryBrush" : "TextFillColorSecondaryBrush"),
             VerticalAlignment = VerticalAlignment.Center,
-        };
-        content.Children.Add(title);
-        content.Children.Add(arrow);
+        });
+        content.Children.Insert(right ? 0 : 1, new FontIcon
+        {
+            Glyph = "\uE70D",   // chevron down — the same mark means "sorted by this" (user 10-04)
+            FontSize = 8,
+            Width = ArrowWidth,
+            Foreground = Brush("TextFillColorSecondaryBrush"),
+            VerticalAlignment = VerticalAlignment.Center,
+            Opacity = on ? 1 : 0,   // there but unseen: the labels keep their places whichever is sorted (user 10-09)
+        });
 
         var button = new Button
         {
             Content = content,
             Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
             BorderThickness = new Thickness(0),
-            // the hover background hugs the label with the same room above and below (it sat low before — user 10-04); the
-            // negative margin pulls the button out by its padding, so the label itself stays exactly where the layout puts it
+            // the hover background hugs the label with the same room on every side; the negative margins pull the button out by its
+            // padding, so the label itself stays exactly where the layout puts it
             Padding = new Thickness(pad, HoverPad, pad, HoverPad),
-            Margin = new Thickness(-pad, -HoverPad, 0, -HoverPad),
+            Margin = new Thickness(-pad, -HoverPad, -pad + (right ? SizeHeaderNudge : 0), -HoverPad),
             Height = HeaderText + (2 * HoverPad),
             MinHeight = 0,
             IsTabStop = false,
+            AllowFocusOnInteraction = false,
             VerticalAlignment = VerticalAlignment.Top,
             VerticalContentAlignment = VerticalAlignment.Center,
-            HorizontalAlignment = HorizontalAlignment.Left,
+            HorizontalAlignment = right ? HorizontalAlignment.Right : HorizontalAlignment.Left,
         };
-        button.Click += (_, _) => SortChosen?.Invoke(value);
-        Grid.SetColumn(button, column);
-        Grid.SetColumnSpan(button, span);
-        _header.Children.Add(button);
+        button.Click += (_, _) =>
+        {
+            SortChosen?.Invoke(value);
+            KeepTyping?.Invoke();
+        };
+        return button;
     }
 
     // ---------------- rows ----------------
 
-    private ListViewItem Row(FileHit hit, int index)
+    private ListViewItem Row(FileHit hit, int index, DateTime now)
     {
-        var grid = new Grid { ColumnSpacing = ColumnGap, Tag = index, Padding = new Thickness(0, 4, 0, 4) };
+        // icon · name over path · time · size — the time and the size centred on the row's two lines, like Explorer (user 10-09)
+        var grid = new Grid { ColumnSpacing = ColumnGap, Tag = index, VerticalAlignment = VerticalAlignment.Center };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(IconSize) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(DateWidth) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(TimeWidth) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(SizeWidth) });
 
         // icon: a plain glyph until the shell's icon arrives (usually at once — they're shared per file type)
         var iconSlot = new Grid { Width = IconSize, Height = IconSize, VerticalAlignment = VerticalAlignment.Center };
-        var glyph = new FontIcon { Glyph = hit.IsFolder ? "" : "", FontSize = 16 };
+        var glyph = new FontIcon { Glyph = hit.IsFolder ? "\uE8B7" : "\uE8A5", FontSize = 16 };
         var image = new Image { Width = IconSize, Height = IconSize, Stretch = Stretch.Uniform };
         iconSlot.Children.Add(glyph);
         iconSlot.Children.Add(image);
         grid.Children.Add(iconSlot);
         ShowIcon(hit, image, glyph);
 
-        var names = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-        var name = new TextBlock
-        {
-            Text = Shorten(_shortNames, hit.Name, _nameProbe, FileListText.MiddleEllipsisName),
-            FontSize = 13,
-            TextWrapping = TextWrapping.NoWrap,
-            TextTrimming = TextTrimming.CharacterEllipsis,   // only if the measurement was a hair off
-        };
+        var names = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(IconGap - ColumnGap, 0, 0, 0) };
+        var name = Line(Shorten(_shortNames, hit.Name, _nameProbe, FileListText.MiddleEllipsisName), 14, 20, "TextFillColorPrimaryBrush");
         if (name.Text != hit.Name)
         {
             ToolTipService.SetToolTip(name, hit.Name);
         }
 
-        var path = new TextBlock
-        {
-            Text = Shorten(_shortPaths, hit.Directory, _pathProbe, FileListText.MiddleEllipsis),
-            FontSize = 11,
-            TextWrapping = TextWrapping.NoWrap,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            Foreground = Brush("TextFillColorSecondaryBrush"),
-        };
+        var path = Line(Shorten(_shortPaths, hit.Directory, _pathProbe, FileListText.MiddleEllipsis), 12, 16, "TextFillColorSecondaryBrush");
         if (path.Text != hit.Directory)
         {
             ToolTipService.SetToolTip(path, hit.Directory);
@@ -364,34 +352,49 @@ internal sealed class ResultsWindow : Window
         Grid.SetColumn(names, 1);
         grid.Children.Add(names);
 
-        grid.Children.Add(Cell(2, hit.Modified is { } when ? when.ToString("g", System.Globalization.CultureInfo.CurrentCulture) : string.Empty));
-        grid.Children.Add(Cell(3, hit.Size is { } bytes ? FileListText.FormatSize(bytes) : string.Empty));
+        var culture = System.Globalization.CultureInfo.CurrentCulture;
+        // the time in the name's white, the size in the path's grey (user 10-09: two greys ran together)
+        var time = Line(hit.Modified is { } when ? FileListText.ShortTime(when, now, _text?.Yesterday ?? "", culture) : string.Empty, 12, 16, "TextFillColorPrimaryBrush");
+        if (hit.Modified is { } full)
+        {
+            ToolTipService.SetToolTip(time, full.ToString("g", culture));   // the full time on hover
+        }
+
+        time.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(time, 2);
+        grid.Children.Add(time);
+        var size = Line(hit.Size is { } bytes ? FileListText.FormatSize(bytes) : string.Empty, 12, 16, "TextFillColorSecondaryBrush");
+        size.VerticalAlignment = VerticalAlignment.Center;
+        size.HorizontalAlignment = HorizontalAlignment.Right;   // numbers right-aligned, as in Explorer (user 10-09)
+        Grid.SetColumn(size, 3);
+        grid.Children.Add(size);
 
         return new ListViewItem
         {
             Content = grid,
             Tag = index,
             HorizontalContentAlignment = HorizontalAlignment.Stretch,
-            Padding = new Thickness(ItemPadding, 0, ItemPadding, 0),
+            VerticalContentAlignment = VerticalAlignment.Center,
+            Padding = new Thickness(ItemLeft, 0, ItemRight, 0),
+            Margin = new Thickness(0, 1, 0, 1),
+            MinHeight = 0,
+            Height = RowHeight,
             ContextFlyout = _menu,
         };
     }
 
-    /// <summary>A date or size cell: secondary colour, starting at the column's left edge like its header.</summary>
-    private static TextBlock Cell(int column, string text)
+    /// <summary>One line of a row, in the cards' type: <paramref name="size"/> on a <paramref name="line"/> high line, left-aligned.</summary>
+    private static TextBlock Line(string text, double size, double line, string brush) => new()
     {
-        var cell = new TextBlock
-        {
-            Text = text,
-            FontSize = 12,
-            Foreground = Brush("TextFillColorSecondaryBrush"),
-            VerticalAlignment = VerticalAlignment.Center,
-            HorizontalAlignment = HorizontalAlignment.Left,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-        };
-        Grid.SetColumn(cell, column);
-        return cell;
-    }
+        Text = text,
+        FontSize = size,
+        LineHeight = line,
+        LineStackingStrategy = LineStackingStrategy.BlockLineHeight,
+        TextWrapping = TextWrapping.NoWrap,
+        TextTrimming = TextTrimming.CharacterEllipsis,   // only if the measurement was a hair off
+        Foreground = Brush(brush),
+        HorizontalAlignment = HorizontalAlignment.Left,
+    };
 
     /// <summary>Right-click: open · open file location · copy path · copy name · open in Everything — for the row clicked.</summary>
     private void FillMenu()
@@ -411,12 +414,12 @@ internal sealed class ResultsWindow : Window
             _menu.Items.Add(entry);
         }
 
-        Add(_text.MenuOpen, "", () => RowClicked?.Invoke(index));
-        Add(_text.MenuOpenFolder, "", () => RevealClicked?.Invoke(index));
-        Add(_text.MenuCopyPath, "", () => Copy(hit.FullPath));
-        Add(_text.MenuCopyName, "", () => Copy(hit.Name));
+        Add(_text.MenuOpen, "\uE8E5", () => RowClicked?.Invoke(index));
+        Add(_text.MenuOpenFolder, "\uE838", () => RevealClicked?.Invoke(index));
+        Add(_text.MenuCopyPath, "\uE8C8", () => Copy(hit.FullPath));
+        Add(_text.MenuCopyName, "\uE8C8", () => Copy(hit.Name));
         _menu.Items.Add(new MenuFlyoutSeparator());
-        Add(_text.OpenInEverything, "", () => OpenInEverything?.Invoke());
+        Add(_text.OpenInEverything, "\uE721", () => OpenInEverything?.Invoke());
     }
 
     private void Copy(string value)
@@ -453,7 +456,7 @@ internal sealed class ResultsWindow : Window
             _empty.Children.Add(new TextBlock
             {
                 Text = note,
-                FontSize = 13,
+                FontSize = 14,
                 Foreground = Brush("TextFillColorSecondaryBrush"),
                 TextAlignment = TextAlignment.Center,
                 TextWrapping = TextWrapping.Wrap,
@@ -464,7 +467,7 @@ internal sealed class ResultsWindow : Window
 
         var link = new HyperlinkButton
         {
-            Content = new TextBlock { Text = note, FontSize = 13, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center },
+            Content = new TextBlock { Text = note, FontSize = 14, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center },
             HorizontalAlignment = HorizontalAlignment.Center,
             IsTabStop = false,
         };

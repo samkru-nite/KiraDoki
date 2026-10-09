@@ -95,4 +95,36 @@ public static class FileListText
 
         return "…";
     }
+
+    /// <summary>
+    /// A modified time as short as it can be told apart (TODO 7.9 H, user 10-09): today "18:21" · "Yesterday" · this year "10/8" ·
+    /// before "2025/10/8" — month and day in the language's own order and separator, no leading zeros. The full time goes in the tip.
+    /// </summary>
+    public static string ShortTime(DateTime when, DateTime now, string yesterday, System.Globalization.CultureInfo culture)
+    {
+        if (when.Date == now.Date)
+        {
+            return when.ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        if (when.Date == now.Date.AddDays(-1))
+        {
+            return yesterday;
+        }
+
+        var format = culture.DateTimeFormat;
+        var pattern = format.ShortDatePattern;
+        var parts = new List<(int At, string Text)>
+        {
+            (pattern.IndexOf('M'), when.Month.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+            (pattern.IndexOf('d'), when.Day.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+        };
+        if (when.Year != now.Year)
+        {
+            parts.Add((pattern.IndexOf('y'), when.Year.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+        }
+
+        var separator = format.DateSeparator.Trim();
+        return string.Join(separator.Length == 0 ? "/" : separator, parts.OrderBy(p => p.At).Select(p => p.Text));
+    }
 }

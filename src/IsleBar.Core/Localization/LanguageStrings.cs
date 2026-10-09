@@ -323,6 +323,18 @@ public sealed class LanguageStrings
     /// <summary>The grey hint when asking AI; {0} = the agent's name.</summary>
     public required string AskAgentHint { get; init; }
 
+    /// <summary>The file list's header over its right column: the time (and size) — short, the column is narrow (H1b, user 10-09).</summary>
+    public required string SortTime { get; init; }
+
+    /// <summary>A file changed yesterday, in the file list's time column.</summary>
+    public required string Yesterday { get; init; }
+
+    /// <summary>The panel's mode button, hovered while searching files: "Click to chat with {0}" (user 10-09: say it's a click).</summary>
+    public required string ModeAskTip { get; init; }
+
+    /// <summary>The mode button, hovered while asking AI.</summary>
+    public required string ModeFilesTip { get; init; }
+
     /// <summary>Setting: card text left-aligned or centred on the big pill (user 10-07).</summary>
     public required string CardTextLabel { get; init; }
 

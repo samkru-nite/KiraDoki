@@ -81,7 +81,6 @@ public sealed partial class MainWindow : Window
     private IntPtr _previousForeground;
     private string? _historyText;
     private Microsoft.UI.Xaml.Controls.Primitives.FlyoutBase? _entryMenu;
-    private ResultsWindow? _results;
     private OpenRequest? _openWhenReady;
 
     // the text of the latest file search sent, and of the one the results list shows — Enter right after editing (before the
@@ -196,7 +195,7 @@ public sealed partial class MainWindow : Window
                     return;   // the compose box is taking over the question (Shift+Enter, a pasted block) — it ends typing when it closes
                 }
 
-                if (_typing && (_results?.UnderCursor() == true || _preview?.UnderCursor() == true))
+                if (_typing && _preview?.UnderCursor() == true)
                 {
                     _ui.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, ScheduleTypingRecheck);
                     return;
@@ -494,11 +493,6 @@ public sealed partial class MainWindow : Window
         if (ForegroundEvents.IsOurs(front))
         {
             _typingHadFront = true;
-            if (_results is { } list && front == list.Handle && !list.MenuOpen && !NativeMethods.MouseButtonDown())
-            {
-                ReclaimTyping();
-            }
-
             return;
         }
 
@@ -526,18 +520,9 @@ public sealed partial class MainWindow : Window
 
     private void OnTypingRecheck(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
     {
-        if (_typing && (NativeMethods.MouseButtonDown() || _results?.MenuOpen == true))
+        if (_typing && NativeMethods.MouseButtonDown())
         {
             sender.Start();   // still holding the button on a popup (scrolling the preview, say) or a result's right-click menu is open — look again later
-            return;
-        }
-
-        // a click on the results list (a column header, say) leaves that list in front: still typing — hand the keyboard back.
-        // Ending here closed the list ~3 s after changing the sort (user 10-04).
-        if (_typing && _results is { } list && NativeMethods.GetForegroundWindow() == list.Handle)
-        {
-            ReclaimTyping();
-            sender.Start();
             return;
         }
 
@@ -567,7 +552,6 @@ public sealed partial class MainWindow : Window
         FocusSink.Focus(FocusState.Programmatic);   // move focus out of the input box so no blinking caret is left behind
         Entry.Text = string.Empty;
         _history.Reset();
-        CloseResults();
         SetMode(HomeMode());   // after typing, return to the default mode (first in Tab order), same as the Python version's blur
         if (_taskbar.Attach())
         {
@@ -949,10 +933,6 @@ public sealed partial class MainWindow : Window
         if (_mode == BarMode.Files)
         {
             ScheduleSearch();
-        }
-        else
-        {
-            CloseResults();
         }
     }
 
@@ -1911,9 +1891,9 @@ public sealed partial class MainWindow : Window
         Big.UseFontsFor(string.Empty);
         // the input box uses Pretendard too (ImeFont handles the IME composition text separately)
         Entry.FontFamily = AppFonts.For(null, _language).Normal;
-        if (_results is not null)
+        if (_fileList is not null)
         {
-            AppFonts.Apply(_results, _language);
+            _fileList.FontFamily = AppFonts.For(null, _language).Normal;
         }
 
         if (_preview is not null)
@@ -2497,24 +2477,17 @@ public sealed partial class MainWindow : Window
         TabNextIcon.Visibility = mark is null ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    /// <summary>Closes the results list window (recreated on the next search).</summary>
-    private void CloseResults()
-    {
-        _results?.Close();
-        _results = null;
-    }
-
-    private bool MoveResultSelection(int delta) => _results?.Move(delta) ?? true;
+    private bool MoveResultSelection(int delta) => _fileList?.Move(delta) ?? true;
 
     /// <summary>Opens the selected result. Ctrl+Enter selects the file in Explorer instead.</summary>
     private void OpenSelectedFile(bool revealInFolder)
     {
         // nothing selected: the top row, as the Start menu's search opens its best match on Enter (user 10-04)
-        if ((_results?.SelectedHit ?? _results?.FirstHit) is not { } hit || _shownQuery != Entry.Text.Trim())
+        if ((_fileList?.SelectedHit ?? _fileList?.FirstHit) is not { } hit || _shownQuery != SearchText())
         {
             // if the list hasn't caught up with the current input, search with the current input now and open the first item (same as the Python version)
             _openWhenReady = revealInFolder ? OpenRequest.Reveal : OpenRequest.Open;
-            RequestSearch(Entry.Text.Trim());
+            RequestSearch(SearchText());
             return;
         }
 
@@ -2525,16 +2498,10 @@ public sealed partial class MainWindow : Window
     {
         if (!FileActions.Open(hit.FullPath, revealInFolder))
         {
-            if (NativeMethods.GetForegroundWindow() != _taskbar.OuterWindow)
-            {
-                EndTyping();   // clicked with the mouse: the bar is no longer in front, so typing would never end (review 10-03)
-            }
-
-            return;
+            return;   // a file that's gone: the panel stays, the list says nothing new
         }
 
-        Entry.Text = string.Empty;
-        EndTyping();
+        ClosePanelDone();
     }
 
     private static bool IsControlDown()
@@ -2552,9 +2519,9 @@ public sealed partial class MainWindow : Window
             _searchTimer.IsRepeating = false;
             _searchTimer.Tick += (_, _) =>
             {
-                if (_typing)
+                if (PanelSearching)
                 {
-                    RequestSearch(Entry.Text.Trim());
+                    RequestSearch(SearchText());
                 }
             };
         }
@@ -2578,28 +2545,14 @@ public sealed partial class MainWindow : Window
             });
         }
 
-        ReclaimTyping();
-        _ui.TryEnqueue(DispatcherQueuePriority.Low, ReclaimTyping);   // again once the click is fully handled — the list can take focus back on release
-        RequestSearch(Entry.Text.Trim());
-    }
-
-    /// <summary>A click on the results list activated it — hand the keyboard back to the input box, or typing would end.</summary>
-    private void ReclaimTyping()
-    {
-        if (!_typing)
-        {
-            return;
-        }
-
-        ForegroundHelper.Bring(_taskbar.OuterWindow);
-        Entry.Focus(FocusState.Programmatic);
+        RequestSearch(SearchText());
     }
 
     /// <summary>Row <paramref name="index"/> of the results: open it, or show it in Explorer.</summary>
     private void OpenResult(int index, bool revealInFolder)
     {
-        _results?.SelectAt(index);
-        if (_results?.SelectedHit is { } hit)
+        _fileList?.SelectAt(index);
+        if (_fileList?.SelectedHit is { } hit)
         {
             OpenHit(hit, revealInFolder);
         }
@@ -2614,13 +2567,12 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        if (!FileActions.SearchInEverything(exe, Entry.Text.Trim()))
+        if (!FileActions.SearchInEverything(exe, SearchText()))
         {
             return;
         }
 
-        Entry.Text = string.Empty;
-        EndTyping();
+        ClosePanelDone();
     }
 
     /// <summary>
@@ -2629,7 +2581,7 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private void StartEverything()
     {
-        ReclaimTyping();   // the click on the link activated the list
+        _panel?.TakeKeyboard();   // the click on the link took it
         if (FileActions.EverythingExe() is not { } exe)
         {
             OpenEverythingDownload();
@@ -2646,9 +2598,9 @@ public sealed partial class MainWindow : Window
         retry.IsRepeating = false;
         retry.Tick += (_, _) =>
         {
-            if (_typing && _mode == BarMode.Files)
+            if (PanelSearching)
             {
-                RequestSearch(Entry.Text.Trim());
+                RequestSearch(SearchText());
             }
         };
         retry.Start();
@@ -2659,7 +2611,7 @@ public sealed partial class MainWindow : Window
     {
         if (FileActions.OpenEverythingDownload())
         {
-            EndTyping();
+            _panel?.Collapse();
         }
     }
 
@@ -2669,7 +2621,7 @@ public sealed partial class MainWindow : Window
         {
             // not typing (Esc / a click away just ended it): clearing the box then asked for the recent list, which popped up
             // after typing had ended — and nothing closed it any more (user 10-04)
-            if (seq != _fileSearch.LatestSeq || _mode != BarMode.Files || !_typing)
+            if (seq != _fileSearch.LatestSeq || !PanelSearching || _fileList is null)
             {
                 return;
             }
@@ -2694,18 +2646,12 @@ public sealed partial class MainWindow : Window
                 _ => hits.Count == 0 ? (_text.NoResultLink, (Action)OpenInEverything) : (null, null),
             };
 
-            if (_results is null)
+            _fileList.Show(hits, note, noteAction, _settings.FileSort, _text);
+            if (hits.Count >= _settings.FileResults)
             {
-                _results = new ResultsWindow();
-                AppFonts.Apply(_results, _language);
-                _results.SortChosen += ChooseFileSort;
-                _results.OpenInEverything += OpenInEverything;
-                _results.KeepTyping += ReclaimTyping;
-                _results.RowClicked += index => OpenResult(index, IsControlDown());
-                _results.RevealClicked += index => OpenResult(index, revealInFolder: true);
+                _panel?.CheckSpacing();   // a full list: its last row is the one next to the field
             }
 
-            _results.Show(hits, note, noteAction, PopupAnchorX, TaskbarTop(), _settings.FileSort, _text);
             _shownQuery = _fileSearch.RequestedQuery;   // the latest request's results (older ones were dropped above)
         });
 
@@ -3031,7 +2977,6 @@ public sealed partial class MainWindow : Window
         Big.StopMeterBars();
         _audioMeter.Dispose();
         _feed.Dispose();
-        CloseResults();
         _settingsWindow?.Close();
 
         _islandTimer?.Stop();

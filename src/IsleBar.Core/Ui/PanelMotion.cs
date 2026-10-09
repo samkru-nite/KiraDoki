@@ -1,15 +1,16 @@
 namespace IsleBar.Core.Ui;
 
 /// <summary>
-/// The input panel's size and place (TODO 7.9 H, user 10-09): 361 wide — the big pill 220 + gap 8 + a small pill with four icons
-/// 133, so with four icons both edges line up (and about Windows 11's 360 taskbar flyouts). Like the lifted card: centred on the
+/// The input panel's size and place (TODO 7.9 H, user 10-09): 409 wide — the big pill 220 + gap 8 + a small pill with six icons
+/// 181 (32 + 5 + 6 × 24), so with six icons both edges line up; it was 361 (four icons) until the time and the size went side by
+/// side (user 10-09, second round). Like the lifted card: centred on the
 /// pills (the whole group, big + small; the small pill alone when there's no big one), pushed in to keep 12 from the screen's
 /// edges, its bottom 8 above the taskbar. It grows out of the circle and shrinks back into it, in the lifted card's time.
 /// </summary>
 public static class PanelMotion
 {
     /// <summary>The panel's width (dip).</summary>
-    public const double Width = 361;
+    public const double Width = 409;
 
     /// <summary>The circle it grows out of (a cell's 24).</summary>
     public const double Circle = 24;
@@ -20,20 +21,36 @@ public static class PanelMotion
     /// <summary>Room inside the window around the panel for the bounce to overshoot into (dip).</summary>
     public const double Room = 12;
 
-    /// <summary>Inside: 8 around the list and the input box, 4 between them.</summary>
+    /// <summary>Inside: 8 above the list and beside it.</summary>
     public const double Pad = 8;
 
+    /// <summary>
+    /// The input field's box from the panel's outer edge, left, right and below: 16 = 15 inside the panel's 1-wide edge line (user
+    /// 10-09: the field 15 from the panel on three sides, as the header's ink is from the top).
+    /// </summary>
+    public const double FieldInset = 16;
+
+    /// <summary>The list's bottom → the field's top: the last row's ink ends about 6.5 above the list's bottom, so its ink → the
+    /// field = 11 (user 10-09, as the header's ink → the first row's; checked by the log "panel: spacing").</summary>
+    public const double FieldGap = 7;   // measured 10-09: 4.5 gave 8.5, not 11
+
+    /// <summary>The panel's height with a list <paramref name="list"/> tall and the field <paramref name="field"/> tall.</summary>
+    public static double Height(double list, double field) => Pad + list + FieldGap + field + FieldInset;
+
     public const int MaxLines = 4;
+
+    /// <summary>The field with one line: 32, as tall as a card's buttons (CardSheets.ButtonHeight, user 10-09).</summary>
+    public const double FieldLeast = 32;
 
     /// <summary>The box's text above and below its lines; the field's room around the box.</summary>
     public const double BoxPad = 4;
 
-    public const double FieldPad = 4;
+    public const double FieldPad = 0;   // the field is the box itself, 28 for one line (user 10-09: it had grown to 36 when its grey got the padding too)
 
     /// <summary>The box's height with <paramref name="lines"/> lines <paramref name="pitch"/> apart (measured in the box's font: the
     /// lines of 14 text came 18.5 apart, not 20 — four of 20 showed a cut fifth line at the top, user 10-09), at least the mode
     /// button's 28; more than <see cref="MaxLines"/> scroll inside.</summary>
-    public static double BoxHeight(int lines, double pitch) => Math.Max(28, (Math.Clamp(lines, 1, MaxLines) * pitch) + (2 * BoxPad));
+    public static double BoxHeight(int lines, double pitch) => Math.Max(FieldLeast, (Math.Clamp(lines, 1, MaxLines) * pitch) + (2 * BoxPad));
 
     /// <summary>The input field (the box with the room around it).</summary>
     public static double FieldHeight(int lines, double pitch) => BoxHeight(lines, pitch) + (2 * FieldPad);

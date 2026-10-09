@@ -8,10 +8,10 @@ public sealed class PanelMotionTests
     [Fact]
     public void It_is_centred_on_the_pills_with_its_bottom_8_above_the_taskbar()
     {
-        // pills from 1000 to 1361 (four icons: the same width as the panel), at 100%
-        var p = PanelMotion.Place(new ScreenRect(1000, 1040, 1361, 1072), 0, 2560, 1032, 1, 200);
+        // pills from 1000 to 1409 (six icons: the same width as the panel), at 100%
+        var p = PanelMotion.Place(new ScreenRect(1000, 1040, 1409, 1072), 0, 2560, 1032, 1, 200);
         Assert.Equal(1000, p.Left);
-        Assert.Equal(361, p.Width);
+        Assert.Equal(409, p.Width);
         Assert.Equal(1024, p.Bottom);
         Assert.Equal(200, p.Height);
     }
@@ -30,16 +30,16 @@ public sealed class PanelMotionTests
     public void Sizes_scale_with_the_display()
     {
         var p = PanelMotion.Place(new ScreenRect(24, 1841, 650, 1905), 0, 3072, 1824, 2, 248);
-        Assert.Equal(722, p.Width);
+        Assert.Equal(818, p.Width);
         Assert.Equal(496, p.Height);
         Assert.Equal(1824 - 16, p.Bottom);
     }
 
     [Theory]
-    [InlineData(1, 36)]     // one line: the mode button's 28 + 4 around
-    [InlineData(2, 53)]     // 2 × 18.5 + 8 + 8
-    [InlineData(4, 90)]
-    [InlineData(9, 90)]     // more lines scroll inside
+    [InlineData(1, 32)]     // one line: a card button's 32
+    [InlineData(2, 45)]     // 2 × 18.5 + 8
+    [InlineData(4, 82)]
+    [InlineData(9, 82)]     // more lines scroll inside
     public void The_input_box_grows_to_four_lines(int lines, double height)
         => Assert.Equal(height, PanelMotion.FieldHeight(lines, 18.5));
 
