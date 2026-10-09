@@ -350,6 +350,7 @@ internal sealed class SettingsWindow : Window
         ChoiceRow(_text.ListStaggerLabel, [("20", "20 ms"), ("40", "40 ms")],   // try both, keep one (user 10-09)
             () => _settings.ListStagger, v => _settings.ListStagger = v);
         ToggleRow(_text.SwapBounce, () => _settings.Bounce, v => _settings.Bounce = v);   // one switch for the swap and the lift (user 10-08)
+        ToggleRow(_text.Transparency, () => _settings.Transparency, v => _settings.Transparency = v);   // the lifted card's glass (丙④, user 10-10)
         ChoiceRow(_text.CardTextLabel, [("left", _text.CardTextLeft), ("group", _text.CardTextCenterGroup), ("text", _text.CardTextCenterText)],
             () => _settings.CardTextAlign, v => _settings.CardTextAlign = v);
 

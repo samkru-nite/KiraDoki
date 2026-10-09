@@ -93,6 +93,13 @@ public sealed class IsleBarSettings
     /// <summary>Card and icon movements end with a small bounce (user 10-07): the swap and, since 10-08, the lifted card. Saved as "swap_bounce".</summary>
     public bool Bounce { get; set; } = true;
 
+    /// <summary>
+    /// The lifted card is glass — Windows' live acrylic (TODO 7.9 丙④, user 10-10, default on). Off: the same card, solid (Windows'
+    /// own colour with transparency off), nothing read or blurred behind it. Energy saver or Windows' transparency effects off
+    /// also make it solid, without touching this. Saved as "transparency".
+    /// </summary>
+    public bool Transparency { get; set; } = true;
+
     /// <summary>How a card lifts out of the big pill: "morph" (default) · "slide" (<see cref="Ui.LiftMotion"/>, TODO 7.9 F, user 10-08).</summary>
     public string LiftAnimation { get; set; } = "morph";
 
@@ -216,6 +223,7 @@ public sealed class IsleBarSettings
         BallSide = BallSide,
         SwapAnimation = SwapAnimation,
         Bounce = Bounce,
+        Transparency = Transparency,
         LiftAnimation = LiftAnimation,
         ListStagger = ListStagger,
         CardTextAlign = CardTextAlign,

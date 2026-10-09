@@ -34,7 +34,11 @@ internal sealed record LiftRequest(
     ImageSource? Cover,
     string? Language,
     ScreenRect? From = null,
-    Color? FromGlow = null);
+    Color? FromGlow = null)
+{
+    /// <summary>The card may be glass (the "transparency" setting, 丙④); <see cref="Frost.Allowed"/> can still say no.</summary>
+    public bool Glass { get; init; } = true;
+}
 
 /// <summary>
 /// The card's icon once more, for riding down into its task cell: as on the card (<paramref name="Big"/>) and, when the cell draws
@@ -196,7 +200,8 @@ internal sealed class LiftWindow : Window
         // WinUI's "base" (#202020 × 0.5 — a bit dark) and "default" (#2C2C2C × 0.15 — a bit light), luminosity 0.96; light: WinUI's
         // default, #FCFCFC × 0, 0.85
         var dark = request.Palette.Dark;
-        _live = Frost.Allowed() && SystemBackdrop is TransparentBackdrop backdrop && backdrop.StartGlass(win.Width, win.Height,
+        TaskbarHost.Log($"lift: glass? setting {request.Glass}, {Frost.Why()}");
+        _live = request.Glass && Frost.Allowed() && SystemBackdrop is TransparentBackdrop backdrop && backdrop.StartGlass(win.Width, win.Height,
             dark ? Color.FromArgb(255, 0x26, 0x26, 0x26) : Color.FromArgb(255, 0xFC, 0xFC, 0xFC), dark ? 0.3f : 0f, dark ? 0.96f : 0.85f);
         if (GetWindowRect(_hwnd, out var outer))
         {

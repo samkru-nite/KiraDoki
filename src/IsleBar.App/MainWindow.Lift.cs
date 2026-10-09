@@ -138,7 +138,7 @@ public sealed partial class MainWindow
             CoverOf(card)?.Large,
             _language,
             from,
-            glow));
+            glow) { Glass = _settings.Transparency });
     }
 
     /// <summary>The lifted card's colours: Windows 11's popup, the theme's text, the pills' green / orange / red, the system accent for bars.</summary>
