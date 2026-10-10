@@ -208,7 +208,7 @@ internal sealed class CalendarWatcher : NoticeWatcher
         Interop.AppLog.Write($"calendar: test file {(stamp == default ? "gone" : $"read, {events.Count} events")}");
     }
 
-    /// <summary>The card for a look: its words, colour, type and countdown.</summary>
+    /// <summary>The card for a look: its words, colour and type. No progress bar (user 10-10: "in 8 min" already says it).</summary>
     /// <remarks>
     /// The words come first and the event's name after, grey (user 10-10: a long name must not push "ended" out of sight; no " · "
     /// between them): <see cref="ActivityState.Title"/> = the words, <see cref="ActivityState.Msg"/> = the name,
@@ -234,14 +234,6 @@ internal sealed class CalendarWatcher : NoticeWatcher
         card.State = state;
         card.Look = look.Tag;
         card.DebutFor = look.Debuts ? CalendarLogic.DebutLength : null;
-        if (look.From is { } from)
-        {
-            // the countdown fills up: total = from the reminder (or the last end) to the start
-            var total = (long)Math.Max(1, (o.Start - from).TotalSeconds);
-            card.Total = total;
-            card.Done = Math.Clamp((long)(now - from).TotalSeconds, 0, total);
-        }
-
         return card;
     }
 

@@ -26,7 +26,7 @@ public enum CalendarLookKind
 /// <param name="Event">The event it is about (for <see cref="CalendarLookKind.Gap"/>, the next one).</param>
 /// <param name="Tag">This look of this event — what closing the card remembers (a closed look doesn't come back; the next one does).</param>
 /// <param name="At">When this look began (orders the card among the others).</param>
-/// <param name="From">Start of the countdown (<see cref="CalendarLookKind.Remind"/>, <see cref="CalendarLookKind.Gap"/>), else null.</param>
+/// <param name="From">When the wait began — the reminder going off, the last event ending (<see cref="CalendarLookKind.Remind"/>, <see cref="CalendarLookKind.Gap"/>), else null.</param>
 public sealed record CalendarLook(CalendarLookKind Kind, IcsOccurrence Event, string Tag, DateTimeOffset At, DateTimeOffset? From = null)
 {
     /// <summary>The look takes the big pill for a moment (a debut) instead of staying in its cell or pinned.</summary>
