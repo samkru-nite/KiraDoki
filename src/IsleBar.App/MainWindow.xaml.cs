@@ -285,7 +285,7 @@ public sealed partial class MainWindow : Window
 
             _cards.Update(items, DateTimeOffset.UtcNow);
             LogDebutNotes();
-            _shownCard = _cards.Shown;
+            _shownCard = Pretend(_cards.Shown);   // the transit station dragged in / out (MainWindow.Transit)
             KeepLift();
             KeepList();
             var next =_shownCard is { } shown ? new IslandSnapshot(shown.State, _cards.Cards.Count - 1) : IslandSnapshot.Empty;
@@ -412,7 +412,7 @@ public sealed partial class MainWindow : Window
             return false;
         }
 
-        _slots.Update(_cards.Cards, _shownCard?.Key, _hovering);
+        _slots.Update(CellSource, _shownCard?.Key, _hovering);
         var cells = _slots.Cells;
         _cellCards.Clear();
         _cellCards.AddRange(cells.Take(RoomForCells(cells.Count)));
@@ -1111,17 +1111,12 @@ public sealed partial class MainWindow : Window
 
     private void RenderIsland()
     {
-        _bigCard = !_dropHover && _snapshot.IsActive ? _shownCard : null;
+        _bigCard = _snapshot.IsActive ? _shownCard : null;
         PillBody.CanDrag = TransitShown;   // only the transit station's card can be dragged out (TODO ④, 10-10)
         LayoutPills();
         ShowCloseZone();
         Big.UpdateProgress(_snapshot.Primary);
         UpdateGlow();
-        if (RenderDropHint())
-        {
-            return;
-        }
-
         if (!_snapshot.IsActive)
         {
             Big.Clear();
@@ -1131,27 +1126,6 @@ public sealed partial class MainWindow : Window
 
         var state = _snapshot.Primary!;
         RenderIslandState(state);
-    }
-
-    /// <summary>
-    /// While a file is dragged over the pill, show it there instead of only the blue border (user 10-01): a file icon and the file's
-    /// name. Returns false when not dragging.
-    /// </summary>
-    private bool RenderDropHint()
-    {
-        if (!_dropHover)
-        {
-            return false;
-        }
-
-        RenderIslandState(new ActivityState
-        {
-            RawKind = ActivityState.KindNotice,
-            Title = _text.NoticeTransitDrop,   // "\u653E\u5165\u4E2D\u8F6C\u7AD9", then the files' names in grey (TODO \u2463, 10-10)
-            Msg = _dropNames,
-            Glyph = IsleBar.Core.SystemWatch.NoticeGlyphs.Transit,
-        });
-        return true;
     }
 
     private void RenderIslandState(ActivityState state)
@@ -1690,44 +1664,57 @@ public sealed partial class MainWindow : Window
 
     private void OnDropOver(DragEventArgs e, string from = "zone")
     {
-        if (_draggingOut || !e.DataView.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.StorageItems))
+        if (!e.DataView.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.StorageItems))
         {
-            return;   // our own drag passing over the pill isn't a drop
+            return;
         }
 
         e.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy;
         e.DragUIOverride.IsCaptionVisible = false;
         e.DragUIOverride.IsGlyphVisible = false;
+        if (_draggingOut)
+        {
+            DragOverPills();   // our own drag brought back: the station goes back up (let go here, nothing happens)
+            return;
+        }
+
         if (!_dropHover)
         {
             _dropHover = true;
             _dropNames = null;
             TaskbarHost.Log($"dropzone: files over it ({from})");
-            RenderIsland();
+            BeginDropHover();
             _ = ReadDropNamesAsync(e.DataView);
         }
     }
 
     private void OnDropLeft(string from = "zone")
     {
-        if (_dropHover)
+        if (_draggingOut)
         {
-            TaskbarHost.Log($"dropzone: files left it ({from})");
+            DragLeftPills();
+            return;
         }
 
-        _dropHover = false;
-        RenderIsland();
-    }
-
-    private async void OnDropped(DragEventArgs e)
-    {
-        _dropHover = false;
-        RenderIsland();
-        if (_draggingOut || !e.DataView.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.StorageItems))
+        if (!_dropHover)
         {
             return;
         }
 
+        TaskbarHost.Log($"dropzone: files left it ({from})");
+        _dropHover = false;
+        EndDropHover();
+    }
+
+    private async void OnDropped(DragEventArgs e)
+    {
+        if (_draggingOut || !e.DataView.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.StorageItems))
+        {
+            return;   // our own drag let go on the pills: nothing moves
+        }
+
+        Landing();
+        _dropHover = false;
         var deferral = e.GetDeferral();
         try
         {
@@ -1736,6 +1723,7 @@ public sealed partial class MainWindow : Window
             if (_feed.Watchers?.Transit is { } transit && paths.Length > 0)
             {
                 transit.Add(paths);
+                Restack();   // the station takes the hint's place now, not on the next tick
             }
             else
             {
@@ -1808,6 +1796,7 @@ public sealed partial class MainWindow : Window
         }
 
         _buttonWasDown = down;
+        WatchDragOutEnd(down);
         var dragging = down && _pressCounts && !_draggingOut && _placement.Visible
             && DateTime.UtcNow - _pressSince >= DragHold
             && (Math.Abs(at.X - _pressAt.X) >= DragMove || Math.Abs(at.Y - _pressAt.Y) >= DragMove);
@@ -1878,7 +1867,6 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private void HookDragOut()
     {
-        string[] dragged = [];
         PillBody.DragStarting += async (_, e) =>
         {
             var transit = _feed.Watchers?.Transit;
@@ -1914,9 +1902,16 @@ public sealed partial class MainWindow : Window
                 e.Data.SetStorageItems(items);
                 e.AllowedOperations = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy
                     | Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
-                dragged = [.. items.Select(i => i.Path)];
-                _draggingOut = true;
+                if (await PillPicture() is { } picture)
+                {
+                    // the whole big pill is lifted and follows the mouse, held where it was pressed (TODO ④ 丙)
+                    var at = e.GetPosition(PillBody);
+                    e.DragUI.SetContentFromSoftwareBitmap(picture.Bitmap,
+                        new Windows.Foundation.Point(at.X * picture.Scale, at.Y * picture.Scale));
+                }
+
                 TaskbarHost.Log($"transit: drag started with {items.Count}");
+                PickUp([.. items.Select(i => i.Path)]);
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)   // async void: anything escaping ends the app
             {
@@ -1928,17 +1923,7 @@ public sealed partial class MainWindow : Window
                 deferral.Complete();
             }
         };
-        PillBody.DropCompleted += (_, e) =>
-        {
-            _draggingOut = false;
-            TaskbarHost.Log($"transit: dropped — {e.DropResult}");
-            if (e.DropResult != Windows.ApplicationModel.DataTransfer.DataPackageOperation.None || dragged.Length > 0)
-            {
-                _feed.Watchers?.Transit?.Dragged(dragged);   // goes by which files are still there, not by the result
-            }
-
-            dragged = [];
-        };
+        PillBody.DropCompleted += (_, e) => FinishDragOut(e.DropResult.ToString());
     }
 
     /// <summary>Fills in the dragged files' names for the drop hint (read asynchronously, so the hint shows at once and the names follow).</summary>
@@ -1953,7 +1938,7 @@ public sealed partial class MainWindow : Window
             }
 
             _dropNames = items[0].Name + (items.Count > 1 ? $" +{items.Count - 1}" : string.Empty);
-            RenderIsland();
+            Restage();
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -2010,7 +1995,7 @@ public sealed partial class MainWindow : Window
     {
         _cards.Update(_feed.Collect(DateTimeOffset.UtcNow), DateTimeOffset.UtcNow);
         LogDebutNotes();
-        _shownCard = _cards.Shown;
+        _shownCard = Pretend(_cards.Shown);
         _snapshot = _shownCard is { } shown ? new IslandSnapshot(shown.State, _cards.Cards.Count - 1) : IslandSnapshot.Empty;
         _animator.Classify(_snapshot);
         if (ComputeCells())

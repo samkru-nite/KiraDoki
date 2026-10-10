@@ -34,7 +34,10 @@ public sealed partial class MainWindow
     private readonly List<Card> _renderedCells = [];
 
     /// <summary>The card the big pill should draw for the state decided now.</summary>
-    private Card? WantedBig => !_dropHover && _snapshot.IsActive ? _shownCard : null;
+    private Card? WantedBig => _snapshot.IsActive ? _shownCard : null;
+
+    /// <summary>The big pill's card goes at once, not dropping out (the transit station lifted off by a drag, MainWindow.Transit).</summary>
+    private bool _vanishBig;
 
     /// <summary>The scene to draw differs from the one drawn: another card on the big pill, or other cells.</summary>
     private bool SceneChanged()
@@ -70,8 +73,9 @@ public sealed partial class MainWindow
             return;
         }
 
-        if (!SceneChanged() || _dropHover || !_placement.Visible || !_taskbar.IsAttached)
+        if (!SceneChanged() || !_placement.Visible || !_taskbar.IsAttached)
         {
+            _vanishBig = false;
             RenderTaskCells();
             RenderIsland();
             return;
@@ -179,6 +183,7 @@ public sealed partial class MainWindow
         finally
         {
             Phase("end");
+            _vanishBig = false;
             TaskbarHost.Log($"transition{phases}");   // ms since it started — a slow step shows here
             FlyLayer.Children.Clear();
             PillRow.Opacity = 1;
@@ -362,6 +367,10 @@ public sealed partial class MainWindow
 
                     _oldIconCentre = (x + a.IconX, y + (PillGeometry.Height / 2));   // a lifted card's icon rides down to it
                 });
+            }
+            else if (_vanishBig)
+            {
+                mover.Place(aBox, aBox.X, row, a.IconX, 1, 1, 0, 0);   // lifted off by a drag: the drag image is it now
             }
             else
             {
