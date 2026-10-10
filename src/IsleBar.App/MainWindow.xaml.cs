@@ -1857,6 +1857,7 @@ public sealed partial class MainWindow : Window
         if (_draggingOut && down)
         {
             TrackHome(at);
+            NudgeOnKeys();
         }
         // files coming in (the press began off the taskbar), or the transit station dragged out of the pill (TODO ④ 丙)
         var dragging = down && _placement.Visible && (_draggingOut || (_pressCounts
@@ -1907,6 +1908,30 @@ public sealed partial class MainWindow : Window
         _catcher.Cover(span.Left, rect.Top - above, span.Right, rect.Bottom);
         TaskbarHost.Log($"dropzone: up {span.Left}–{span.Right} × {rect.Top}–{rect.Bottom} ({(big ? "big pill out" : "circle only")})");
     }
+
+    /// <summary>
+    /// Our own drag (the transit station) and Ctrl / Shift / Alt went down or up: the mouse is nudged 1 px and back. The drop was
+    /// always right (tried 10-11: Ctrl copies, Shift moves, a key let go again counts as up), but the receiver's "→ 移动 / + 复制"
+    /// only changed once the mouse moved — held still, it looked as if the key did nothing (user 10-11).
+    /// </summary>
+    private void NudgeOnKeys()
+    {
+        var keys = NativeMethods.ModifiersDown();
+        if (keys == _dragKeys)
+        {
+            return;
+        }
+
+        if (_dragKeys >= 0)
+        {
+            var (was, now) = NativeMethods.NudgeMouse();
+            TaskbarHost.Log($"transit: keys {_dragKeys} → {keys}, mouse {was.X},{was.Y} → {now.X},{now.Y}");
+        }
+
+        _dragKeys = keys;
+    }
+
+    private int _dragKeys = -1;   // the keys at the last look while dragging out (-1: none yet this drag)
 
     private IslandUi.DropCatcher NewCatcher() => new() { Over = e => OnDropOver(e), Left = () => OnDropLeft(), Dropped = OnDropped };
 

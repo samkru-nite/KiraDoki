@@ -27,6 +27,32 @@ internal static partial class NativeMethods
     internal static bool PrimaryButtonDown()
         => (GetAsyncKeyState(GetSystemMetrics(23 /* SM_SWAPBUTTON */) != 0 ? 0x02 : 0x01) & 0x8000) != 0;
 
+    /// <summary>Which of Ctrl (1), Shift (2), Alt (4) are held down right now.</summary>
+    internal static int ModifiersDown()
+        => ((GetAsyncKeyState(0x11) & 0x8000) != 0 ? 1 : 0) | ((GetAsyncKeyState(0x10) & 0x8000) != 0 ? 2 : 0)
+           | ((GetAsyncKeyState(0x12) & 0x8000) != 0 ? 4 : 0);
+
+    /// <summary>
+    /// The mouse is put 1 px over — right, next time left, so it never strays further — and whatever watches it looks again. Returns
+    /// where it was and where it is now (for the log). Right and straight back at once only worked now and then (user 10-11: the two
+    /// moves can be merged into none); a relative 1-unit move went through pointer acceleration and was often no move at all (user
+    /// 10-11, watching the screen) — the exact point can't be scaled away.
+    /// </summary>
+    internal static (POINT Was, POINT Now) NudgeMouse()
+    {
+        _nudge = -_nudge;
+        GetCursorPos(out var was);
+        SetCursorPos(was.X + _nudge, was.Y);
+        GetCursorPos(out var now);
+        return (was, now);
+    }
+
+    private static int _nudge = -1;
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetCursorPos(int x, int y);
+
     /// <summary>Whether a mouse button (left, right or middle) is held down right now.</summary>
     internal static bool MouseButtonDown()
         => (GetAsyncKeyState(0x01) & 0x8000) != 0 || (GetAsyncKeyState(0x02) & 0x8000) != 0 || (GetAsyncKeyState(0x04) & 0x8000) != 0;

@@ -234,6 +234,7 @@ public sealed partial class MainWindow
         _draggingOut = true;
         _draggedPaths = paths;
         _dragSince = DateTimeOffset.UtcNow;
+        _dragKeys = -1;   // Ctrl / Shift as the drag begins: only changes from here nudge the mouse
         _upSince = null;
         // the press that began the drag isn't a click: its release (after the drop) lifted the card that had come up (user 10-11)
         _liftPress = false;
