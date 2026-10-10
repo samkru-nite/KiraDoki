@@ -128,6 +128,7 @@ public sealed partial class MainWindow : Window
     private void WireEvents()
     {
         HookFileDrop();
+        HookDragTest();
         PressFeedback.Attach(BallCell);
         PressFeedback.Enabled = () => Animations.On;
         PressFeedback.Attach(PillBody, PressFeedback.PillPressed, PressFeedback.PillDamping);   // the big pill too: half on press, the rest + the card on release (user 10-08)
@@ -1674,7 +1675,57 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>Off until something takes dropped files — the transit station (TODO 二-④). Not a const: that made the rest unreachable code.</summary>
-    private static readonly bool TakesDrops = false;
+    private static readonly bool TakesDrops = DragTest is not null;
+
+    /// <summary>
+    /// TEMPORARY experiment for the transit station (10-10): with the file <c>%LOCALAPPDATA%\IsleBar\dragtest</c>, the pill takes
+    /// dropped files and the big pill can be dragged out as the last dropped file (or the path written in the file). Log "dragtest: …".
+    /// Delete with the experiment.
+    /// </summary>
+    private static readonly string? DragTest = File.Exists(Path.Combine(AppPaths.DataDirectory, "dragtest")) ? Path.Combine(AppPaths.DataDirectory, "dragtest") : null;
+
+    private string? _dragTestFile;
+
+    private void HookDragTest()
+    {
+        if (DragTest is null)
+        {
+            return;
+        }
+
+        var written = File.ReadAllText(DragTest).Trim();
+        _dragTestFile = File.Exists(written) ? written : null;
+        PillBody.CanDrag = true;
+        PillBody.DragStarting += async (_, e) =>
+        {
+            if (_dragTestFile is not { } path)
+            {
+                TaskbarHost.Log("dragtest: drag started, but no file yet — drop one on the pill first");
+                e.Cancel = true;
+                return;
+            }
+
+            var deferral = e.GetDeferral();
+            try
+            {
+                var file = await Windows.Storage.StorageFile.GetFileFromPathAsync(path);
+                e.Data.SetStorageItems([file]);
+                e.Data.RequestedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy;
+                TaskbarHost.Log($"dragtest: drag started with {Path.GetFileName(path)}");
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                TaskbarHost.Log("dragtest: drag start failed — " + ex.Message);
+                e.Cancel = true;
+            }
+            finally
+            {
+                deferral.Complete();
+            }
+        };
+        PillBody.DropCompleted += (_, e) => TaskbarHost.Log($"dragtest: drop completed — {e.DropResult}");
+        TaskbarHost.Log($"dragtest: on ({_dragTestFile ?? "no file yet"})");
+    }
 
     /// <summary>
     /// The pill can catch files dragged onto it: blue border and the file's name while hovering. Nothing takes them yet — the
@@ -1719,6 +1770,11 @@ public sealed partial class MainWindow : Window
             {
                 var items = await e.DataView.GetStorageItemsAsync();
                 TaskbarHost.Log($"drop: {items.Count} item(s) — nothing takes them yet");
+                if (DragTest is not null && items.Count > 0 && items[0] is Windows.Storage.IStorageItem first && !string.IsNullOrEmpty(first.Path))
+                {
+                    _dragTestFile = first.Path;
+                    TaskbarHost.Log($"dragtest: holding {first.Name} — drag the big pill out to drop it somewhere");
+                }
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)   // async void: anything escaping ends the app (review 10-03)
             {
