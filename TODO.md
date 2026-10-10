@@ -73,7 +73,7 @@
   - 两个 U 盘 = 两张卡；移动硬盘、读卡器算；手机（MTP）不算。
   - 成本中等，约一到两个会话：发现插拔简单（每秒看可移动盘），弹出 + 找出谁占着费工夫。
 - [ ] 中转站：拖文件到胶囊 → 生成"中转胶囊"，需要时再从胶囊拖出去。Mac 灵动岛应用的标配（NotchNook 文件托盘）。**做的时候顺带**：复制文件 / 图片的卡片加"加入中转站"按钮（10-10 用户定；图片是剪贴板里的位图时要先存成临时文件）。
-  - **10-10 实验**：从任务栏里的胶囊**能把文件拖出去**（模拟拖到资源管理器，日志 "dragtest: drag started → drop completed — Copy"，文件到了）。实验代码还在 MW（`DragTest` / `HookDragTest`，开关文件 `%LOCALAPPDATA%\IsleBar\dragtest`），正式做时删掉换成真的。
+  - **10-10 实验**：从任务栏里的胶囊**能把文件拖出去**（模拟拖到资源管理器，日志 "dragtest: drag started → drop completed — Copy"，文件到了）。实验代码已删（10-10，要看当时的写法：`git show 9218613 -- src/IsleBar.App/MainWindow.xaml.cs`：`PillBody.CanDrag` + `DragStarting` 里 `SetStorageItems`，`DropCompleted` 看结果；拖进来的 `HookFileDrop` 还在、由 `TakesDrops = false` 关着）。
   - **10-10 用户定的设计**（参考了 Yoink、Dropover：都只记文件位置；拖出去照搬系统文件管理器的规则，没有单独的"剪切"）：
     1. **只记文件位置，不复制**（大文件不占双倍空间、放进去瞬间完成）；原文件被删 / 被移走 → 那一项显示"找不到了"。剪贴板里的图片（截图）没有文件 → 先存成临时文件。
     2. **一张"中转站"卡片**：大胶囊 `中转站 3 个文件`，平时收在小胶囊（托盘图标）。**状态卡片**，不上色，放进新文件时亮相 2 秒。
