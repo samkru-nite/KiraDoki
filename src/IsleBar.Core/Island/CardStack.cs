@@ -56,12 +56,16 @@ public sealed class CardStack
     /// <summary>A debut's length while other new cards wait their turn (user 10-07).</summary>
     public static readonly TimeSpan DebutAtLeast = TimeSpan.FromSeconds(1.5);
 
+    /// <summary>A debut's length when an AI card that was done / waiting starts working again in the same chat (user 10-10: 2 s was too short to notice).</summary>
+    public static readonly TimeSpan ResumeDebutLength = TimeSpan.FromSeconds(6);
+
     /// <summary>No debuts this soon after the first update: what is there when the bar starts doesn't parade.</summary>
     public static readonly TimeSpan StartQuiet = TimeSpan.FromSeconds(2);
 
     private string? _debutKey;
     private DateTimeOffset _debutSince;
     private readonly List<string> _debutQueue = [];
+    private readonly HashSet<string> _resumed = new(StringComparer.Ordinal);   // debuts of AI cards working again: ResumeDebutLength
     private DateTimeOffset? _firstUpdate;
 
     /// <summary>The card on its debut now (null = none).</summary>
@@ -256,11 +260,16 @@ public sealed class CardStack
             // a card that changes type counts as newly arrived (working → done comes to the front; done → working again goes to the back)
             if (!_arrived.TryGetValue(key, out var seen) || seen.Type != type)
             {
+                var resumed = seen.Since != default && state.Kind == ActivityKind.AgentWorking;   // done / waiting → working again
                 seen = (type, now);
                 _arrived[key] = seen;
                 if (type == CardType.Status && TaskRules.Debuts(state) && !_hidden.Contains(key) && !_tucked.Contains(key))
                 {
                     fresh.Add((key, state.UpdatedAt));
+                    if (resumed)
+                    {
+                        _resumed.Add(key);
+                    }
                 }
                 else if (type == CardType.Status)
                 {
@@ -351,6 +360,7 @@ public sealed class CardStack
         }
 
         _debutQueue.RemoveAll(k => !Present(k));
+        _resumed.RemoveWhere(k => k != _debutKey && !_debutQueue.Contains(k) && !fresh.Any(f => f.Key == k));
         if (now - _firstUpdate!.Value >= StartQuiet)
         {
             var add = fresh.OrderBy(f => f.Updated).ThenBy(f => f.Key, StringComparer.Ordinal).Select(f => f.Key)
@@ -369,9 +379,10 @@ public sealed class CardStack
             }
         }
 
-        if (_debutKey is not null && (temporary || now - _debutSince >= (_debutQueue.Count > 0 ? DebutAtLeast : DebutLength)))
+        if (_debutKey is not null && (temporary || now - _debutSince >= (_debutQueue.Count > 0 ? DebutAtLeast : _resumed.Contains(_debutKey) ? ResumeDebutLength : DebutLength)))
         {
             _notes.Add($"debut of {_debutKey} over{(temporary ? " (a temporary card came)" : string.Empty)}");
+            _resumed.Remove(_debutKey);
             _debutKey = null;   // its turn is over, or a temporary card came: that one goes first
         }
 

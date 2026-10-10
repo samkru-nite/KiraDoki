@@ -382,7 +382,24 @@ public sealed class CardStackTests
         var work = Item(ActivityKind.AgentWorking, "s", 7);
         stack.Update([music, work], T0.AddSeconds(7));
         Assert.Equal("s", ShownKey(stack));
-        stack.Update([music, work], T0.AddSeconds(10));
+        stack.Update([music, work], T0.AddSeconds(12.9));
+        Assert.Equal("s", ShownKey(stack));   // working again in the same chat: 6 s (user 10-10)
+        stack.Update([music, work], T0.AddSeconds(13));
+        Assert.Equal("m", ShownKey(stack));
+    }
+
+    [Fact]
+    public void Back_to_work_after_done_debuts_for_six_seconds()
+    {
+        var music = Item(ActivityKind.Music, "m");
+        var done = Item(ActivityKind.AgentDone, "s", 0, "done");
+        var stack = Started(music, done);
+        var work = Item(ActivityKind.AgentWorking, "s", 6);
+        stack.Update([music, work], T0.AddSeconds(6));
+        Assert.Equal("s", ShownKey(stack));
+        stack.Update([music, work], T0.AddSeconds(11.9));
+        Assert.Equal("s", ShownKey(stack));
+        stack.Update([music, work], T0.AddSeconds(12));
         Assert.Equal("m", ShownKey(stack));
     }
 
