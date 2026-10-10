@@ -82,7 +82,10 @@ internal sealed class SheetView
             SheetLayout.Files => FilesMiddle(sheet, out _scroll),
             _ => TextMiddle(sheet, out _scroll),
         };
-        _middle.Margin = new Thickness(0, CardSheets.Gap, 0, 0);
+        // a file list reaches 8 into the card's padding on both sides: a row's hover fill sits there and its icon lines up with the
+        // source row's (user 10-10)
+        var inset = sheet.Layout == SheetLayout.Files ? -FileInset : 0;
+        _middle.Margin = new Thickness(inset, CardSheets.Gap, inset, 0);
         Grid.SetRow(_middle, 1);
         Root.Children.Add(_middle);
         if (sheet.Progress is { } progress)
@@ -405,7 +408,7 @@ internal sealed class SheetView
 
     // ---------------- a list of files (the transit station, TODO ④, 10-10) ----------------
 
-    private const double FileRow = 32, FileRowGap = 2, FileGlyph = 16, FileClose = 24;
+    private const double FileRow = 32, FileRowGap = 2, FileGlyph = 16, FileClose = 24, FileInset = 8;
 
     /// <summary>
     /// One row per file: its icon (document / folder) and name 14, "not found" 12 grey when it's gone, ✕ at the end. A row is dragged
@@ -489,7 +492,7 @@ internal sealed class SheetView
 
         var row = new Border
         {
-            Height = FileRow, Padding = new Thickness(8, 0, 4, 0), CornerRadius = new CornerRadius(4),
+            Height = FileRow, Padding = new Thickness(FileInset, 0, FileInset, 0), CornerRadius = new CornerRadius(4),
             Background = Brush(Microsoft.UI.Colors.Transparent), Child = grid, CanDrag = !file.Gone,
         };
         if (!file.Gone)
