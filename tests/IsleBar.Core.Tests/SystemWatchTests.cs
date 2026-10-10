@@ -170,8 +170,9 @@ public sealed class SystemWatchTests
     [InlineData(false, 20, 20)]
     [InlineData(false, 15, 20)]
     [InlineData(false, 10, 10)]
-    [InlineData(false, 5, 10)]
-    [InlineData(false, 4, PowerLogic.Critical)]   // under 5%
+    [InlineData(false, 6, 10)]
+    [InlineData(false, 5, PowerLogic.Critical)]   // 5% or less
+    [InlineData(false, 4, PowerLogic.Critical)]
     [InlineData(false, 3, PowerLogic.Critical)]
     [InlineData(true, 3, null)]      // no warning while charging
     public void Low_battery_thresholds(bool plugged, int percent, int? expected)

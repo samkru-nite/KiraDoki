@@ -22,7 +22,7 @@ public enum PowerChange
 /// <summary>
 /// Rules for power notices. Windows events arrive several times over at the moment of plugging in (status, percent and time remaining change separately),
 /// and the state at app startup is not a "change", so we compare with the previous state and report <b>only when plugged/unplugged actually changed</b>.
-/// Low battery (user 10-10): a 6-second notice on reaching 20%, another on reaching 10%; under 5% a pinned card that stays until
+/// Low battery (user 10-10): a 6-second notice on reaching 20%, another on reaching 10%; at 5% or less a pinned card that stays until
 /// plugged in (shown even if already that low at startup — a human needs to act).
 /// </summary>
 public sealed class PowerLogic
@@ -30,8 +30,8 @@ public sealed class PowerLogic
     /// <summary>Low-battery thresholds: 20% and 10% (a brief notice each), and <see cref="Critical"/>.</summary>
     public static readonly int[] LowThresholds = [20, 10, Critical];
 
-    /// <summary>Under 5% (4% or less): the notice stays, pinned, until plugged in (user 10-10).</summary>
-    public const int Critical = 4;
+    /// <summary>5% or less: the notice stays, pinned, until plugged in (user 10-10: 20%, 10%, 5% — it was 4% until the user saw 5% go).</summary>
+    public const int Critical = 5;
 
     private PowerReading? _last;
 

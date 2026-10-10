@@ -16,10 +16,10 @@ namespace IsleBar.Core.Island;
 /// <item><term>Mic / camera</term><description>debut · nothing</description></item>
 /// <item><term>Send to phone</term><description>debut · sent → brief; failed → stays</description></item>
 /// <item><term>Focus mode on</term><description>debut · off → nothing (10-10)</description></item>
-/// <item><term>Calendar</term><description>one card all day that changes looks (<see cref="SystemWatch.CalendarLogic"/>): its own
-/// reminder → pinned orange; start → debut 6 s orange, then in its cell "until 9:35"; end → debut 6 s green, then a pinned green gap
-/// or nothing; a look debuts by <see cref="ActivityState.Look"/>, not by type (10-10)</description></item>
-/// <item><term>Battery low</term><description>brief at 20% and at 10%; under 5% pinned orange (pending) · plugged in → nothing (10-10)</description></item>
+/// <item><term>Calendar</term><description>one card all day that changes looks, a second only while two events overlap
+/// (<see cref="SystemWatch.CalendarLogic"/>): its own reminder → pinned orange; start → debut 6 s orange, then in its cell "Ongoing";
+/// end → debut 6 s green, then a pinned green gap or nothing; a look debuts by <see cref="ActivityState.Look"/>, not by type (10-10)</description></item>
+/// <item><term>Battery low</term><description>brief at 20% and at 10%; at 5% or less pinned orange (pending) · plugged in → nothing (10-10)</description></item>
 /// </list>
 /// </summary>
 public static class TaskRules

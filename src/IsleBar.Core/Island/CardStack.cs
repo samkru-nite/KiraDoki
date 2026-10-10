@@ -196,7 +196,7 @@ public sealed class CardStack
         // an agent's own failure (usage limit, stopped on an error, couldn't be started) is inform; the system's notices are temporary
         // the mic / camera in use is a status card while it lasts (TODO 7.9 D, 10-06: not pinned — it is your own doing)
         ActivityKind.Notice when state.Stage == "privacy" => CardType.Status,
-        // lasting notices (focus mode on) are status cards too; battery under 5% is pending: pinned, orange, until plugged in (user 10-10)
+        // lasting notices (focus mode on) are status cards too; battery at 5% or less is pending: pinned, orange, until plugged in (user 10-10)
         ActivityKind.Notice when state.Stage == SystemWatch.SystemNotice.HoldStage => CardType.Status,
         ActivityKind.Notice when state.Stage == SystemWatch.SystemNotice.CriticalStage => CardType.Pending,
         ActivityKind.Notice when state.Stage == SystemWatch.SystemNotice.KeepStage => CardType.Inform,   // a calendar reminder (10-10)

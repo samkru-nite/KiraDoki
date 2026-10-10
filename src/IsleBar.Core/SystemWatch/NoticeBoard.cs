@@ -125,7 +125,7 @@ public static class SystemNotice
     /// <summary>Stage of a notice that lasts while something is on (<see cref="NoticeBoard.Hold"/>): a status card.</summary>
     public const string HoldStage = "hold";
 
-    /// <summary>Stage of a notice you must act on now (battery under 5%): a pending card — pinned, orange — until it goes.</summary>
+    /// <summary>Stage of a notice you must act on now (battery at 5% or less): a pending card — pinned, orange — until it goes.</summary>
     public const string CriticalStage = "critical";
 
     /// <summary>Stage of a lasting notice that stays on the big pill until closed by hand (a calendar reminder): an inform card.</summary>

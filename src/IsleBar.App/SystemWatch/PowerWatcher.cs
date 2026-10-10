@@ -5,7 +5,7 @@ namespace IsleBar.App.SystemWatch;
 
 /// <summary>
 /// Charger plugged/unplugged and low battery (<see cref="PowerManager"/>). Plugging in shows "Charging · 78%" for 2.5 s, unplugging "Battery · 76%" for 2 s,
-/// and without a charger "Battery 20% · about 45 min" for 6 s at 20% and again at 10%, and under 5% until plugged in (a pinned
+/// and without a charger "Battery 20% · about 45 min" for 6 s at 20% and again at 10%, and at 5% or less until plugged in (a pinned
 /// orange card, user 10-10).
 /// On desktops without a battery nothing is shown. Rules are in <see cref="PowerLogic"/>.
 /// PowerManager events come from the thread pool — no UI thread needed.
@@ -97,7 +97,7 @@ internal sealed class PowerWatcher : NoticeWatcher
             if (fresh)
             {
                 _lowLevel = level;
-                _lowSince = now;   // 20 → 10 → under 5 is a new notice each time (a new timestamp)
+                _lowSince = now;   // 20 → 10 → 5 is a new notice each time (a new timestamp)
             }
 
             // no gauge — the percent is already in the text (user 10-01)
@@ -106,7 +106,7 @@ internal sealed class PowerWatcher : NoticeWatcher
                 urgent: true, open: SettingsUri);
             if (level == PowerLogic.Critical)
             {
-                // stays, pinned; percent and time left are rewritten each time, the timestamp stays at when it crossed 5%
+                // stays, pinned; percent and time left are rewritten each time, the timestamp stays at when it reached 5%
                 notice.Stage = SystemNotice.CriticalStage;
                 Board.Hold(LowKey, notice);
             }
