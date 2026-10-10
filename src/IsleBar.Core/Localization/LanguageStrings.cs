@@ -85,6 +85,12 @@ public sealed class LanguageStrings
     /// <summary>Several files: "{n} files copied".</summary>
     public required string NoticeCopiedFiles { get; init; }
 
+    /// <summary>Files cut (Ctrl+X in File Explorer), a single one.</summary>
+    public required string NoticeCutFile { get; init; }
+
+    /// <summary>Several files cut: "{n} files cut".</summary>
+    public required string NoticeCutFiles { get; init; }
+
     public required string NoticeCpu { get; init; }
     public required string NoticeMemory { get; init; }
 

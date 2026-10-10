@@ -1521,7 +1521,7 @@ public sealed partial class MainWindow : Window
             IReadOnlyList<string> paths = copied.CopiedFiles;
             if (paths.Count == 0)
             {
-                var saved = await copied.SaveImageAsync(Path.Combine(AppPaths.DataDirectory, "transit-images"), _text.TransitPicture);
+                var saved = await copied.SaveImageAsync(SystemWatch.TransitWatcher.PictureFolder, _text.TransitPicture);
                 paths = saved is null ? [] : [saved];
             }
 

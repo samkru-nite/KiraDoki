@@ -22,6 +22,10 @@ internal sealed class TransitWatcher : NoticeWatcher
 
     private static readonly string StoreFile = Path.Combine(AppPaths.DataDirectory, "transit.txt");
 
+    /// <summary>Where a copied image (a screenshot has no file) is saved before it goes in — the copy card's "+". Ours: taken out by
+    /// hand → deleted; one the list no longer has (moved away, or left from before) → deleted at start.</summary>
+    public static readonly string PictureFolder = Path.Combine(AppPaths.DataDirectory, "transit-images");
+
     private readonly object _gate = new();
     private TransitShelf _shelf = new();
     private DateTimeOffset _since = DateTimeOffset.UtcNow;
@@ -40,6 +44,7 @@ internal sealed class TransitWatcher : NoticeWatcher
         {
             _shelf = TransitShelf.Load(File.Exists(StoreFile) ? File.ReadAllText(StoreFile) : null);
             AppLog.Write($"transit: {_shelf.Count} item(s) kept from last time");
+            DeletePictures(LeftPictures());
             _gone = Missing();
             Show(debut: false);
         }
@@ -108,6 +113,7 @@ internal sealed class TransitWatcher : NoticeWatcher
     {
         lock (_gate)
         {
+            var before = _shelf.Paths.ToArray();
             var removed = paths is null ? _shelf.Count : _shelf.Remove(paths);
             if (paths is null)
             {
@@ -117,6 +123,7 @@ internal sealed class TransitWatcher : NoticeWatcher
             if (removed > 0)
             {
                 AppLog.Write($"transit: {removed} taken out, {_shelf.Count} left");
+                DeletePictures(before.Where(p => !_shelf.Contains(p)));
                 _gone = Missing();
                 Save();
                 Show(debut: false);
@@ -263,6 +270,46 @@ internal sealed class TransitWatcher : NoticeWatcher
             Show(debut: false);
         }
     });
+
+    /// <summary>Call under the lock. The saved images in <see cref="PictureFolder"/> the list doesn't have.</summary>
+    private string[] LeftPictures()
+    {
+        try
+        {
+            return Directory.Exists(PictureFolder) ? [.. Directory.EnumerateFiles(PictureFolder).Where(p => !_shelf.Contains(p))] : [];
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return [];
+        }
+    }
+
+    /// <summary>Deletes those of <paramref name="paths"/> that are our saved images (anything else is the user's and stays).</summary>
+    private static void DeletePictures(IEnumerable<string> paths)
+    {
+        var folder = PictureFolder.TrimEnd('\\') + "\\";
+        var deleted = 0;
+        foreach (var path in paths.Where(p => p.StartsWith(folder, StringComparison.OrdinalIgnoreCase)))
+        {
+            try
+            {
+                if (File.Exists(path))
+                {
+                    File.Delete(path);
+                    deleted++;
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                AppLog.Write("transit: couldn't delete a saved image — " + ex.Message);
+            }
+        }
+
+        if (deleted > 0)
+        {
+            AppLog.Write($"transit: {deleted} saved image(s) deleted");
+        }
+    }
 
     /// <summary>Call under the lock. A failed write only loses the list over a restart.</summary>
     private void Save()

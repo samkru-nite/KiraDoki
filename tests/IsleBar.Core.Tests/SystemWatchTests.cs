@@ -98,6 +98,8 @@ public sealed class SystemWatchTests
         Assert.Equal("복사됨 · 안녕", NoticeText.Copied(Ko, "안녕"));
         Assert.Equal("파일 복사됨", NoticeText.CopiedFiles(Ko, 1));
         Assert.Equal("파일 3개 복사됨", NoticeText.CopiedFiles(Ko, 3));
+        Assert.Equal("파일 잘라냄", NoticeText.CopiedFiles(Ko, 1, cut: true));
+        Assert.Equal("파일 3개 잘라냄", NoticeText.CopiedFiles(Ko, 3, cut: true));
         Assert.Equal("CPU 96% · chrome", NoticeText.Cpu(Ko, 96, "chrome"));
         Assert.Equal("CPU 96%", NoticeText.Cpu(Ko, 96, null));
         Assert.Equal("메모리 93%", NoticeText.Memory(Ko, 93));
@@ -132,11 +134,13 @@ public sealed class SystemWatchTests
             Assert.Contains("{}", s.NoticeDisconnected);
             Assert.Contains("{}", s.NoticeCopied);
             Assert.Contains("{n}", s.NoticeCopiedFiles);
+            Assert.Contains("{n}", s.NoticeCutFiles);
             Assert.Contains("{m}", s.NoticeEventSoon);
 
             // No placeholders remain after filling
             Assert.DoesNotContain("{", NoticeText.BatteryLow(s, 20, TimeSpan.FromMinutes(95)));
             Assert.DoesNotContain("{", NoticeText.CopiedFiles(s, 4));
+            Assert.DoesNotContain("{", NoticeText.CopiedFiles(s, 4, cut: true));
             Assert.DoesNotContain("{", NoticeText.EventSoon(s, 3));
             Assert.Contains("{t}", s.NoticeEventTomorrow);
         }

@@ -40,6 +40,7 @@ internal sealed class ClipboardWatcher : NoticeWatcher
     private readonly uint _formatHistory = RegisterClipboardFormat("CanIncludeInClipboardHistory");
     private readonly uint _formatViewerIgnore = RegisterClipboardFormat("Clipboard Viewer Ignore");
     private readonly uint _formatPng = RegisterClipboardFormat("PNG");
+    private readonly uint _formatDropEffect = RegisterClipboardFormat("Preferred DropEffect");
 
     private Thread? _thread;
     private uint _threadId;
@@ -191,7 +192,7 @@ internal sealed class ClipboardWatcher : NoticeWatcher
             {
                 var count = (int)DragQueryFile(drop, 0xFFFF_FFFF, null, 0);
                 _files = FilesOf(drop, count);
-                return count > 0 ? (NoticeText.CopiedFiles(s, count), NoticeGlyphs.Files, null, true) : null;
+                return count > 0 ? (NoticeText.CopiedFiles(s, count, IsCut()), NoticeGlyphs.Files, null, true) : null;
             }
 
             if (IsClipboardFormatAvailable(CfUnicodeText) && ReadText() is { } text)
@@ -352,6 +353,21 @@ internal sealed class ClipboardWatcher : NoticeWatcher
         {
             GlobalUnlock(handle);
         }
+    }
+
+    /// <summary>
+    /// Whether the files were cut (Ctrl+X), not copied: File Explorer writes it down in "Preferred DropEffect" — move (2) without
+    /// copy (1). Copy writes 5 (copy + link); no mark (another program) counts as a copy. TODO ④, 10-11.
+    /// </summary>
+    private bool IsCut()
+    {
+        if (_formatDropEffect == 0 || !IsClipboardFormatAvailable(_formatDropEffect) || Bytes(GetClipboardData(_formatDropEffect)) is not { Length: >= 4 } data)
+        {
+            return false;
+        }
+
+        var effect = BitConverter.ToUInt32(data, 0);
+        return (effect & 2) != 0 && (effect & 1) == 0;
     }
 
     /// <summary>Whether the "don't record" mark added by password managers is present.</summary>

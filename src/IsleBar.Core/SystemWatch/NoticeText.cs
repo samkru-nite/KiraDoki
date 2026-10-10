@@ -52,9 +52,11 @@ public static class NoticeText
     public static string Copied(LanguageStrings s, string preview)
         => preview.Length == 0 ? Name(s.NoticeCopied, string.Empty).TrimEnd(' ', '·', ':', '：') : Name(s.NoticeCopied, preview);
 
-    /// <summary>"File copied" (1) · "3 files copied".</summary>
-    public static string CopiedFiles(LanguageStrings s, int count)
-        => count <= 1 ? s.NoticeCopiedFile : Fill(s.NoticeCopiedFiles, "{n}", count);
+    /// <summary>"File copied" (1) · "3 files copied"; "File cut" · "3 files cut" when <paramref name="cut"/> (Ctrl+X, TODO ④).</summary>
+    public static string CopiedFiles(LanguageStrings s, int count, bool cut = false)
+        => cut
+            ? count <= 1 ? s.NoticeCutFile : Fill(s.NoticeCutFiles, "{n}", count)
+            : count <= 1 ? s.NoticeCopiedFile : Fill(s.NoticeCopiedFiles, "{n}", count);
 
     /// <summary>"CPU 96% · chrome". Just the first part if the program name is unknown.</summary>
     public static string Cpu(LanguageStrings s, int percent, string? topProcess)
