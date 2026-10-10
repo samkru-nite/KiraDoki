@@ -38,6 +38,7 @@ public enum SheetAction
     MediaPlayPause,
     MediaNext,
     PrivacySettings,
+    Eject,
 }
 
 /// <summary>A button: words, or (media) an icon from Segoe Fluent Icons.</summary>
@@ -148,6 +149,7 @@ public static class CardSheets
                 s.Name ?? text.CardSystem, null, SheetTone.Plain, Ago(Start(s), now, text), s.Title,
                 [s.Msg, .. s.Earlier.Reverse().Select(e => string.Join(" · ", new[] { e.Title, e.Msg }.Where(t => !string.IsNullOrWhiteSpace(t))))],
                 [new(SheetAction.Open, text.MenuOpen), .. close]),
+            ActivityKind.Notice when s.Glyph == NoticeGlyphs.Drive => Drive(card, text),
             // the calendar (10-10): the event's name, its state in the card's colour, its time "8:00 – 9:35"
             ActivityKind.Notice when s.Look is not null => Sheet(
                 text.CardSystem, s.Title,
@@ -317,6 +319,29 @@ public static class CardSheets
     /// Mic / camera in use: one program — its name is the title; several — one line each, newest first, as a list (F2b, 10-09).
     /// Adaptive: a long list grows the card instead of being cut.
     /// </summary>
+    /// <summary>
+    /// The USB card (TODO ④, user 10-10): "KINGSTON (E:)", the space used as a bar, "Open" and "Eject" while it's in. "Eject failed"
+    /// (red) says who holds it; "Not safely removed" (orange) says files may be incomplete; "Removed" / "Ejected" are just said.
+    /// </summary>
+    private static CardSheet Drive(Card card, LanguageStrings text)
+    {
+        var s = card.State;
+        var plugged = card.Type == CardType.Status;
+        var plain = plugged && s.RunState != ActivityRunState.Error;
+        var bar = plugged && s.Total is > 0 && s.Done is { } used
+            ? new SheetProgress((double)used / s.Total.Value, Bytes(used), Bytes(s.Total.Value))
+            : null;
+        var tone = s.RunState switch
+        {
+            ActivityRunState.Error => SheetTone.Bad,
+            ActivityRunState.Done => SheetTone.Ok,
+            _ => s.State == SystemWatch.SystemNotice.WaitState ? SheetTone.Waiting : SheetTone.Plain,
+        };
+        return Sheet(text.NoticeDrive, plain ? null : s.Title, tone, null, plain ? $"{s.Title} {s.Msg}" : s.Msg, plain ? [] : [s.Name],
+                plugged ? [new(SheetAction.Open, text.MenuOpen), new(SheetAction.Eject, text.CardEject)] : [])
+            with { Progress = bar };
+    }
+
     private static CardSheet Privacy(ActivityState s, DateTimeOffset now, LanguageStrings text)
     {
         var apps = s.Apps is { Count: > 1 } many ? many : null;

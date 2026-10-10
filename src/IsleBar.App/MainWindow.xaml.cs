@@ -774,6 +774,9 @@ public sealed partial class MainWindow : Window
                 => ($"wait|{card.Key}", Attention()),
             { State: { Kind: ActivityKind.Notice, RunState: ActivityRunState.Done } } when card.Pinned || card.Key == _cards.DebutKey
                 => ($"done|{card.Key}", _theme.Ok),
+            // a status notice gone wrong (a USB drive that wouldn't eject, 10-10): red on its debut
+            { Type: CardType.Status, State: { Kind: ActivityKind.Notice, RunState: ActivityRunState.Error } } when card.Key == _cards.DebutKey
+                => ($"fail|{card.Key}", Alarm()),
             null or { Pinned: false } => ((string?)null, _theme.Ok),
             { Type: CardType.Pending } => ($"ask|{card.Key}", Attention()),
             { Type: CardType.Inform } when card.State.RunState == ActivityRunState.Error => ($"fail|{card.Key}", Alarm()),   // interrupted / stopped / failed: red, not green (user 10-07)
@@ -1449,6 +1452,7 @@ public sealed partial class MainWindow : Window
     {
         NextStep.Link => _text.OpenWith.Replace("{a}", Interop.DefaultBrowser.Name() ?? _text.CardBrowser, StringComparison.Ordinal),
         NextStep.Reveal => _text.CardOpenFolder,
+        NextStep.Drive => _text.MenuOpen,
         _ => _text.OpenWith.Replace("{a}", card.State.AgentLabel, StringComparison.Ordinal),
     };
 
@@ -1479,6 +1483,11 @@ public sealed partial class MainWindow : Window
             return NextStep.Link;
         }
 
+        if (SystemWatch.DriveWatcher.Owns(s) && card.Type == CardType.Status && s.Open is { } root && Directory.Exists(root))
+        {
+            return NextStep.Drive;   // a USB drive plugged in (TODO ④, 10-10): open it
+        }
+
         return card.Key == "download" && s is { Kind: ActivityKind.Transfer, RunState: ActivityRunState.Done, Open: { } open }
                && (File.Exists(open) || Directory.Exists(open))
             ? NextStep.Reveal
@@ -1499,6 +1508,9 @@ public sealed partial class MainWindow : Window
             case NextStep.Reveal when card.State.Open is { } done:
                 Engine.FileActions.Open(done, revealInFolder: File.Exists(done));   // one file: selected in its folder; several: the folder
                 break;
+            case NextStep.Drive when card.State.Open is { } root:
+                Engine.FileActions.Open(root, revealInFolder: false);
+                break;
         }
     }
 
@@ -1508,6 +1520,7 @@ public sealed partial class MainWindow : Window
         Chat,
         Link,
         Reveal,
+        Drive,
     }
 
     /// <summary>

@@ -200,6 +200,10 @@ public sealed partial class MainWindow
                 }
 
                 break;
+            case SheetAction.Eject:
+                _lift?.Collapse();
+                _feed.Watchers?.Eject(state);   // the card then says "Safe to remove" or "Can't eject" (TODO ④, 10-10)
+                break;
             case SheetAction.PrivacySettings:
                 _lift?.Collapse();
                 Engine.FileActions.Open(state.Glyph == IsleBar.Core.SystemWatch.NoticeGlyphs.Camera ? "ms-settings:privacy-webcam" : "ms-settings:privacy-microphone", revealInFolder: false);

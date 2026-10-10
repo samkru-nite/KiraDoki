@@ -99,6 +99,15 @@ public sealed class LanguageStrings
 
     /// <summary>Calendar reminder for an event tomorrow: "Tomorrow {t}" ({t} = its start time).</summary>
     public required string NoticeEventTomorrow { get; init; }
+    public required string NoticeDrive { get; init; }
+    public required string NoticeDriveRemoved { get; init; }
+    public required string NoticeDriveSafe { get; init; }
+    public required string NoticeDriveBusy { get; init; }
+    public required string NoticeDriveUnsafe { get; init; }
+    public required string CardDriveBusy { get; init; }
+    public required string CardDriveBusyBy { get; init; }
+    public required string CardDriveUnsafe { get; init; }
+    public required string CardEject { get; init; }
 
     /// <summary>Calendar event over: "Ended" (the event name follows, grey).</summary>
     public required string NoticeEventEnded { get; init; }

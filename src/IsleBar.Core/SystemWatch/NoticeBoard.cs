@@ -199,6 +199,8 @@ public static class NoticeGlyphs
     public const string Download = "";
 
     public const string Calendar = "";
+    /// <summary>USB (E88E) — a USB drive / memory card plugged in (TODO ④, 10-10).</summary>
+    public const string Drive = "\uE88E";
     public const string Microphone = "";
     public const string Camera = "";
 

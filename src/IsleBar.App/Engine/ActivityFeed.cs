@@ -91,6 +91,7 @@ internal sealed class ActivityFeed : IDisposable
         {
             items.AddRange(Watchers.Current);   // brief notices
             DropAgentAppToasts(items);
+            DropDriveToasts(items);
             AddPrivacy(items, now);
         }
 
@@ -133,6 +134,27 @@ internal sealed class ActivityFeed : IDisposable
             return true;
         });
     }
+
+    /// <summary>
+    /// Windows' "AutoPlay" notification ("choose what happens with removable drives"): the USB card says the drive is in and its ↗
+    /// opens it (TODO ④, 10-10: one thing, one card). Its banner was hidden already; now it doesn't reach the island either.
+    /// </summary>
+    private void DropDriveToasts(List<ActivityState> items)
+        => items.RemoveAll(toast =>
+        {
+            if (toast is not { Kind: ActivityKind.Notice, Stage: "expand" }
+                || !string.Equals(toast.AppId, "Windows.SystemToast.AutoPlay", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (_droppedToasts.Add($"{toast.AppId}|{toast.UpdatedAt.ToUnixTimeMilliseconds()}"))
+            {
+                TaskbarHost.Log("toast: AutoPlay dropped — the USB card says it");
+            }
+
+            return true;
+        });
 
     private DateTimeOffset? _privacySince;
 

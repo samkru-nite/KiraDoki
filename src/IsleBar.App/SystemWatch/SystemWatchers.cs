@@ -28,6 +28,7 @@ internal sealed class SystemWatchers : IDisposable
     private PrivacyWatcher? _privacy;
     private ToastWatcher? _toasts;
     private AgentRecordWatcher? _codex;   // always on: a Codex turn that fails and a Claude turn interrupted with Esc fire no hook (10-03)
+    private DriveWatcher? _drives;   // always on for now (TODO ④, 10-10: no setting until it proves itself)
     private bool? _hidingBanners;   // null until the first Apply (which also cleans up after a crash with the option off)
     private bool _wantBannersHidden;   // the option "only on the bar", as last applied
     private bool _disposed;
@@ -61,6 +62,7 @@ internal sealed class SystemWatchers : IDisposable
             Toggle(ref _privacy, options.Privacy, () => new PrivacyWatcher(_strings));
             Toggle(ref _toasts, options.Toasts, () => new ToastWatcher(_strings) { HealthChanged = OnToastHealth });
             Toggle(ref _codex, true, () => new AgentRecordWatcher(_strings));
+            Toggle(ref _drives, true, () => new DriveWatcher(_strings));
             if (_toasts is not null)
             {
                 _toasts.HideBanners = options.HideBanners;
@@ -96,6 +98,19 @@ internal sealed class SystemWatchers : IDisposable
         return calendar?.Close(card) == true;
     }
 
+    /// <summary>The lifted USB card's "Eject" (TODO ④, 10-10). Does nothing for another card.</summary>
+    public void Eject(ActivityState card)
+    {
+        ArgumentNullException.ThrowIfNull(card);
+        DriveWatcher? drives;
+        lock (_gate)
+        {
+            drives = _drives;
+        }
+
+        drives?.Eject(card);
+    }
+
     /// <summary>
     /// Only hide Windows' pop-ups when the bar can actually read the notifications — without the database (code review 10-01), or
     /// while reading it keeps failing (TODO ② 10-10), the person would see no notifications at all. Call under the lock.
@@ -127,7 +142,7 @@ internal sealed class SystemWatchers : IDisposable
             NoticeWatcher?[] watchers;
             lock (_gate)
             {
-                watchers = [_power, _bluetooth, _network, _focus, _clipboard, _load, _calendar, _privacy, _toasts, _codex];
+                watchers = [_power, _bluetooth, _network, _focus, _clipboard, _load, _calendar, _privacy, _toasts, _codex, _drives];
             }
 
             List<ActivityState>? all = null;
@@ -175,6 +190,7 @@ internal sealed class SystemWatchers : IDisposable
             Toggle(ref _privacy, false, null!);
             Toggle(ref _toasts, false, null!);
             Toggle(ref _codex, false, null!);
+            Toggle(ref _drives, false, null!);
             ApplyBanners(false, wait: true);   // quitting the bar gives Windows its pop-ups back (nothing would show the notifications otherwise)
         }
     }

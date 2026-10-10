@@ -360,6 +360,56 @@ public sealed class SystemWatchTests
         Assert.Null(ClipboardRules.LinkOf("https://x.com/" + new string('b', ClipboardRules.LinkLength)));
     }
 
+    // ---------------- USB drive ----------------
+
+    [Fact]
+    public void Drive_card_is_named_by_its_label_or_the_word_for_a_usb_drive()
+    {
+        var zh = LanguageCatalog.For("zh");
+        Assert.Equal("KINGSTON", DriveRules.Name(new PluggedDrive(@"E:\", " KINGSTON ", 1, 1), zh.NoticeDrive));
+        Assert.Equal("U盘", DriveRules.Name(new PluggedDrive(@"E:\", "", 1, 1), zh.NoticeDrive));
+        Assert.Equal("drive:E", DriveRules.KeyOf(new PluggedDrive(@"e:\", null, 1, 1)));
+        Assert.Equal("E:", new PluggedDrive(@"e:\", null, 1, 1).Letter);
+    }
+
+    [Fact]
+    public void Drive_is_called_like_file_explorer_and_counts_as_written_to_for_5_seconds()
+    {
+        var zh = LanguageCatalog.For("zh");
+        Assert.Equal("KINGSTON (E:)", DriveRules.FullName(new PluggedDrive(@"E:\", "KINGSTON", 1, 1), zh.NoticeDrive));
+        Assert.Equal("U盘 (F:)", DriveRules.FullName(new PluggedDrive(@"F:\", null, 1, 1), zh.NoticeDrive));
+        Assert.Equal("(F:)", DriveRules.Letter(new PluggedDrive(@"F:\", null, 1, 1)));
+
+        var now = DateTimeOffset.UtcNow;
+        Assert.True(DriveRules.WasWriting(now.AddSeconds(-5), now));
+        Assert.False(DriveRules.WasWriting(now.AddSeconds(-6), now));
+        Assert.False(DriveRules.WasWriting(null, now));   // never seen moving
+    }
+
+    [Fact]
+    public void Drive_diff_sees_drives_come_go_and_swap_on_one_letter()
+    {
+        var e = new PluggedDrive(@"E:\", "A", 100, 50, 0x1111);
+        var f = new PluggedDrive(@"F:\", "B", 100, 50, 0x2222);
+        var (came, went) = DriveRules.Diff([e], [e, f with { Free = 10 }]);   // free space changing isn't a new drive
+        Assert.Equal([@"F:\"], came.Select(d => d.Root));
+        Assert.Empty(went);
+
+        (came, went) = DriveRules.Diff([e, f], [f]);
+        Assert.Empty(came);
+        Assert.Equal([@"E:\"], went.Select(d => d.Root));
+
+        var other = new PluggedDrive(@"E:\", "A", 100, 50, 0x3333);   // another stick on E: between two looks
+        (came, went) = DriveRules.Diff([e], [other]);
+        Assert.Equal([other], came);
+        Assert.Equal([e], went);
+
+        // serials unknown: the label tells them apart
+        (came, went) = DriveRules.Diff([e with { Serial = 0 }], [e with { Serial = 0, Label = "C" }]);
+        Assert.Single(came);
+        Assert.Single(went);
+    }
+
     // ---------------- CPU / memory ----------------
 
     [Fact]
