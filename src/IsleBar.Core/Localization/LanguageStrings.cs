@@ -103,6 +103,12 @@ public sealed class LanguageStrings
     public required string NoticeDriveRemoved { get; init; }
     public required string NoticeDriveSafe { get; init; }
     public required string NoticeDriveBusy { get; init; }
+
+    /// <summary>The transit station card (TODO ④, 10-10): its name; one file / "{n} files"; the drop hint.</summary>
+    public required string NoticeTransit { get; init; }
+    public required string NoticeTransitOne { get; init; }
+    public required string NoticeTransitFiles { get; init; }
+    public required string NoticeTransitDrop { get; init; }
     public required string NoticeDriveUnsafe { get; init; }
     public required string CardDriveBusy { get; init; }
     public required string CardDriveBusyBy { get; init; }

@@ -29,6 +29,7 @@ internal sealed class SystemWatchers : IDisposable
     private ToastWatcher? _toasts;
     private AgentRecordWatcher? _codex;   // always on: a Codex turn that fails and a Claude turn interrupted with Esc fire no hook (10-03)
     private DriveWatcher? _drives;   // always on for now (TODO ④, 10-10: no setting until it proves itself)
+    private TransitWatcher? _transit;   // always on (TODO ④ transit station, 10-10)
     private bool? _hidingBanners;   // null until the first Apply (which also cleans up after a crash with the option off)
     private bool _wantBannersHidden;   // the option "only on the bar", as last applied
     private bool _disposed;
@@ -63,6 +64,7 @@ internal sealed class SystemWatchers : IDisposable
             Toggle(ref _toasts, options.Toasts, () => new ToastWatcher(_strings) { HealthChanged = OnToastHealth });
             Toggle(ref _codex, true, () => new AgentRecordWatcher(_strings));
             Toggle(ref _drives, true, () => new DriveWatcher(_strings));
+            Toggle(ref _transit, true, () => new TransitWatcher(_strings));
             if (_toasts is not null)
             {
                 _toasts.HideBanners = options.HideBanners;
@@ -90,12 +92,32 @@ internal sealed class SystemWatchers : IDisposable
     {
         ArgumentNullException.ThrowIfNull(card);
         CalendarWatcher? calendar;
+        TransitWatcher? transit;
         lock (_gate)
         {
             calendar = _calendar;
+            transit = _transit;
+        }
+
+        if (TransitWatcher.Owns(card) && transit is not null)
+        {
+            transit.Remove(null);   // closing the transit station = empty it (it only forgets where the files are)
+            return true;
         }
 
         return calendar?.Close(card) == true;
+    }
+
+    /// <summary>The transit station (TODO ④, 10-10): files dropped on the pill, dragged out again. Null only after quitting.</summary>
+    public TransitWatcher? Transit
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _transit;
+            }
+        }
     }
 
     /// <summary>The lifted USB card's "Eject" (TODO ④, 10-10). Does nothing for another card.</summary>
@@ -142,7 +164,7 @@ internal sealed class SystemWatchers : IDisposable
             NoticeWatcher?[] watchers;
             lock (_gate)
             {
-                watchers = [_power, _bluetooth, _network, _focus, _clipboard, _load, _calendar, _privacy, _toasts, _codex, _drives];
+                watchers = [_power, _bluetooth, _network, _focus, _clipboard, _load, _calendar, _privacy, _toasts, _codex, _drives, _transit];
             }
 
             List<ActivityState>? all = null;
@@ -191,6 +213,7 @@ internal sealed class SystemWatchers : IDisposable
             Toggle(ref _toasts, false, null!);
             Toggle(ref _codex, false, null!);
             Toggle(ref _drives, false, null!);
+            Toggle(ref _transit, false, null!);
             ApplyBanners(false, wait: true);   // quitting the bar gives Windows its pop-ups back (nothing would show the notifications otherwise)
         }
     }

@@ -128,6 +128,7 @@ public sealed partial class MainWindow : Window
     private void WireEvents()
     {
         HookFileDrop();
+        HookDragOut();
         PressFeedback.Attach(BallCell);
         PressFeedback.Enabled = () => Animations.On;
         PressFeedback.Attach(PillBody, PressFeedback.PillPressed, PressFeedback.PillDamping);   // the big pill too: half on press, the rest + the card on release (user 10-08)
@@ -1111,6 +1112,7 @@ public sealed partial class MainWindow : Window
     private void RenderIsland()
     {
         _bigCard = !_dropHover && _snapshot.IsActive ? _shownCard : null;
+        PillBody.CanDrag = TransitShown;   // only the transit station's card can be dragged out (TODO ④, 10-10)
         LayoutPills();
         ShowCloseZone();
         Big.UpdateProgress(_snapshot.Primary);
@@ -1145,8 +1147,9 @@ public sealed partial class MainWindow : Window
         RenderIslandState(new ActivityState
         {
             RawKind = ActivityState.KindNotice,
-            Title = _dropNames ?? string.Empty,
-            Glyph = "\uE8A5",   // document
+            Title = _text.NoticeTransitDrop,   // "\u653E\u5165\u4E2D\u8F6C\u7AD9", then the files' names in grey (TODO \u2463, 10-10)
+            Msg = _dropNames,
+            Glyph = IsleBar.Core.SystemWatch.NoticeGlyphs.Transit,
         });
         return true;
     }
@@ -1673,20 +1676,17 @@ public sealed partial class MainWindow : Window
         return area.Y + area.Height;
     }
 
-    /// <summary>Off until something takes dropped files — the transit station (TODO 二-④). Not a const: that made the rest unreachable code.</summary>
-    private static readonly bool TakesDrops = false;
-
     /// <summary>
-    /// The pill can catch files dragged onto it: blue border and the file's name while hovering. Nothing takes them yet — the
-    /// drop command (send to a phone) went 10-10 and the transit station is still to come — so <see cref="TakesDrops"/> is off.
+    /// Files dragged onto the pill go into the transit station (TODO ④, 10-10): anywhere on it, blue border and "放入中转站" with the
+    /// files' names while hovering. Only their paths are kept (<see cref="SystemWatch.TransitWatcher"/>).
     /// </summary>
     private void HookFileDrop()
     {
         Root.DragOver += (_, e) =>
         {
-            if (!TakesDrops || !e.DataView.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.StorageItems))
+            if (_draggingOut || !e.DataView.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.StorageItems))
             {
-                return;
+                return;   // our own drag passing over the pill isn't a drop
             }
 
             e.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy;
@@ -1709,7 +1709,7 @@ public sealed partial class MainWindow : Window
         {
             _dropHover = false;
             RenderIsland();
-            if (!TakesDrops || !e.DataView.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.StorageItems))
+            if (_draggingOut || !e.DataView.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.StorageItems))
             {
                 return;
             }
@@ -1718,7 +1718,15 @@ public sealed partial class MainWindow : Window
             try
             {
                 var items = await e.DataView.GetStorageItemsAsync();
-                TaskbarHost.Log($"drop: {items.Count} item(s) — nothing takes them yet");
+                var paths = items.Select(i => i.Path).Where(p => !string.IsNullOrEmpty(p)).ToArray();
+                if (_feed.Watchers?.Transit is { } transit && paths.Length > 0)
+                {
+                    transit.Add(paths);
+                }
+                else
+                {
+                    TaskbarHost.Log($"drop: {items.Count} item(s), none with a path");   // e.g. from a zip's insides or a phone
+                }
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)   // async void: anything escaping ends the app (review 10-03)
             {
@@ -1728,6 +1736,82 @@ public sealed partial class MainWindow : Window
             {
                 deferral.Complete();
             }
+        };
+    }
+
+    private bool _draggingOut;
+
+    /// <summary>The big pill shows the transit station's card (not a drop hint).</summary>
+    private bool TransitShown => !_dropHover && _snapshot.IsActive && _shownCard is { } card && SystemWatch.TransitWatcher.Owns(card.State);
+
+    /// <summary>
+    /// Dragging the transit station's card out = all its files at once (TODO ④, 10-10). Move or copy is the receiver's call, the way
+    /// File Explorer does it (same drive = move, another drive = copy, Ctrl / Shift change it) — Explorer shows "→ Move to / + Copy to"
+    /// itself. Files no longer there afterwards were moved: they leave the station (<see cref="SystemWatch.TransitWatcher.Dragged"/>).
+    /// Files already gone ("not found") aren't dragged. Log "transit: …".
+    /// </summary>
+    private void HookDragOut()
+    {
+        string[] dragged = [];
+        PillBody.DragStarting += async (_, e) =>
+        {
+            var transit = _feed.Watchers?.Transit;
+            if (!TransitShown || transit is null)
+            {
+                e.Cancel = true;
+                return;
+            }
+
+            var deferral = e.GetDeferral();
+            try
+            {
+                var items = new List<Windows.Storage.IStorageItem>();
+                foreach (var path in transit.Paths)
+                {
+                    if (File.Exists(path))
+                    {
+                        items.Add(await Windows.Storage.StorageFile.GetFileFromPathAsync(path));
+                    }
+                    else if (Directory.Exists(path))
+                    {
+                        items.Add(await Windows.Storage.StorageFolder.GetFolderFromPathAsync(path));
+                    }
+                }
+
+                if (items.Count == 0)
+                {
+                    TaskbarHost.Log("transit: drag — none of the files are there any more");
+                    e.Cancel = true;
+                    return;
+                }
+
+                e.Data.SetStorageItems(items);
+                e.AllowedOperations = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy
+                    | Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
+                dragged = [.. items.Select(i => i.Path)];
+                _draggingOut = true;
+                TaskbarHost.Log($"transit: drag started with {items.Count}");
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)   // async void: anything escaping ends the app
+            {
+                TaskbarHost.Log("transit: drag start failed — " + ex.Message);
+                e.Cancel = true;
+            }
+            finally
+            {
+                deferral.Complete();
+            }
+        };
+        PillBody.DropCompleted += (_, e) =>
+        {
+            _draggingOut = false;
+            TaskbarHost.Log($"transit: dropped — {e.DropResult}");
+            if (e.DropResult != Windows.ApplicationModel.DataTransfer.DataPackageOperation.None || dragged.Length > 0)
+            {
+                _feed.Watchers?.Transit?.Dragged(dragged);   // goes by which files are still there, not by the result
+            }
+
+            dragged = [];
         };
     }
 

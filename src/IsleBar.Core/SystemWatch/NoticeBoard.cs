@@ -201,6 +201,9 @@ public static class NoticeGlyphs
     public const string Calendar = "";
     /// <summary>USB (E88E) — a USB drive / memory card plugged in (TODO ④, 10-10).</summary>
     public const string Drive = "\uE88E";
+
+    /// <summary>Package (E7B8, a box) \u2014 the transit station (TODO \u2463, 10-10); a placeholder until the user picks one.</summary>
+    public const string Transit = "\uE7B8";
     public const string Microphone = "";
     public const string Camera = "";
 
