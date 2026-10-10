@@ -11,6 +11,9 @@ public enum SheetLayout
     Text,
     Number,
     Media,
+
+    /// <summary>A list of files, each its own row: dragged out one by one, ✕ to take it out (the transit station, 10-10).</summary>
+    Files,
 }
 
 /// <summary>Colour of the state word: plain, or the same green / orange / red as the pills.</summary>
@@ -39,10 +42,14 @@ public enum SheetAction
     MediaNext,
     PrivacySettings,
     Eject,
+    Clear,
 }
 
 /// <summary>A button: words, or (media) an icon from Segoe Fluent Icons.</summary>
 public sealed record SheetButton(SheetAction Action, string? Label, string? Glyph = null);
+
+/// <summary>A row of a file list: where the file is, its name, and whether it is no longer there.</summary>
+public sealed record SheetFile(string Path, string Name, bool Gone);
 
 /// <summary>The progress zone: share done, the words left and right above the bar (either may be empty), its colour.</summary>
 public sealed record SheetProgress(double Fraction, string? Left, string? Right, SheetTone Tone = SheetTone.Plain);
@@ -72,6 +79,12 @@ public sealed record CardSheet(
 
     /// <summary>One grey 12 line under the body (an agent at work: its latest step, under what it last said — user 10-09).</summary>
     public string? Footnote { get; init; }
+
+    /// <summary>The rows of <see cref="SheetLayout.Files"/>.</summary>
+    public IReadOnlyList<SheetFile> Files { get; init; } = [];
+
+    /// <summary>What a gone file's row says ("not found").</summary>
+    public string? FileGone { get; init; }
 }
 
 public static class CardSheets
@@ -150,6 +163,7 @@ public static class CardSheets
                 [s.Msg, .. s.Earlier.Reverse().Select(e => string.Join(" · ", new[] { e.Title, e.Msg }.Where(t => !string.IsNullOrWhiteSpace(t))))],
                 [new(SheetAction.Open, text.MenuOpen), .. close]),
             ActivityKind.Notice when s.Glyph == NoticeGlyphs.Drive => Drive(card, text),
+            ActivityKind.Notice when s.Glyph == NoticeGlyphs.Transit => Transit(s, text),
             // the calendar (10-10): the event's name, its state in the card's colour, its time "8:00 – 9:35"
             ActivityKind.Notice when s.Look is not null => Sheet(
                 text.CardSystem, s.Title,
@@ -340,6 +354,21 @@ public static class CardSheets
         return Sheet(text.NoticeDrive, plain ? null : s.Title, tone, null, plain ? $"{s.Title} {s.Msg}" : s.Msg, plain ? [] : [s.Name],
                 plugged ? [new(SheetAction.Open, text.MenuOpen), new(SheetAction.Eject, text.CardEject)] : [])
             with { Progress = bar };
+    }
+
+    /// <summary>
+    /// The transit station (TODO ④, user 10-10): every file a row — its name, "not found" in grey when it's gone, ✕ — each dragged
+    /// out on its own; "Clear" under them. No state word: the pill already says how many.
+    /// </summary>
+    private static CardSheet Transit(ActivityState s, LanguageStrings text)
+    {
+        var gone = new HashSet<string>(s.Gone ?? [], StringComparer.OrdinalIgnoreCase);
+        return Sheet(text.NoticeTransit, null, SheetTone.Plain, null, null, [], [new(SheetAction.Clear, text.CardClear)]) with
+        {
+            Layout = SheetLayout.Files,
+            FileGone = text.CardFileGone,
+            Files = [.. (s.Files ?? []).Select(p => new SheetFile(p, TransitShelf.NameOf(p), gone.Contains(p)))],
+        };
     }
 
     private static CardSheet Privacy(ActivityState s, DateTimeOffset now, LanguageStrings text)

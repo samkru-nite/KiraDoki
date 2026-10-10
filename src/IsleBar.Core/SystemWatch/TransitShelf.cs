@@ -9,6 +9,9 @@ namespace IsleBar.Core.SystemWatch;
 /// </summary>
 public sealed class TransitShelf
 {
+    /// <summary>The card's key under the notice board.</summary>
+    public const string Key = "transit";
+
     private readonly List<string> _paths = [];
 
     /// <summary>What is in the station, oldest first.</summary>

@@ -15,6 +15,22 @@ public sealed class CardSheetTests
     private static double Unix(DateTimeOffset at) => at.ToUnixTimeSeconds();
 
     [Fact]
+    public void The_transit_station_lists_its_files_marks_the_gone_ones_and_can_be_cleared()
+    {
+        var sheet = CardSheets.Build(Card(CardType.Status, new ActivityState
+        {
+            RawKind = ActivityState.KindNotice, Glyph = SystemWatch.NoticeGlyphs.Transit, Title = "中转站", Msg = "2 个文件",
+            Files = [@"C:\a\报告.docx", @"D:\照片"], Gone = [@"d:\照片"],
+        }), Now, Zh);
+
+        Assert.Equal("中转站", sheet.Source);
+        Assert.Null(sheet.State);
+        Assert.Equal(SheetLayout.Files, sheet.Layout);
+        Assert.Equal([new SheetFile(@"C:\a\报告.docx", "报告.docx", false), new SheetFile(@"D:\照片", "照片", true)], sheet.Files);
+        Assert.Equal([SheetAction.Clear], sheet.Buttons.Select(b => b.Action));
+    }
+
+    [Fact]
     public void An_agent_done_card_names_the_maker_the_state_and_the_chat()
     {
         var sheet = CardSheets.Build(Card(CardType.Inform, new ActivityState

@@ -107,6 +107,14 @@ public sealed class ActivityState
     [JsonIgnore]
     public IReadOnlyList<string>? Apps { get; set; }
 
+    /// <summary>The transit station's files, oldest first (TODO ④, 10-10). Not serialized to JSON.</summary>
+    [JsonIgnore]
+    public IReadOnlyList<string>? Files { get; set; }
+
+    /// <summary>Those of <see cref="Files"/> no longer where they were ("not found"). Not serialized to JSON.</summary>
+    [JsonIgnore]
+    public IReadOnlyList<string>? Gone { get; set; }
+
     /// <summary>How many more items this one stands for ("+2" — other browser downloads). Not serialized to JSON.</summary>
     [JsonIgnore]
     public int MoreCount { get; set; }

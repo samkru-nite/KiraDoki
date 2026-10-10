@@ -31,19 +31,28 @@ internal static class AppIcon
     /// Calls <paramref name="apply"/> with the app's icon once it is ready — a new image source each time, never shared. Never
     /// throws; if the icon can't be had, it simply never calls back and the glyph the caller already showed stays.
     /// </summary>
-    public static async void Resolve(string? aumid, Action<ImageSource> apply)
+    public static void Resolve(string? aumid, Action<ImageSource> apply)
     {
-        if (string.IsNullOrWhiteSpace(aumid))
+        if (!string.IsNullOrWhiteSpace(aumid))
         {
-            return;
+            Resolve(aumid, () => AppNames.StartMenuId(aumid) is { } id ? @"shell:AppsFolder\" + id : AppNames.ExePath(aumid), apply);
         }
+    }
 
+    /// <summary>
+    /// A file's or folder's own icon, as File Explorer shows it (a .docx = Word's) — the transit station's list (10-10). Same rules
+    /// as <see cref="Resolve(string?, Action{ImageSource})"/>: called back only when there is one.
+    /// </summary>
+    public static void ResolveFile(string path, Action<ImageSource> apply) => Resolve("file|" + path, () => path, apply);
+
+    private static async void Resolve(string key, Func<string?> target, Action<ImageSource> apply)
+    {
         try
         {
-            if (!Cache.TryGetValue(aumid, out var bitmap))
+            if (!Cache.TryGetValue(key, out var bitmap))
             {
-                bitmap = LoadSoftwareBitmap(aumid);
-                Cache[aumid] = bitmap;
+                bitmap = LoadSoftwareBitmap(target());
+                Cache[key] = bitmap;
             }
 
             if (bitmap is null)
@@ -57,14 +66,14 @@ internal static class AppIcon
         }
         catch (Exception ex) when (ex is COMException or ArgumentException or InvalidCastException or OutOfMemoryException or ObjectDisposedException)
         {
-            TaskbarHost.Log($"app icon: {aumid} failed — {ex.Message}");
+            TaskbarHost.Log($"app icon: {(key.StartsWith("file|", StringComparison.Ordinal) ? "a file" : key)} failed — {ex.Message}");
         }
     }
 
-    private static SoftwareBitmap? LoadSoftwareBitmap(string aumid)
+    /// <param name="target">An app (<c>shell:AppsFolder\…</c>; a desktop player that reports just its exe ("cloudmusic.exe") isn't in
+    /// the Start menu under that id: its file's icon, 10-09) or a file's path.</param>
+    private static SoftwareBitmap? LoadSoftwareBitmap(string? target)
     {
-        // a desktop player that reports just its exe ("cloudmusic.exe") isn't in the Start menu under that id: its file's icon (10-09)
-        var target = AppNames.StartMenuId(aumid) is { } id ? @"shell:AppsFolder\" + id : AppNames.ExePath(aumid);
         var factoryIid = typeof(IShellItemImageFactory).GUID;
         if (target is null || SHCreateItemFromParsingName(target, IntPtr.Zero, ref factoryIid, out var factoryObject) != 0 || factoryObject is null)
         {

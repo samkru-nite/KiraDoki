@@ -55,6 +55,12 @@ internal sealed class SheetView
     /// <summary>A button was clicked.</summary>
     public Action<SheetAction>? Act { get; set; }
 
+    /// <summary>A file list's ✕ (the transit station): the file's path.</summary>
+    public Action<string>? RemoveFile { get; set; }
+
+    /// <summary>A file list's row was dragged out and dropped somewhere: the file's path.</summary>
+    public Action<string>? FileDragged { get; set; }
+
     public SheetView(CardSheet sheet, UIElement icon, ImageSource? cover, SheetPalette palette, string? language, double width)
     {
         _sheet = sheet;
@@ -73,6 +79,7 @@ internal sealed class SheetView
         {
             SheetLayout.Number => NumberMiddle(sheet),
             SheetLayout.Media => MediaMiddle(sheet, cover),
+            SheetLayout.Files => FilesMiddle(sheet, out _scroll),
             _ => TextMiddle(sheet, out _scroll),
         };
         _middle.Margin = new Thickness(0, CardSheets.Gap, 0, 0);
@@ -211,7 +218,8 @@ internal sealed class SheetView
     /// <summary>What can't change in place: which pieces of text there are, the buttons, which zones there are.</summary>
     private static string StructureKey(CardSheet s) => string.Join("\u0001",
         s.Layout, s.Source, s.Title is null, s.Body.Count, s.Raw is null, s.Progress is null,
-        s.Progress is { Left: null, Right: null }, s.Buttons.Count, s.Markdown ? string.Join('\n', s.Body) : string.Empty, s.Footnote is null);
+        s.Progress is { Left: null, Right: null }, s.Buttons.Count, s.Markdown ? string.Join('\n', s.Body) : string.Empty, s.Footnote is null,
+        string.Join('\n', s.Files.Select(f => (f.Gone ? "-" : "+") + f.Path)));   // a file in or out, or gone: the list again
 
     /// <summary>
     /// Takes the source row's icon out, so a card built again can hold it (10-09: working → done while lifted rebuilt the card, and
@@ -348,6 +356,12 @@ internal sealed class SheetView
             });
         }
 
+        return Faded(stack, out scroll);
+    }
+
+    /// <summary>The middle's contents in a scroller whose sides fade where there is more to scroll (3:4 only, see <see cref="SetSize"/>).</summary>
+    private Grid Faded(StackPanel stack, out ScrollViewer scroll)
+    {
         scroll = new ScrollViewer
         {
             Content = stack,
@@ -387,6 +401,127 @@ internal sealed class SheetView
         Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.SetElementChildVisual(box, _fadeSprite);
         box.SizeChanged += (_, _) => Fades();
         return box;
+    }
+
+    // ---------------- a list of files (the transit station, TODO ④, 10-10) ----------------
+
+    private const double FileRow = 32, FileRowGap = 2, FileGlyph = 16, FileClose = 24;
+
+    /// <summary>
+    /// One row per file: its icon (document / folder) and name 14, "not found" 12 grey when it's gone, ✕ at the end. A row is dragged
+    /// out on its own — the receiver moves or copies it, like File Explorer; one that's gone can't be dragged.
+    /// </summary>
+    private Grid FilesMiddle(CardSheet sheet, out ScrollViewer scroll)
+    {
+        var stack = new StackPanel { Spacing = FileRowGap };
+        foreach (var file in sheet.Files)
+        {
+            stack.Children.Add(FileRowFor(file, sheet.FileGone ?? string.Empty));
+        }
+
+        return Faded(stack, out scroll);
+    }
+
+    private Border FileRowFor(SheetFile file, string goneWords)
+    {
+        var grid = new Grid { ColumnSpacing = 8 };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        // the file's own icon, as File Explorer shows it (user 10-10); till it's in, or when the file is gone, a line icon in grey
+        var icon = new Grid { Width = FileGlyph, Height = FileGlyph, VerticalAlignment = VerticalAlignment.Center };
+        icon.Children.Add(new FontIcon
+        {
+            FontFamily = new FontFamily("Segoe Fluent Icons"), FontSize = FileGlyph, Foreground = Brush(_palette.Hint),
+            Glyph = Directory.Exists(file.Path) ? "" : "",   // folder / document
+        });
+        if (!file.Gone)
+        {
+            Interop.AppIcon.ResolveFile(file.Path, source =>
+            {
+                icon.Children.Clear();
+                icon.Children.Add(new Image { Source = source, Width = FileGlyph, Height = FileGlyph });
+            });
+        }
+
+        grid.Children.Add(icon);
+
+        var name = new TextBlock
+        {
+            Text = file.Name, FontFamily = Fonts(file.Name).Normal, FontSize = CardSheets.TextSize, TextWrapping = TextWrapping.NoWrap,
+            TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center,
+            Foreground = Brush(file.Gone ? _palette.Hint : _palette.Fore),
+        };
+        ToolTipService.SetToolTip(name, file.Path);
+        Grid.SetColumn(name, 1);
+        grid.Children.Add(name);
+        if (file.Gone)
+        {
+            var gone = Note();
+            gone.Text = goneWords;
+            gone.FontFamily = Fonts(gone.Text).Normal;
+            gone.Foreground = Brush(_palette.Hint);
+            gone.VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetColumn(gone, 2);
+            grid.Children.Add(gone);
+        }
+
+        var close = new Border
+        {
+            Width = FileClose, Height = FileClose, CornerRadius = new CornerRadius(4), Background = Brush(Microsoft.UI.Colors.Transparent),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = new FontIcon
+            {
+                FontFamily = new FontFamily("Segoe Fluent Icons"), FontSize = 12, Glyph = "", Foreground = Brush(_palette.Hint),
+                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+            },
+        };
+        close.PointerEntered += (_, _) => close.Background = Brush(ButtonFill(1));
+        close.PointerExited += (_, _) => close.Background = Brush(Microsoft.UI.Colors.Transparent);
+        close.Tapped += (_, e) =>
+        {
+            e.Handled = true;
+            RemoveFile?.Invoke(file.Path);
+        };
+        Grid.SetColumn(close, 3);
+        grid.Children.Add(close);
+
+        var row = new Border
+        {
+            Height = FileRow, Padding = new Thickness(8, 0, 4, 0), CornerRadius = new CornerRadius(4),
+            Background = Brush(Microsoft.UI.Colors.Transparent), Child = grid, CanDrag = !file.Gone,
+        };
+        if (!file.Gone)
+        {
+            row.PointerEntered += (_, _) => row.Background = Brush(ButtonFill(1));
+            row.PointerExited += (_, _) => row.Background = Brush(Microsoft.UI.Colors.Transparent);
+            row.DragStarting += async (_, e) =>
+            {
+                var deferral = e.GetDeferral();
+                try
+                {
+                    Windows.Storage.IStorageItem item = Directory.Exists(file.Path)
+                        ? await Windows.Storage.StorageFolder.GetFolderFromPathAsync(file.Path)
+                        : await Windows.Storage.StorageFile.GetFileFromPathAsync(file.Path);
+                    e.Data.SetStorageItems([item]);
+                    e.AllowedOperations = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy
+                        | Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
+                }
+                catch (Exception ex) when (ex is not OutOfMemoryException)   // async void: anything escaping ends the app
+                {
+                    Interop.TaskbarHost.Log("transit: row drag failed — " + ex.Message);
+                    e.Cancel = true;
+                }
+                finally
+                {
+                    deferral.Complete();
+                }
+            };
+            row.DropCompleted += (_, _) => FileDragged?.Invoke(file.Path);
+        }
+
+        return row;
     }
 
     // ---------------- an answer in Markdown (F2b, user 10-08) ----------------

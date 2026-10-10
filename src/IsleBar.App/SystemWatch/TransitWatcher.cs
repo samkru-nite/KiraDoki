@@ -11,8 +11,11 @@ namespace IsleBar.App.SystemWatch;
 /// </summary>
 internal sealed class TransitWatcher : NoticeWatcher
 {
-    private const string Key = "transit";
+    private const string Key = TransitShelf.Key;
     private static readonly TimeSpan DebutLength = TimeSpan.FromSeconds(2);
+
+    /// <summary>How often to look whether the files are still where they were (the lifted list says "not found").</summary>
+    private static readonly TimeSpan GoneCheck = TimeSpan.FromSeconds(2);
 
     /// <summary>After a drag, when to look whether the files are still there (Explorer moves big files in its own time).</summary>
     private static readonly TimeSpan[] MovedChecks = [TimeSpan.FromSeconds(0.5), TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(6), TimeSpan.FromSeconds(20)];
@@ -23,6 +26,8 @@ internal sealed class TransitWatcher : NoticeWatcher
     private TransitShelf _shelf = new();
     private DateTimeOffset _since = DateTimeOffset.UtcNow;
     private int _adds;   // goes up with every drop: the card's look changes, so it debuts again
+    private string[] _gone = [];
+    private Timer? _check;
 
     public TransitWatcher(Func<Core.Localization.LanguageStrings> strings)
         : base(strings)
@@ -35,13 +40,32 @@ internal sealed class TransitWatcher : NoticeWatcher
         {
             _shelf = TransitShelf.Load(File.Exists(StoreFile) ? File.ReadAllText(StoreFile) : null);
             AppLog.Write($"transit: {_shelf.Count} item(s) kept from last time");
+            _gone = Missing();
             Show(debut: false);
         }
+
+        _check ??= new Timer(_ => Guard(CheckGone), null, GoneCheck, GoneCheck);
     });
 
-    protected override void Stop()
+    protected override void Stop() => _check?.Dispose();
+
+    /// <summary>A file deleted or moved by something else: its row says "not found" (it stays until taken out by hand).</summary>
+    private void CheckGone()
     {
+        lock (_gate)
+        {
+            var gone = Missing();
+            if (!gone.SequenceEqual(_gone, StringComparer.OrdinalIgnoreCase))
+            {
+                AppLog.Write($"transit: {gone.Length} not found");
+                _gone = gone;
+                Show(debut: false);
+            }
+        }
     }
+
+    /// <summary>Call under the lock.</summary>
+    private string[] Missing() => [.. _shelf.Paths.Where(p => !File.Exists(p) && !Directory.Exists(p))];
 
     /// <summary>Whether a card is the transit station's.</summary>
     public static bool Owns(Core.Island.ActivityState card) => card.SourcePath == SystemNotice.SourcePrefix + Key;
@@ -67,6 +91,7 @@ internal sealed class TransitWatcher : NoticeWatcher
             AppLog.Write($"transit: {paths.Count} dropped, {added} new, {_shelf.Count} in all");
             if (added > 0)
             {
+                _gone = Missing();
                 Save();
                 Show(debut: true);
             }
@@ -87,6 +112,7 @@ internal sealed class TransitWatcher : NoticeWatcher
             if (removed > 0)
             {
                 AppLog.Write($"transit: {removed} taken out, {_shelf.Count} left");
+                _gone = Missing();
                 Save();
                 Show(debut: false);
             }
@@ -145,6 +171,8 @@ internal sealed class TransitWatcher : NoticeWatcher
         var s = Text;
         var card = SystemNotice.Make(s.NoticeTransit, NoticeGlyphs.Transit, _since,
             msg: TransitShelf.CountText(_shelf.Count, s.NoticeTransitOne, s.NoticeTransitFiles));
+        card.Files = [.. _shelf.Paths];
+        card.Gone = _gone;
         card.Look = "in" + _adds;
         card.DebutFor = debut ? DebutLength : null;
         Board.Hold(Key, card);

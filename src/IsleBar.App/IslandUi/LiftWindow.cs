@@ -104,6 +104,10 @@ internal sealed class LiftWindow : Window
     /// <summary>A button on the card was clicked.</summary>
     public Action<SheetAction>? Act { get; set; }
 
+    /// <summary>The transit list's ✕ / a row dragged out (the file's path).</summary>
+    public Action<string>? RemoveFile { get; set; }
+    public Action<string>? FileDragged { get; set; }
+
     /// <summary>The card's inside (F2), and its height (200 / 300 / 400, <see cref="LiftMotion.Fit"/>).</summary>
     private SheetView? _view;
     private double _height = LiftMotion.Height;
@@ -587,7 +591,10 @@ internal sealed class LiftWindow : Window
             }
         }
 
-        _view = new SheetView(sheet, r.Icon, r.Cover, r.Palette, r.Language, LiftMotion.Width) { Act = a => Act?.Invoke(a) };
+        _view = new SheetView(sheet, r.Icon, r.Cover, r.Palette, r.Language, LiftMotion.Width)
+        {
+            Act = a => Act?.Invoke(a), RemoveFile = p => RemoveFile?.Invoke(p), FileDragged = p => FileDragged?.Invoke(p),
+        };
         _content.Children.Add(_view.Root);
     }
 
