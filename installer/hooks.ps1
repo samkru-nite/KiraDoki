@@ -14,9 +14,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $command = '"' + $Exe + '" hook'
-# Claude Code hands its plan usage only to a status line command — ours shows "5h 42% | 7d 17%" there and lets the bar warn at
-# 90% (10-03). Added only when no status line is set (someone's own is never replaced); removed again only if it is ours.
-$statusCommand = '"' + $Exe + '" statusline'
+# Older builds added a status line command (`islebar statusline`, for a "usage at 90%" warning — the Claude app runs no status
+# line, so it never showed; removed 10-10). -Apply and -Revert take ours out again; someone's own status line is left alone.
 function Is-OurStatus($s) { $s -and $s.command -like '*\islebar.exe*statusline*' }
 # Notification = permission/question (orange) · Stop = answer finished (green) · SessionEnd = clear ·
 # UserPromptSubmit = working · PostToolUse/PostToolUseFailure = a question was answered → back to working · StopFailure (rate_limit) = usage limit (red, until it resets)
@@ -67,10 +66,7 @@ if (Test-Path (Split-Path $SettingsPath -Parent)) {
             if ($json.hooks.PSObject.Properties[$e]) { $json.hooks.$e = @($groups) + $entry }
             else { $json.hooks | Add-Member -NotePropertyName $e -NotePropertyValue @($entry) }
         }
-        if (-not $json.PSObject.Properties['statusLine']) {
-            $json | Add-Member -NotePropertyName statusLine -NotePropertyValue ([pscustomobject]@{ type = 'command'; command = $statusCommand })
-        }
-        elseif (Is-OurStatus $json.statusLine) { $json.statusLine.command = $statusCommand }
+        if ($json.PSObject.Properties['statusLine'] -and (Is-OurStatus $json.statusLine)) { $json.PSObject.Properties.Remove('statusLine') }
         Save-Json $json $SettingsPath
         "claude: hooks connected"
     }

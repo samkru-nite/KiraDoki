@@ -6,14 +6,11 @@ namespace IsleBar.Core.Island;
 
 /// <summary>
 /// The pill's messages about an agent's plan and failures (user 10-03): the usage limit was hit (red, until it resets), the turn
-/// stopped on another error (red, until closed or the next prompt — 10-10), and an early warning when a usage window passes 90%.
+/// stopped on another error (red, until closed or the next prompt — 10-10). (The "usage at 90%" warning went 10-10.)
 /// Built the same way for Claude Code (its hooks and status line) and Codex (its session record), so both read alike.
 /// </summary>
 public static class AgentNotices
 {
-    /// <summary>The early warning shows once per usage window, at this share used.</summary>
-    public const double WarnAtPercent = 90;
-
     private const string Clock = "";      // Segoe Fluent Icons: clock ("wait until")
     private const string Warning = "";    // Segoe Fluent Icons: warning
 
@@ -77,23 +74,6 @@ public static class AgentNotices
             Name = name,
             Stage = "interrupted",
             State = "error",
-            T0 = Seconds(now),
-        };
-    }
-
-    /// <summary>A usage window passed <see cref="WarnAtPercent"/>: a plain notice (no border), shown briefly.</summary>
-    public static ActivityState UsageHigh(string agent, double percent, DateTimeOffset? resetsAt, LanguageStrings? text, DateTimeOffset now)
-    {
-        text ??= LanguageCatalog.For(LanguageCatalog.Fallback);
-        return new ActivityState
-        {
-            RawKind = ActivityState.KindNotice,
-            Agent = agent,
-            Glyph = Clock,
-            Title = text.UsageHigh.Replace("{a}", Name(agent), StringComparison.Ordinal)
-                                   .Replace("{p}", Math.Floor(percent).ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal),
-            Msg = resetsAt is { } r ? text.ResetsAt.Replace("{}", Time(r), StringComparison.Ordinal) : null,
-            State = "run",
             T0 = Seconds(now),
         };
     }

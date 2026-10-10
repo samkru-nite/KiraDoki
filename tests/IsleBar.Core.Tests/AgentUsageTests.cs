@@ -1,26 +1,10 @@
 using IsleBar.Core.Island;
-using IsleBar.Core.Launch;
 using Xunit;
 
 namespace IsleBar.Core.Tests;
 
 public class AgentUsageTests
 {
-    [Fact]
-    public void Claude_status_line_gives_both_windows()
-    {
-        var w = AgentUsage.FromClaudeStatus("""
-            {"model":{"id":"x"},"rate_limits":{"five_hour":{"used_percentage":92.5,"resets_at":1790973732},"seven_day":{"used_percentage":15.3,"resets_at":1791418185}}}
-            """);
-        Assert.Equal(2, w.Count);
-        Assert.Equal("5h", w[0].Key);
-        Assert.Equal(92.5, w[0].Percent);
-        Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1790973732), w[0].ResetsAt);
-        Assert.Equal("5h", AgentUsage.ToWarnAbout(w)!.Key);
-        Assert.Empty(AgentUsage.FromClaudeStatus("""{"model":{"id":"x"}}"""));   // API key users: no plan windows
-        Assert.Empty(AgentUsage.FromClaudeStatus("not json"));
-    }
-
     [Fact]
     public void Codex_record_gives_usage_and_skips_premium_snapshots()
     {
@@ -44,24 +28,6 @@ public class AgentUsageTests
         Assert.False(auth.UsageLimit);
         Assert.Equal(StopReason.Login, auth.Reason);
         Assert.Null(AgentUsage.CodexFailureFrom("""{"type":"event_msg","payload":{"type":"task_complete","last_agent_message":"done"}}"""));
-    }
-
-    [Fact]
-    public void A_usage_window_warns_once()
-    {
-        var file = Path.Combine(Path.GetTempPath(), "islebar-warned-" + Guid.NewGuid().ToString("N") + ".txt");
-        try
-        {
-            var window = new UsageWindow("5h", 91, DateTimeOffset.FromUnixTimeSeconds(1790973732));
-            Assert.True(AgentUsage.FirstWarning(file, AgentKind.Codex, window));
-            Assert.False(AgentUsage.FirstWarning(file, AgentKind.Codex, window));
-            Assert.True(AgentUsage.FirstWarning(file, AgentKind.Claude, window));                                  // another agent
-            Assert.True(AgentUsage.FirstWarning(file, AgentKind.Codex, window with { ResetsAt = window.ResetsAt!.Value.AddHours(5) }));   // next window
-        }
-        finally
-        {
-            File.Delete(file);
-        }
     }
 
     [Fact]

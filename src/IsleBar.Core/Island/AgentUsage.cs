@@ -10,33 +10,13 @@ public sealed record UsageWindow(string Key, double Percent, DateTimeOffset? Res
 public sealed record CodexFailure(bool UsageLimit, StopReason Reason);
 
 /// <summary>
-/// Reads plan usage and failures from what the agents leave behind (user 10-03):
-/// Claude Code passes <c>rate_limits</c> to its status line command; Codex writes <c>token_count</c> (with rate limits) and
-/// <c>task_complete</c> (with an error when the turn failed) into its session record — it has no hook for a failed turn.
+/// Reads plan usage and failures from what Codex leaves behind (user 10-03): <c>token_count</c> (with rate limits, for when a
+/// hit limit lifts) and <c>task_complete</c> (with an error when the turn failed) in its session record — it has no hook for a
+/// failed turn. (The "usage at 90%" warning and Claude's status line reading went 10-10: the Claude app runs no status line.)
 /// Nothing here throws: unreadable input gives null.
 /// </summary>
 public static class AgentUsage
 {
-    /// <summary>Claude Code status line input → its usage windows (Pro/Max plans only; empty for API keys).</summary>
-    public static IReadOnlyList<UsageWindow> FromClaudeStatus(string? json)
-    {
-        var windows = new List<UsageWindow>();
-        if (Parse(json) is not { } root || root["rate_limits"] is not JsonObject limits)
-        {
-            return windows;
-        }
-
-        foreach (var (name, key) in new[] { ("five_hour", "5h"), ("seven_day", "7d") })
-        {
-            if (limits[name] is JsonObject w && Number(w["used_percentage"]) is { } used)
-            {
-                windows.Add(new UsageWindow(key, used, Epoch(w["resets_at"])));
-            }
-        }
-
-        return windows;
-    }
-
     /// <summary>
     /// One line of a Codex session record: its usage windows if it's a rate-limit snapshot for the Codex plan, else null.
     /// The "premium" snapshots carry no windows and are skipped (they'd blank the reading).
@@ -91,36 +71,6 @@ public static class AgentUsage
     /// <summary>When a hit limit lifts: the reset of the fullest window in the last reading (the one that ran out).</summary>
     public static DateTimeOffset? ResetOfFullest(IReadOnlyList<UsageWindow>? windows)
         => windows is { Count: > 0 } ? windows.MaxBy(w => w.Percent)!.ResetsAt : null;
-
-    /// <summary>The window to warn about (at or above <see cref="AgentNotices.WarnAtPercent"/>, below 100), fullest first.</summary>
-    public static UsageWindow? ToWarnAbout(IReadOnlyList<UsageWindow>? windows)
-        => windows?.Where(w => w.Percent >= AgentNotices.WarnAtPercent && w.Percent < 100).OrderByDescending(w => w.Percent).FirstOrDefault();
-
-    /// <summary>
-    /// Whether this window was already warned about (<paramref name="warnedFile"/> lists "agent:key:reset" lines); records it if not.
-    /// Once per window: the same 5-hour window never warns twice. Never throws — on trouble it warns again rather than never.
-    /// </summary>
-    public static bool FirstWarning(string warnedFile, string agent, UsageWindow window)
-    {
-        var mark = $"{agent}:{window.Key}:{window.ResetsAt?.ToUnixTimeSeconds() ?? 0}";
-        try
-        {
-            var seen = File.Exists(warnedFile) ? File.ReadAllLines(warnedFile).ToList() : [];
-            if (seen.Contains(mark))
-            {
-                return false;
-            }
-
-            seen.Add(mark);
-            Directory.CreateDirectory(Path.GetDirectoryName(warnedFile)!);
-            File.WriteAllLines(warnedFile, seen.TakeLast(40));
-            return true;
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return true;
-        }
-    }
 
     private static JsonObject? Parse(string? json)
     {

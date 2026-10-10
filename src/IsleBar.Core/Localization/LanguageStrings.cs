@@ -122,9 +122,6 @@ public sealed class LanguageStrings
     /// <summary>An agent hit its plan's usage limit; {a} = agent name.</summary>
     public required string UsageLimit { get; init; }
 
-    /// <summary>Early warning at 90% of a usage window; {a} = agent, {p} = percent.</summary>
-    public required string UsageHigh { get; init; }
-
     /// <summary>An agent's turn ended on an error (not the usage limit); {a} = agent.</summary>
     public required string AgentStopped { get; init; }
 

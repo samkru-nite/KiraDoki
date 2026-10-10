@@ -39,7 +39,6 @@ public static class CommandRunner
                 "rm" => Remove(args[1..], output, error),
                 "timer" => Timer(args[1..], output, error),
                 "hook" => Hook(args[1..], input ?? Utf8StandardInput()),
-                "statusline" => StatusLine(args[1..], input ?? Utf8StandardInput(), output),
                 _ => Unknown(args[0], error),
             };
         }
@@ -117,42 +116,6 @@ public static class CommandRunner
         var path = store.Write(id, state);
         opts.WarnUnknown(error);
         output.WriteLine(path);
-        return ExitOk;
-    }
-
-    // ---------------- statusline ----------------
-
-    /// <summary>
-    /// Claude Code's status line command (installed by hooks.ps1 when none is set — 10-03). Claude passes its plan usage here
-    /// (and nowhere else), so this is where the bar learns "5-hour window at 90%": the first time a window passes it, a short
-    /// notice goes up. Prints a compact "5h 42% | 7d 17%" for the status line itself. Never fails — Claude would show the error.
-    /// </summary>
-    private static int StatusLine(string[] args, TextReader input, TextWriter output)
-    {
-        try
-        {
-            var opts = ArgMap.Parse(args);
-            var windows = AgentUsage.FromClaudeStatus(input.ReadToEnd());
-            if (AgentUsage.ToWarnAbout(windows) is { } high)
-            {
-                var warned = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "IsleBar", "usage_warned.txt");
-                if (AgentUsage.FirstWarning(warned, AgentKind.Claude, high))
-                {
-                    var now = DateTimeOffset.UtcNow;
-                    var notice = AgentNotices.UsageHigh(AgentKind.Claude, high.Percent, high.ResetsAt, BarLanguage, now);
-                    notice.Due = now.AddSeconds(12).ToUnixTimeMilliseconds() / 1000.0;   // a heads-up, not a standing item
-                    StoreFor(opts).Write("claude_usage", notice);
-                }
-            }
-
-            output.Write(string.Join(" | ", windows.Select(w =>   // ASCII only: the console code page would mangle "·"
-                $"{w.Key} {Math.Floor(w.Percent).ToString(System.Globalization.CultureInfo.InvariantCulture)}%")));
-        }
-        catch (Exception ex) when (ex is not OutOfMemoryException)
-        {
-            // pass silently — whatever it is, a crash here would show the user a hook error on every turn (review 10-03)
-        }
-
         return ExitOk;
     }
 

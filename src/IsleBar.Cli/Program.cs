@@ -1,9 +1,9 @@
 using IsleBar.Cli;
 
 // UTF-8 out for the commands people run by hand: on a console with a legacy code page (949, 437) emoji, Korean names and
-// "→" printed as "?" (review 10-03). Not for hook / statusline — they share the agent's console, and changing its code page
+// "→" printed as "?" (review 10-03). Not for hook — it shares the agent's console, and changing its code page
 // would stay after we exit and garble other tools' Korean output. Put back on the way out, too.
-var interactive = args.Length == 0 || args[0] is not ("hook" or "statusline");
+var interactive = args.Length == 0 || args[0] is not "hook";
 System.Text.Encoding? before = null;
 if (interactive && !Console.IsOutputRedirected)
 {

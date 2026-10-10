@@ -217,7 +217,7 @@ With the notifications option on, the installer adds hooks that call `islebar ho
 
 | Agent | Where | What lights up |
 |---|---|---|
-| Claude Code | `~/.claude/settings.json` (`Notification`, `Stop`, `StopFailure`, `SessionEnd`, `UserPromptSubmit`, `PostToolUse`, `PostToolUseFailure`, and a `statusLine` if you have none — it shows "5h 42% \| 7d 17%" and is how the bar sees your plan usage) | working · needs you (orange) · done (green, with a chime) · usage limit / stopped (red) |
+| Claude Code | `~/.claude/settings.json` (`Notification`, `Stop`, `StopFailure`, `SessionEnd`, `UserPromptSubmit`, `PostToolUse`, `PostToolUseFailure`) | working · needs you (orange) · done (green, with a chime) · usage limit / stopped (red) |
 | Codex 0.15x+ | `~/.codex/hooks.json` (`UserPromptSubmit`, `PermissionRequest`, `PostToolUse`, `Stop`, `SessionEnd`) | the same |
 
 Your other hooks are left alone, and `settings.json` is backed up first. **Codex asks you to trust new hooks once** —

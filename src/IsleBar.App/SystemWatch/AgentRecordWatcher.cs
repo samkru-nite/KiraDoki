@@ -8,8 +8,7 @@ namespace IsleBar.App.SystemWatch;
 /// <list type="bullet">
 /// <item>Codex fires no hook when a turn fails (user 10-03) — on the usage limit the pill used to keep saying "working" — but its
 /// record says so (<c>task_complete</c> with an error) and records the plan's usage windows (<c>token_count</c>). A failed turn
-/// replaces the session's item with the red usage-limit or "stopped" notice, and the first time a usage window passes 90% a
-/// short heads-up goes up.</item>
+/// replaces the session's item with the red usage-limit or "stopped" notice (the usage windows say when the limit lifts).</item>
 /// <item>Claude Code fires no Stop hook when the user interrupts it (Esc) — the pill said "working" for hours (review 10-03). Its
 /// transcript gets "[Request interrupted by user]"; the session's item is then cleared.</item>
 /// </list>
@@ -22,7 +21,6 @@ namespace IsleBar.App.SystemWatch;
 internal sealed class AgentRecordWatcher : NoticeWatcher
 {
     private static readonly TimeSpan Interval = TimeSpan.FromSeconds(3);
-    private static readonly TimeSpan HeadsUpFor = Core.SystemWatch.NoticeLengths.Attention;
     private const int FirstReadBytes = 256 * 1024;   // when a session is first seen: enough of the end to find the latest usage
 
     private readonly object _gate = new();
@@ -170,12 +168,7 @@ internal sealed class AgentRecordWatcher : NoticeWatcher
 
             if (AgentUsage.FromCodexLine(line) is { } windows)
             {
-                followed.Windows = windows;
-                if (AgentUsage.ToWarnAbout(windows) is { } high
-                    && AgentUsage.FirstWarning(Path.Combine(Interop.AppPaths.DataDirectory, "usage_warned.txt"), AgentKind.Codex, high))
-                {
-                    Board.Flash("codex-usage", AgentNotices.UsageHigh(AgentKind.Codex, high.Percent, high.ResetsAt, Text, now), HeadsUpFor, now);
-                }
+                followed.Windows = windows;   // kept for when a hit limit lifts (the "at 90%" warning went 10-10)
             }
             else if (AgentUsage.CodexFailureFrom(line) is { } failure && (AgentRecord.LineTime(line) is not { } at || at > since) && unchanged())
             {
