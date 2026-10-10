@@ -14,11 +14,19 @@ public sealed class TaskSlotsTests
     private static string[] Keys(TaskSlots slots) => slots.Cells.Select(c => c.Key).ToArray();
 
     [Fact]
-    public void Every_card_but_the_shown_one_and_temporary_ones_gets_a_cell_in_stack_order()
+    public void Every_card_but_the_shown_one_gets_a_cell_in_stack_order()
     {
         var slots = new TaskSlots();
         slots.Update([C("copied", CardType.Temporary), C("done", CardType.Inform), C("a"), C("b")], "copied", hovering: false);
         Assert.Equal(["done", "a", "b"], Keys(slots));
+    }
+
+    [Fact]
+    public void A_temporary_card_waiting_its_turn_has_a_cell()
+    {
+        var slots = new TaskSlots();
+        slots.Update([C("copied", CardType.Temporary), C("qq", CardType.Temporary), C("a")], "copied", hovering: false);
+        Assert.Equal(["qq", "a"], Keys(slots));   // user 10-10: a glance sees another one is coming
     }
 
     [Fact]
@@ -53,7 +61,7 @@ public sealed class TaskSlotsTests
         var cards = new[] { C("copied", CardType.Temporary), C("a"), C("b") };
         slots.Update(cards, "copied", hovering: false);
         slots.Swap("a", "copied", shownIsTemporary: true);
-        slots.Update(cards, "a", hovering: true);
+        slots.Update([C("a"), C("b")], "a", hovering: true);   // clicked away, it has been seen: the stack drops it
         Assert.Equal(["b"], Keys(slots));
     }
 

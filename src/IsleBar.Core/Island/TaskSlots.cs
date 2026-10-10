@@ -1,8 +1,9 @@
 namespace IsleBar.Core.Island;
 
 /// <summary>
-/// The task icons on the small pill (TODO 7.9 D, 10-07): one cell per card the big pill isn't showing, temporary cards excepted
-/// (they come and go in seconds). The order is kept from tick to tick so icons don't jump under the hand:
+/// The task icons on the small pill (TODO 7.9 D, 10-07): one cell per card the big pill isn't showing — temporary cards too while
+/// they wait their turn in the line (user 10-10: so a glance sees another one is coming). The order is kept from tick to tick so
+/// icons don't jump under the hand:
 /// <list type="bullet">
 /// <item>a new card takes its place by stack order (before the first cell that is further back in the stack);</item>
 /// <item>while the mouse is on the pills a new card goes to the end instead (nothing moves under the pointer);</item>
@@ -25,7 +26,7 @@ public sealed class TaskSlots
     public void Update(IReadOnlyList<Card> cards, string? shownKey, bool hovering)
     {
         ArgumentNullException.ThrowIfNull(cards);
-        var wanted = cards.Where(c => c.Key != shownKey && c.Type != CardType.Temporary).ToList();
+        var wanted = cards.Where(c => c.Key != shownKey).ToList();
         var stackIndex = new Dictionary<string, int>(StringComparer.Ordinal);
         for (var i = 0; i < cards.Count; i++)
         {

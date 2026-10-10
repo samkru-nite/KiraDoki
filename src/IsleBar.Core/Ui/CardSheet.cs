@@ -143,8 +143,11 @@ public static class CardSheets
             ActivityKind.Music => Music(s, text),
             ActivityKind.Transfer => Transfer(card, now, text, close),
             ActivityKind.Notice when s.Stage == "privacy" => Privacy(s, now, text),
+            // the newest notification, then the ones merged into the card before it, newest first (user 10-10: "+N" on the pill)
             ActivityKind.Notice when s.Stage == "expand" => Sheet(
-                s.Name ?? text.CardSystem, null, SheetTone.Plain, Ago(Start(s), now, text), s.Title, [s.Msg], [new(SheetAction.Open, text.MenuOpen), .. close]),
+                s.Name ?? text.CardSystem, null, SheetTone.Plain, Ago(Start(s), now, text), s.Title,
+                [s.Msg, .. s.Earlier.Reverse().Select(e => string.Join(" · ", new[] { e.Title, e.Msg }.Where(t => !string.IsNullOrWhiteSpace(t))))],
+                [new(SheetAction.Open, text.MenuOpen), .. close]),
             ActivityKind.Notice => Sheet(
                 text.CardSystem, null, SheetTone.Plain, Ago(Start(s), now, text), s.Title, [s.Msg, s.Name], close),
             _ => Sheet(

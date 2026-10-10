@@ -403,19 +403,121 @@ public sealed class CardStackTests
         Assert.Equal("m", ShownKey(stack));
     }
 
+    // ---------------- The line (user 10-10): first come first, the waiting ones in cells ----------------
+
+    private static ActivityState Message(string app, double atSec, string title = "hi")
+        => new()
+        {
+            RawKind = ActivityState.KindNotice,
+            Stage = "expand",
+            Title = title,
+            SourcePath = "system:toast:" + app,
+            UpdatedAt = T0.AddSeconds(atSec),
+        };
+
     [Fact]
-    public void A_temporary_card_goes_first_and_the_debut_waits()
+    public void A_temporary_card_waits_for_the_debut_in_a_cell_and_its_time_counts_from_going_up()
     {
         var music = Item(ActivityKind.Music, "m");
         var stack = Started(music);
-        var copied = Item(ActivityKind.Notice, "copied", 6);
         var work = Item(ActivityKind.AgentWorking, "w", 6);
-        stack.Update([music, copied, work], T0.AddSeconds(6));
-        Assert.Equal("copied", ShownKey(stack));
-        stack.Update([music, work], T0.AddSeconds(8));
+        stack.Update([music, work], T0.AddSeconds(6));
         Assert.Equal("w", ShownKey(stack));
-        stack.Update([music, work], T0.AddSeconds(11));
+
+        var copied = Item(ActivityKind.Notice, "copied", 7);
+        stack.Update([music, work, copied], T0.AddSeconds(7));
+        Assert.Equal("w", ShownKey(stack));   // nobody pushes in
+        Assert.Contains("copied", Keys(stack));   // waiting: a card (a cell) of its own
+
+        stack.Update([music, work], T0.AddSeconds(8));   // its source dropped it meanwhile: still kept
+        Assert.Equal("copied", ShownKey(stack));
+        stack.Update([music, work], T0.AddSeconds(13.9));
+        Assert.Equal("copied", ShownKey(stack));   // its 6 s from going up, not from coming
+        stack.Update([music, work], T0.AddSeconds(14));
         Assert.Equal("m", ShownKey(stack));
+        Assert.DoesNotContain("copied", Keys(stack));
+    }
+
+    [Fact]
+    public void A_newer_notification_waits_behind_the_older_one_instead_of_replacing_it()
+    {
+        var music = Item(ActivityKind.Music, "m");
+        var stack = Started(music);
+        stack.Update([music, Message("wechat", 6)], T0.AddSeconds(6));
+        stack.Update([music, Message("wechat", 6), Message("qq", 7)], T0.AddSeconds(7));
+        Assert.Equal("system:toast:wechat", ShownKey(stack));
+        stack.Update([music, Message("qq", 7)], T0.AddSeconds(12));
+        Assert.Equal("system:toast:qq", ShownKey(stack));
+        stack.Update([music], T0.AddSeconds(17.9));
+        Assert.Equal("system:toast:qq", ShownKey(stack));
+        stack.Update([music], T0.AddSeconds(18));
+        Assert.Equal("m", ShownKey(stack));
+    }
+
+    [Fact]
+    public void One_apps_notifications_merge_and_stay_six_seconds_from_the_last()
+    {
+        var music = Item(ActivityKind.Music, "m");
+        var stack = Started(music);
+        stack.Update([music, Message("wechat", 6, "a")], T0.AddSeconds(6));
+        stack.Update([music, Message("wechat", 6, "a"), Message("wechat", 9, "b"), Message("wechat", 10, "c")], T0.AddSeconds(10));
+        var shown = stack.Shown!;
+        Assert.Equal("system:toast:wechat", shown.Key);
+        Assert.Equal("c", shown.State.Title);
+        Assert.Equal(["a", "b"], shown.State.Earlier.Select(e => e.Title).ToArray());   // the pill's "+2"
+        Assert.Single(stack.Cards, c => c.Key == "system:toast:wechat");
+
+        stack.Update([music], T0.AddSeconds(15.9));
+        Assert.Equal("system:toast:wechat", ShownKey(stack));
+        stack.Update([music], T0.AddSeconds(16));
+        Assert.Equal("m", ShownKey(stack));
+    }
+
+    [Fact]
+    public void A_busy_chat_goes_down_into_its_cell_after_twenty_seconds_and_lets_the_line_move()
+    {
+        var music = Item(ActivityKind.Music, "m");
+        var stack = Started(music);
+        var items = new List<ActivityState> { music };
+        for (var at = 6; at <= 26; at += 4)
+        {
+            items.Add(Message("group", at));
+            if (at == 10)
+            {
+                items.Add(Item(ActivityKind.Notice, "copied", 10));
+            }
+
+            stack.Update([.. items], T0.AddSeconds(at));
+        }
+
+        stack.Update([.. items], T0.AddSeconds(26));
+        Assert.Equal("copied", ShownKey(stack));   // 20 s after going up the chat steps aside
+        Assert.Contains("system:toast:group", Keys(stack));   // in its cell, still taking messages
+
+        items.Add(Message("group", 28));
+        stack.Update([.. items], T0.AddSeconds(28));
+        Assert.Equal("copied", ShownKey(stack));   // a new message doesn't bring it back up
+        stack.Update([.. items], T0.AddSeconds(33.9));
+        Assert.Contains("system:toast:group", Keys(stack));
+        stack.Update([.. items], T0.AddSeconds(34));
+        Assert.DoesNotContain("system:toast:group", Keys(stack));   // 6 s after its last message
+    }
+
+    [Fact]
+    public void Under_the_mouse_a_temporary_card_waits_and_the_one_up_stays()
+    {
+        var music = Item(ActivityKind.Music, "m");
+        var stack = Started(music);
+        stack.Update([music, Item(ActivityKind.Notice, "copied", 6)], T0.AddSeconds(6));
+        Assert.Equal("copied", ShownKey(stack));
+        stack.SetHover(true, T0.AddSeconds(7));
+        stack.Update([music, Message("qq", 8)], T0.AddSeconds(8));
+        stack.Update([music, Message("qq", 8)], T0.AddSeconds(20));
+        Assert.Equal("copied", ShownKey(stack));   // not taken away under the hand
+        Assert.Contains("system:toast:qq", Keys(stack));
+        stack.SetHover(false, T0.AddSeconds(20));
+        stack.Update([music], T0.AddSeconds(22));
+        Assert.Equal("system:toast:qq", ShownKey(stack));   // the hold over: the next in the line
     }
 
     // ---------------- Keep in the small pill (甲⑤) ----------------

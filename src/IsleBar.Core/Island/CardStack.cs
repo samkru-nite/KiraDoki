@@ -38,10 +38,14 @@ public sealed record Card(string Key, CardType Type, bool Pinned, ActivityState 
 /// <item><b>Debut</b> (user 10-07, replacing 10-06 "status cards never go on top first; send a separate temporary card"): a card
 /// that becomes a status card — new, or another type before (permission answered, a new turn after "done") — shows on the big pill
 /// for <see cref="DebutLength"/>, then goes down into its cell. Not pinning: no border. It shows over a pending / inform card too —
-/// those stay and come back a few seconds later (user 10-07) — but waits while a temporary card shows (that one is gone in seconds
-/// and would be missed). Not while the mouse is on the pills, not for what is there when the bar starts. Every new card gets its turn, in the order they came; while others
-/// wait, each shows for <see cref="DebutAtLeast"/> only.
+/// those stay and come back a few seconds later (user 10-07). Not while the mouse is on the pills, not for what is there when the
+/// bar starts. While others wait, each shows for <see cref="DebutAtLeast"/> only.
 /// How a card <i>ends</i> is its next type: inform (stays), temporary (a few seconds), or gone.</item>
+/// <item><b>The line</b> (user 10-10, replacing "a temporary card goes first / the newer replaces the older"): debuts and temporary
+/// cards take the big pill one at a time in the order they came — nobody pushes in. A temporary card waits in a cell of its own
+/// (a glance sees another one is coming), its time counts from when it goes up, and it is kept here even after its source dropped
+/// it. One app's notifications in a row are one card ("+N", <see cref="ActivityState.Earlier"/>), up until its length after the
+/// last one, at most <see cref="MessageCap"/> — then back in its cell.</item>
 /// </list>
 /// Deterministic: the same items and the same actions always give the same result (user: "the computer must not be a black box").
 /// </summary>
@@ -62,9 +66,53 @@ public sealed class CardStack
     /// <summary>No debuts this soon after the first update: what is there when the bar starts doesn't parade.</summary>
     public static readonly TimeSpan StartQuiet = TimeSpan.FromSeconds(2);
 
+    /// <summary>
+    /// The longest a temporary card stays up while messages keep coming into it (user 10-10: a busy group chat kept it there): then
+    /// it goes down into its cell and lets the line move on; new messages only raise its "+N" there.
+    /// </summary>
+    public static readonly TimeSpan MessageCap = TimeSpan.FromSeconds(20);
+
+    // the line (user 10-10): debuts and temporary cards take the big pill in the order they came — nobody pushes in; the one up is
+    // _debutKey (a debut or a temporary card), the rest wait in _debutQueue — a temporary one in a cell of its own meanwhile
     private string? _debutKey;
     private DateTimeOffset _debutSince;
     private readonly List<string> _debutQueue = [];
+    private readonly Dictionary<string, Waiting> _temps = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _taken = new(StringComparer.Ordinal);   // key + time of each temporary item already taken in
+
+    /// <summary>
+    /// A temporary card, kept here from when it comes until it has had its time up (its source may drop it meanwhile): one per
+    /// key — one app's notifications in a row merge into one (<see cref="ActivityState.Earlier"/>).
+    /// </summary>
+    private sealed class Waiting(string key, ActivityState state, string taken, DateTimeOffset now)
+    {
+        public string Key { get; } = key;
+
+        public ActivityState State { get; set; } = state;
+
+        /// <summary>The item it now shows (key + time), so the same item seen again only refreshes its words (a CPU card's live percent).</summary>
+        public string Taken { get; set; } = taken;
+
+        public List<ActivityState> Messages { get; } = [state];
+
+        public DateTimeOffset Arrived { get; } = now;
+
+        /// <summary>The last item that came into it: its time up is counted from here (user 10-10).</summary>
+        public DateTimeOffset Last { get; set; } = now;
+
+        public TimeSpan Length { get; set; } = LengthOf(state);
+
+        /// <summary>When it went up on the big pill (null = still waiting).</summary>
+        public DateTimeOffset? Up { get; set; }
+
+        /// <summary>Its <see cref="MessageCap"/> ran out: back in its cell until <see cref="Last"/> + <see cref="Length"/>.</summary>
+        public bool Down { get; set; }
+
+        public static TimeSpan LengthOf(ActivityState s) => s.ShowFor ?? SystemWatch.NoticeLengths.Read;
+    }
+
+    /// <summary>A notification that merges with the next one from the same app (the others replace their content).</summary>
+    private static bool IsMessage(ActivityState s) => s is { Kind: ActivityKind.Notice, Stage: "expand" };
     private readonly HashSet<string> _resumed = new(StringComparer.Ordinal);   // debuts of AI cards working again: ResumeDebutLength
     private DateTimeOffset? _firstUpdate;
 
@@ -204,11 +252,24 @@ public sealed class CardStack
         var card = Cards[index];
         if (_debutKey is not null || _debutQueue.Count > 0)
         {
-            _notes.Add($"debut of {_debutKey ?? "-"} and {_debutQueue.Count} waiting dropped ({key} clicked)");
+            _notes.Add($"debut of {_debutKey ?? "-"} and {_debutQueue.Count(k => !_temps.ContainsKey(k))} waiting dropped ({key} clicked)");
         }
 
-        _debutKey = null;   // a clicked card replaces any debut
-        _debutQueue.Clear();
+        // a clicked card replaces any debut, and a temporary card that was up (it has been seen); waiting temporary ones still come
+        if (_debutKey is { } up && up != key && _temps.ContainsKey(up))
+        {
+            _temps.Remove(up);
+        }
+
+        _debutKey = null;
+        _debutQueue.RemoveAll(k => !_temps.ContainsKey(k));
+        if (_temps.TryGetValue(key, out var picked) && !picked.Down)
+        {
+            _debutQueue.Remove(key);   // a waiting one clicked in its cell: up now, its time running from here
+            _debutKey = key;
+            _debutSince = now;
+            picked.Up ??= now;
+        }
         if (!card.Pinned && !_tucked.Contains(card.Key))   // a tucked card shows while looked at, then goes back down
         {
             _chosenKey = card.Key;   // a pinned card shows by itself anyway — the choice to come back to is the status card
@@ -236,7 +297,19 @@ public sealed class CardStack
     /// <summary>"Close" on a status card that can't be ended from here (music, a download, an agent working): hidden until it ends.</summary>
     public void Hide(string key, DateTimeOffset now)
     {
-        _hidden.Add(key);
+        if (_temps.Remove(key))
+        {
+            _debutQueue.Remove(key);   // a temporary card closed: gone (the items it took in stay taken)
+            if (_debutKey == key)
+            {
+                _debutKey = null;
+            }
+        }
+        else
+        {
+            _hidden.Add(key);
+        }
+
         Rebuild(now);
     }
 
@@ -246,15 +319,22 @@ public sealed class CardStack
         var fresh = new List<(string Key, DateTimeOffset Updated)>();   // became a status card this time
         var cards = new List<(Card Card, DateTimeOffset Since, DateTimeOffset Updated)>();
         var present = new HashSet<string>(StringComparer.Ordinal);
+        var temporary = new List<(string Key, ActivityState State)>();
         foreach (var state in _items)
         {
             var key = KeyOf(state);
+            var type = TypeOf(state, now);
+            if (type == CardType.Temporary)
+            {
+                temporary.Add((key, state));   // kept and lined up here (TakeTemporaries)
+                continue;
+            }
+
             if (!present.Add(key))
             {
                 continue;   // two items with one key: the first wins (shouldn't happen)
             }
 
-            var type = TypeOf(state, now);
             var pinned = type != CardType.Status && !_neverPin.Contains(state.Kind);
 
             // a card that changes type counts as newly arrived (working → done comes to the front; done → working again goes to the back)
@@ -291,6 +371,13 @@ public sealed class CardStack
 
         _hidden.RemoveWhere(k => !present.Contains(k));
         _tucked.RemoveWhere(k => !present.Contains(k) || _hidden.Contains(k));   // ended or closed: a new one is a new card
+
+        TakeTemporaries(temporary, present, now);
+        foreach (var t in _temps.Values)
+        {
+            cards.Add((new Card(t.Key, CardType.Temporary, !_neverPin.Contains(t.State.Kind), t.State), t.Arrived, t.Arrived));
+        }
+
         cards.Sort((a, b) =>
         {
             if (a.Card.Pinned != b.Card.Pinned)
@@ -306,7 +393,8 @@ public sealed class CardStack
                     return byType;
                 }
 
-                var byNew = b.Updated.CompareTo(a.Updated);   // newest first
+                // newest first — temporary cards in their line's order, oldest first (user 10-10: nobody pushes in)
+                var byNew = a.Card.Type == CardType.Temporary ? a.Updated.CompareTo(b.Updated) : b.Updated.CompareTo(a.Updated);
                 return byNew != 0 ? byNew : string.CompareOrdinal(a.Card.Key, b.Card.Key);
             }
 
@@ -322,14 +410,125 @@ public sealed class CardStack
         }
 
         UpdateDebut(ordered, fresh, now);
+        if (ordered.RemoveAll(c => c.Type == CardType.Temporary && !_temps.ContainsKey(c.Key)) > 0)
+        {
+            Cards = ordered;   // a temporary card's time ended just now: gone this tick, not one more in a cell
+        }
+
         ShownIndex = PickShown(ordered, now);
         _shownKey = ordered.Count == 0 || ShownIndex < 0 ? null : ordered[ShownIndex].Key;
     }
 
-    /// <summary>Starts, queues, hands over and ends debuts (see the class notes).</summary>
+    /// <summary>
+    /// The temporary items of this tick taken in (user 10-10): a new one gets a card and joins the line — even with the mouse on the
+    /// pills, it waits its turn there; one for a card already kept (same key: the same app's next notification, the charger plugged
+    /// back) goes into that card, which then stays up its length from this one on. A card the items' own status card took back (a
+    /// new download under the "download" key) ends; one whose time is over leaves.
+    /// </summary>
+    private void TakeTemporaries(List<(string Key, ActivityState State)> items, HashSet<string> statusKeys, DateTimeOffset now)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var (key, state) in items.OrderBy(t => t.State.UpdatedAt))
+        {
+            var taken = key + "\u0001" + state.UpdatedAt.UtcTicks.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            seen.Add(taken);
+            if (!_taken.Add(taken))
+            {
+                if (_temps.TryGetValue(key, out var same) && same.Taken == taken)
+                {
+                    state.Earlier = same.State.Earlier;   // the same item again: its words as they are now, nothing new
+                    same.State = state;
+                    same.Messages[^1] = state;
+                }
+
+                continue;
+            }
+
+            if (statusKeys.Contains(key))
+            {
+                continue;
+            }
+
+            if (_temps.TryGetValue(key, out var card))
+            {
+                var merges = IsMessage(state) && IsMessage(card.State);
+                if (!merges)
+                {
+                    card.Messages.Clear();   // not messages: the newer one just replaces it
+                }
+
+                card.Messages.Add(state);
+                state.Earlier = card.Messages.Take(card.Messages.Count - 1).ToList();
+                card.State = state;
+                card.Taken = taken;
+                card.Last = now;
+                card.Length = Waiting.LengthOf(state);
+                _notes.Add($"{key}: one more came in ({card.Messages.Count} in all, {(card.Down ? "in its cell" : card.Up is null ? "waiting" : "up")})");
+                continue;
+            }
+
+            _temps[key] = new Waiting(key, state, taken, now);
+            _debutQueue.Add(key);
+            _notes.Add($"{key} came (temporary), waits its turn ({_debutQueue.Count} in the line{(_debutKey is null ? string.Empty : $", {_debutKey} up")})");
+        }
+
+        _taken.IntersectWith(seen);   // forget the items their sources dropped
+        foreach (var t in _temps.Values.ToList())
+        {
+            if (statusKeys.Contains(t.Key))
+            {
+                Drop(t, "its status card is back");
+            }
+            else if (t.Down && now >= t.Last + t.Length)
+            {
+                Drop(t, "its time in the cell is over");
+            }
+        }
+    }
+
+    private void Drop(Waiting t, string why)
+    {
+        _temps.Remove(t.Key);
+        _debutQueue.Remove(t.Key);
+        if (_debutKey == t.Key)
+        {
+            _debutKey = null;
+        }
+
+        _notes.Add($"{t.Key} gone ({why})");
+    }
+
+    /// <summary>
+    /// The temporary card up has had its time: its length from the last item that came into it (user 10-10), but not past
+    /// <see cref="MessageCap"/> from going up — then it goes down into its cell while items still come.
+    /// </summary>
+    private void EndIfOver(Waiting t, DateTimeOffset now)
+    {
+        var up = t.Up ?? now;
+        var end = (t.Last > up ? t.Last : up) + t.Length;
+        var cap = up + MessageCap;
+        if (now < (end < cap ? end : cap))
+        {
+            return;
+        }
+
+        _debutKey = null;
+        if (end > cap)
+        {
+            t.Down = true;
+            _notes.Add($"{t.Key} up {MessageCap.TotalSeconds:0} s: down into its cell, {t.Messages.Count} in all");
+        }
+        else
+        {
+            Drop(t, "its time is over");
+        }
+    }
+
+    /// <summary>Starts, queues, hands over and ends debuts and temporary cards — one line, first come first (see the class notes).</summary>
     private void UpdateDebut(List<Card> cards, List<(string Key, DateTimeOffset Updated)> fresh, DateTimeOffset now)
     {
-        bool Present(string? key) => key is not null && cards.Any(c => c.Key == key && c.Type == CardType.Status);
+        bool Present(string? key) => key is not null
+            && (_temps.TryGetValue(key, out var t) ? !t.Down : cards.Any(c => c.Key == key && c.Type == CardType.Status));
         if (_hovering || now - _leftAt < HoldAfterLeave)
         {
             foreach (var f in fresh)
@@ -337,17 +536,21 @@ public sealed class CardStack
                 _notes.Add($"{f.Key} became status, no debut (mouse {(_hovering ? "on the pills" : "just left")})");
             }
 
-            if (_debutKey is not null || _debutQueue.Count > 0)
+            var debuts = _debutQueue.Count(k => !_temps.ContainsKey(k));
+            if ((_debutKey is not null && !_temps.ContainsKey(_debutKey)) || debuts > 0)
             {
-                _notes.Add($"debut of {_debutKey ?? "-"} and {_debutQueue.Count} waiting dropped (mouse)");
+                _notes.Add($"debut of {(_debutKey is { } d && !_temps.ContainsKey(d) ? d : "-")} and {debuts} waiting dropped (mouse)");
             }
 
-            _debutKey = null;   // the mouse is there: new cards go straight to their cells
-            _debutQueue.Clear();
+            // the mouse is there: new status cards go straight to their cells; temporary ones wait (and the one up stays up)
+            if (_debutKey is not null && !_temps.ContainsKey(_debutKey))
+            {
+                _debutKey = null;
+            }
+
+            _debutQueue.RemoveAll(k => !_temps.ContainsKey(k));
             return;
         }
-
-        var temporary = cards.Count > 0 && cards[0] is { Pinned: true, Type: CardType.Temporary };
 
         if (!Present(_debutKey))
         {
@@ -368,7 +571,7 @@ public sealed class CardStack
             _debutQueue.AddRange(add);
             foreach (var k in add)
             {
-                _notes.Add($"{k} became status, queued for a debut ({_debutQueue.Count} waiting{(temporary ? ", a temporary card shows" : string.Empty)})");
+                _notes.Add($"{k} became status, queued for a debut ({_debutQueue.Count} in the line)");
             }
         }
         else
@@ -379,19 +582,31 @@ public sealed class CardStack
             }
         }
 
-        if (_debutKey is not null && (temporary || now - _debutSince >= (_debutQueue.Count > 0 ? DebutAtLeast : _resumed.Contains(_debutKey) ? ResumeDebutLength : DebutLength)))
+        if (_debutKey is { } up && _temps.TryGetValue(up, out var on))
         {
-            _notes.Add($"debut of {_debutKey} over{(temporary ? " (a temporary card came)" : string.Empty)}");
+            EndIfOver(on, now);
+        }
+        else if (_debutKey is not null && now - _debutSince >= (_debutQueue.Count > 0 ? DebutAtLeast : _resumed.Contains(_debutKey) ? ResumeDebutLength : DebutLength))
+        {
+            _notes.Add($"debut of {_debutKey} over");
             _resumed.Remove(_debutKey);
-            _debutKey = null;   // its turn is over, or a temporary card came: that one goes first
+            _debutKey = null;   // its turn is over: the next in the line
         }
 
-        if (_debutKey is null && _debutQueue.Count > 0 && !temporary)
+        if (_debutKey is null && _debutQueue.Count > 0)
         {
             _debutKey = _debutQueue[0];
             _debutQueue.RemoveAt(0);
             _debutSince = now;
-            _notes.Add($"debut of {_debutKey} starts");
+            if (_temps.TryGetValue(_debutKey, out var next))
+            {
+                next.Up ??= now;   // its time counts from here, not from when it came (user 10-10)
+                _notes.Add($"{_debutKey} up ({next.Length.TotalSeconds:0.#} s, {_debutQueue.Count} still in the line)");
+            }
+            else
+            {
+                _notes.Add($"debut of {_debutKey} starts");
+            }
         }
     }
 
@@ -413,11 +628,12 @@ public sealed class CardStack
         var debut = _debutKey is null ? -1 : cards.FindIndex(c => c.Key == _debutKey);
         if (debut >= 0)
         {
-            return debut;   // a few seconds, even over a pinned card (a temporary one stops it: UpdateDebut)
+            return debut;   // the line's turn: a few seconds, even over a pinned card
         }
 
-        // tucked cards wait on the small pill (Tuck): the rest as if they weren't there; all tucked → none on the big pill
-        var top = cards.FindIndex(c => !_tucked.Contains(c.Key));
+        // tucked cards wait on the small pill (Tuck): the rest as if they weren't there; all tucked → none on the big pill.
+        // A temporary card goes up only by its turn in the line (UpdateDebut): waiting, or back down after its cap, it is in its cell
+        var top = cards.FindIndex(c => !_tucked.Contains(c.Key) && c.Type != CardType.Temporary);
         if (top >= 0 && cards[top].Pinned)
         {
             return top;   // someone is waiting for you

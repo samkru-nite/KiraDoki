@@ -127,8 +127,13 @@ public sealed partial class PillView : UserControl
         var playing = state.Kind == ActivityKind.Music && state.Stage != "paused";
         var hasCover = state.Kind == ActivityKind.Music && Host.Cover(card) is not null;
         LeadSlot.Margin = new Thickness(8, 0, hasCover ? 11 : 8, 0);
-        // 8 before the bars; the button's 8 is its own (the gap is clickable, user 10-10)
-        IslandContent.Margin = new Thickness(0, 0, card is { Type: CardType.Inform } ? 0 : playing ? 8 : 12, 0);
+        // one app's notifications merged: "+N" on the right, grey (user 10-10)
+        var more = state.Kind == ActivityKind.Notice ? state.Earlier.Count : 0;
+        MoreLabel.Visibility = more > 0 ? Visibility.Visible : Visibility.Collapsed;
+        MoreLabel.Text = more > 0 ? "+" + more.ToString(System.Globalization.CultureInfo.InvariantCulture) : string.Empty;
+        MoreLabel.Foreground = BrushOf(Host.Theme.Hint);
+        // 8 before the bars or the "+N"; the button's 8 is its own (the gap is clickable, user 10-10)
+        IslandContent.Margin = new Thickness(0, 0, card is { Type: CardType.Inform } ? 0 : playing || more > 0 ? 8 : 12, 0);
         // compressing: the document outline gets zipper teeth (the drop hint uses the same outline without them)
         ZipTeeth.Opacity = state.Stage == "copy" && state.RunState == ActivityRunState.Running
                            && state.Glyph == FileOperationWatcher.CompressGlyph ? 1 : 0;
@@ -544,6 +549,7 @@ public sealed partial class PillView : UserControl
             // (from the known sizes, not the area's ActualWidth — that lags a layout pass behind a change)
             double? areaRight = CloseZone.Visibility == Visibility.Visible ? BaseWidth - CloseZone.Width
                 : Equalizer.Visibility == Visibility.Visible ? BaseWidth - Equalizer.Margin.Right - EqualizerWidth - 8
+                : MoreLabel.Visibility == Visibility.Visible ? BaseWidth - MoreLabel.Margin.Right - MoreWidth() - 8
                 : null;
             var middle = areaRight is { } right ? (areaLeft + right) / 2 : BaseWidth / 2;
             var start = middle - (width / 2);
@@ -555,6 +561,13 @@ public sealed partial class PillView : UserControl
 
     /// <summary>The now-playing bars: four 3 wide, 2 apart (PillView.xaml).</summary>
     private const double EqualizerWidth = (4 * 3) + (3 * 2);
+
+    /// <summary>The "+N" label's width as it reads now (measured: its text just changed, the layout may not have run yet).</summary>
+    private double MoreWidth()
+    {
+        MoreLabel.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+        return MoreLabel.DesiredSize.Width;
+    }
 
     /// <summary>How far to move the text so its glyphs are centred (DIP, measured by MainWindow.MeasureInkAsync; the same for every pill).</summary>
     internal static double InkOffset { get; set; }

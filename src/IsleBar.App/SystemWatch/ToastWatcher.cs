@@ -172,10 +172,16 @@ internal sealed class ToastWatcher(Func<LanguageStrings> strings) : NoticeWatche
                 continue;
             }
 
+            // each its own time, even two read in one go: the island takes each in once by its card and time (CardStack)
             var now = DateTimeOffset.UtcNow;
-            var notice = Expandable(SystemNotice.Make(texts[0], "", now, msg: ToastText.Line([.. texts.Skip(1)]), open: ToastText.LaunchProtocol(row.Payload) ?? AppLaunch(row.AppId)), AppName(row.AppId), row.AppId);
+            now = _lastStamp is { } last && now <= last ? last.AddTicks(1) : now;
+            _lastStamp = now;
+            var notice = Expandable(SystemNotice.Make(texts[0], NoticeGlyphs.Bell, now, msg: ToastText.Line([.. texts.Skip(1)]), open: ToastText.LaunchProtocol(row.Payload) ?? AppLaunch(row.AppId)), AppName(row.AppId), row.AppId);
+            // one card per app (user 10-10: its notifications in a row merge, "+N"); each kept on the board under its own id, so two
+            // read in one go both reach the island
+            notice.SourcePath = SystemNotice.SourcePrefix + "toast:" + row.AppId;
             Board.Flash(
-                "toast",
+                "toast:" + row.Id.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 // Content first: the notice's own title (sender, subject) in bold, then the body and the app name dim —
                 // leading with the app name meant only "Windows PowerShell" showed before the notice was gone (user feedback 09-30)
                 notice,
@@ -185,6 +191,8 @@ internal sealed class ToastWatcher(Func<LanguageStrings> strings) : NoticeWatche
 
         return true;
     }
+
+    private DateTimeOffset? _lastStamp;
 
     private readonly record struct Row(long Id, string AppId, string Payload);
 

@@ -111,6 +111,20 @@ public sealed class ActivityState
     [JsonIgnore]
     public int MoreCount { get; set; }
 
+    /// <summary>
+    /// A temporary card's time on the big pill, counted from when it goes up (null = <see cref="SystemWatch.NoticeLengths.Read"/>;
+    /// <see cref="SystemWatch.NoticeBoard.Flash"/> sets it). Not serialized to JSON.
+    /// </summary>
+    [JsonIgnore]
+    public TimeSpan? ShowFor { get; set; }
+
+    /// <summary>
+    /// The messages merged into this one, oldest first (one app's notifications in a row share a card, user 10-10: the pill says
+    /// "+N", the lifted card lists them all). Not serialized to JSON.
+    /// </summary>
+    [JsonIgnore]
+    public IReadOnlyList<ActivityState> Earlier { get; set; } = [];
+
     /// <summary>Whether this is a paused transfer (a browser download whose file stopped growing).</summary>
     [JsonIgnore]
     public bool IsPausedTransfer => Kind == ActivityKind.Transfer && Stage == "paused";

@@ -108,6 +108,13 @@
             </Grid>
 
             <StackPanel x:Name="TailRow" Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                <!-- One app's notifications merged into this card: "+N" more, 12 grey, 12 from the pill's edge, 8 after the text (user 10-10, A).
+                     Its ink centred in the pill like the text's (measured 10-10 at 200%: centred by line box it sat 1.5 px low) -->
+                <TextBlock x:Name="MoreLabel" FontSize="12" Margin="0,0,12,0" VerticalAlignment="Center" IsHitTestVisible="False" Visibility="Collapsed">
+                    <TextBlock.RenderTransform>
+                        <TranslateTransform Y="-0.75" />
+                    </TextBlock.RenderTransform>
+                </TextBlock>
                 <!-- Music playing: four dancing bars, 7 from the right edge: their middle 16 from it, like the cover / icon on the left (user 10-07: lopsided at 12). Purely decorative and animated by the compositor -->
                 <StackPanel x:Name="Equalizer" Orientation="Horizontal" Spacing="2" Height="14"
                             Margin="0,0,7,0" VerticalAlignment="Center" Visibility="Collapsed">

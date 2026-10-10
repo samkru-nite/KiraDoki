@@ -14,10 +14,15 @@ public sealed class NoticeBoard
     private readonly List<Entry> _items = [];
 
     /// <summary>
-    /// A notice shown for only a few seconds. It drops out of <see cref="Snapshot"/> after <paramref name="duration"/>.
+    /// A notice shown for only a few seconds. It drops out of <see cref="Snapshot"/> after <paramref name="duration"/>; the island
+    /// keeps its own copy and shows it for <paramref name="duration"/> once its turn comes (<see cref="Island.CardStack"/>, 10-10).
     /// </summary>
     public void Flash(string key, ActivityState notice, TimeSpan duration, DateTimeOffset now)
-        => Put(key, notice, now + duration);
+    {
+        ArgumentNullException.ThrowIfNull(notice);
+        notice.ShowFor ??= duration;
+        Put(key, notice, now + duration);
+    }
 
     /// <summary>
     /// A notice that stays until cleared (<see cref="Clear"/>), like focus mode being on. Marked <see cref="SystemNotice.HoldStage"/>
@@ -187,6 +192,9 @@ public static class NoticeGlyphs
     public const string Calendar = "";
     public const string Microphone = "";
     public const string Camera = "";
+
+    /// <summary>Bell (Ringer, E7E7) — a system notification, until each app's own icon is drawn there (user 10-10: it had none).</summary>
+    public const string Bell = "";
 
     /// <summary>Battery bar icon. 0–100% → Battery0–Battery10 (EBA0–EBAA).</summary>
     public static string Battery(int percent)
