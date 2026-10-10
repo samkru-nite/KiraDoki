@@ -6,15 +6,14 @@ namespace IsleBar.App.SystemWatch;
 /// <summary>
 /// Internet disconnect/reconnect. When <see cref="NetworkInformation.NetworkStatusChanged"/> fires, reads the connectivity level
 /// of the current internet connection profile (does it reach the internet), and confirms only values that last 3 s (<see cref="ConnectivityLogic"/>) —
-/// so the island doesn't flicker on brief drops when switching Wi-Fi. On disconnect shows "Internet disconnected" for 10 s (no border),
-/// then "Reconnected" for 2 s. The state at startup isn't notified.
+/// so the island doesn't flicker on brief drops when switching Wi-Fi. On disconnect a status card "Internet disconnected" (no border)
+/// stays until it's back; then the same card says "Reconnected" for 2 s (user 10-10). The state at startup isn't notified.
 /// Events come from the thread pool and confirmation runs on a 1 s timer — no UI thread needed.
 /// Reads directly once every 10 s in case events are missed (resume from sleep, etc.).
 /// </summary>
 internal sealed class NetworkWatcher : NoticeWatcher
 {
-    private const string LostKey = "net";
-    private const string RestoredKey = "net-ok";
+    private const string Key = "net";
     private const string SettingsUri = "ms-settings:network-status";
     private static readonly TimeSpan RestoredShow = NoticeLengths.Glance;
     private static readonly TimeSpan TickInterval = TimeSpan.FromSeconds(1);
@@ -84,14 +83,13 @@ internal sealed class NetworkWatcher : NoticeWatcher
         switch (change)
         {
             case ConnectivityChange.Lost:
-                Board.Clear(RestoredKey);
-                // a short heads-up, not an orange border for the whole outage — orange means "you need to answer", and an outage
-                // (a plane, the provider) usually isn't something the person can fix (user 10-01, same as the CPU notice)
-                Board.Flash(LostKey, SystemNotice.Make(s.NoticeOffline, NoticeGlyphs.NoInternet, now, open: SettingsUri), NoticeLengths.Attention, now);
+                // a status card for as long as it lasts (user 10-10: like focus mode — gone after 10 s, coming back you couldn't
+                // tell it was still down); no orange border — an outage (a plane, the provider) usually isn't the person's to fix
+                Board.Hold(Key, SystemNotice.Make(s.NoticeOffline, NoticeGlyphs.NoInternet, now, open: SettingsUri));
                 break;
             case ConnectivityChange.Restored:
-                Board.Clear(LostKey);
-                Board.Flash(RestoredKey, SystemNotice.Make(s.NoticeOnline, NoticeGlyphs.Wifi, now, open: SettingsUri), RestoredShow, now);
+                // the same card says "back online" for a glance, then goes (one thing, one card)
+                Board.Flash(Key, SystemNotice.Make(s.NoticeOnline, NoticeGlyphs.Wifi, now, open: SettingsUri), RestoredShow, now);
                 break;
         }
     }

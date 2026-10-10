@@ -17,7 +17,6 @@ namespace IsleBar.App.SystemWatch;
 internal sealed class ToastWatcher(Func<LanguageStrings> strings) : NoticeWatcher(strings)
 {
     private static readonly TimeSpan Poll = TimeSpan.FromMilliseconds(400);   // check often for low latency; the DB is only opened when its file actually changed
-    private static readonly TimeSpan Show = NoticeLengths.Read;   // 4 s was over before a long notice had scrolled to its text
     private readonly CancellationTokenSource _stop = new();
     private long _lastId = -1;
     private DateTime _lastDbWrite = DateTime.MinValue;
@@ -174,12 +173,13 @@ internal sealed class ToastWatcher(Func<LanguageStrings> strings) : NoticeWatche
             }
 
             var now = DateTimeOffset.UtcNow;
+            var notice = Expandable(SystemNotice.Make(texts[0], "", now, msg: ToastText.Line([.. texts.Skip(1)]), open: ToastText.LaunchProtocol(row.Payload) ?? AppLaunch(row.AppId)), AppName(row.AppId), row.AppId);
             Board.Flash(
                 "toast",
                 // Content first: the notice's own title (sender, subject) in bold, then the body and the app name dim —
                 // leading with the app name meant only "Windows PowerShell" showed before the notice was gone (user feedback 09-30)
-                Expandable(SystemNotice.Make(texts[0], "", now, msg: ToastText.Line([.. texts.Skip(1)]), open: ToastText.LaunchProtocol(row.Payload) ?? AppLaunch(row.AppId)), AppName(row.AppId), row.AppId),
-                Show,
+                notice,
+                NoticeLengths.ToRead(string.Join(" · ", new[] { notice.Title, notice.Msg, notice.Name }.Where(t => !string.IsNullOrWhiteSpace(t)))),   // as the pill writes it; until it has scrolled through once (6–10 s, user 10-10)
                 now);
         }
 

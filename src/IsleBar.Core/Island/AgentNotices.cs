@@ -6,16 +6,13 @@ namespace IsleBar.Core.Island;
 
 /// <summary>
 /// The pill's messages about an agent's plan and failures (user 10-03): the usage limit was hit (red, until it resets), the turn
-/// stopped on another error (red, half an hour or until the next prompt), and an early warning when a usage window passes 90%.
+/// stopped on another error (red, until closed or the next prompt — 10-10), and an early warning when a usage window passes 90%.
 /// Built the same way for Claude Code (its hooks and status line) and Codex (its session record), so both read alike.
 /// </summary>
 public static class AgentNotices
 {
     /// <summary>The early warning shows once per usage window, at this share used.</summary>
     public const double WarnAtPercent = 90;
-
-    /// <summary>How long a "stopped by an error" notice stays if nothing else replaces it.</summary>
-    public static readonly TimeSpan StoppedFor = TimeSpan.FromMinutes(30);
 
     private const string Clock = "";      // Segoe Fluent Icons: clock ("wait until")
     private const string Warning = "";    // Segoe Fluent Icons: warning
@@ -58,7 +55,8 @@ public static class AgentNotices
             },
             State = "error",
             T0 = Seconds(now),
-            Due = Seconds(now + StoppedFor),
+            // no end (user 10-10: was 30 min): an inform card, it waits to be closed like an interrupted one — away for an hour you
+            // still learn it stopped. The next prompt replaces it (same state file); 12 h is the backstop (ActivityStore)
         };
     }
 
