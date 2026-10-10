@@ -11,31 +11,67 @@ namespace IsleBar.App.Engine;
 /// <c>claude://code/continue?session=local_…</c> (found in the app's own code, 10-08). The app names its sessions <c>local_…</c>;
 /// which one holds a Claude Code session is in <c>%APPDATA%\Claude\claude-code-sessions\…\local_*.json</c> (<c>"cliSessionId"</c> =
 /// the session record's name). Not found (a terminal session) → the app is only brought to the front. Logs "open chat: …".
+/// UI thread only (the lookup cache isn't locked).
 /// </summary>
 internal static class ChatOpener
 {
-    public static void Open(ActivityState s, string? record)
+    /// <summary>
+    /// True when <see cref="Open"/> would land on the chat itself (a Claude app session found), not just bring the app up — the done
+    /// card's round "open" button shows only then (user 10-10: a button does what it says).
+    /// </summary>
+    public static bool CanOpen(ActivityState s, string? record) => s.Agent == AgentKind.Claude && Desk(s, record).Desk is not null;
+
+    /// <summary>Asks the Claude app to show the chat. True when the chat itself was asked for and the request went out.</summary>
+    public static bool Open(ActivityState s, string? record)
     {
         if (s.Agent != AgentKind.Claude)
         {
             TaskbarHost.Log($"open chat: {s.Agent} — only the Claude app for now");
-            return;
+            return false;
         }
 
-        // the record's name is the whole session id; without it, the 8 characters in the state file's name
-        var id = record is not null ? Path.GetFileNameWithoutExtension(record) : IdOf(s.SourcePath);
-        var desk = id is { Length: >= 8 } ? DesktopSession(id) : null;
+        var (id, desk) = Desk(s, record);
         var url = desk is not null ? $"claude://code/continue?session={desk}" : "claude://";
         TaskbarHost.Log($"open chat: session {id ?? "-"} → {desk ?? "no desktop session (terminal?) — bring the app up"} · {url}");
         try
         {
             Process.Start(new ProcessStartInfo(url) { UseShellExecute = true })?.Dispose();
+            return desk is not null;
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
         {
             TaskbarHost.Log($"open chat: failed — {ex.Message}");
+            return false;
         }
     }
+
+    /// <summary>
+    /// The session id and its desktop session. Looked up once per id (the pill asks every tick); a miss is asked again after
+    /// <see cref="MissFor"/> — the app may write the session's file a moment after the hook fires.
+    /// </summary>
+    private static (string? Id, string? Desk) Desk(ActivityState s, string? record)
+    {
+        // the record's name is the whole session id; without it, the 8 characters in the state file's name
+        var id = record is not null ? Path.GetFileNameWithoutExtension(record) : IdOf(s.SourcePath);
+        if (id is not { Length: >= 8 })
+        {
+            return (id, null);
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        if (Known.TryGetValue(id, out var known) && (known.Desk is not null || now - known.At < MissFor))
+        {
+            return (id, known.Desk);
+        }
+
+        var desk = DesktopSession(id);
+        Known[id] = (desk, now);
+        return (id, desk);
+    }
+
+    private static readonly TimeSpan MissFor = TimeSpan.FromSeconds(30);
+
+    private static readonly Dictionary<string, (string? Desk, DateTimeOffset At)> Known = new(StringComparer.OrdinalIgnoreCase);
 
     private static string? IdOf(string? stateFile)
     {

@@ -47,5 +47,7 @@ public sealed partial class MainWindow : IPillHost
 
     UIElement IPillHost.Dial(TimerDial dial, Windows.UI.Color color, bool paused) => DialContent(dial, color, paused);
 
+    string? IPillHost.AgentSaid(ActivityState state) => _feed.Tails.For(state)?.Said;
+
     SolidColorBrush IPillHost.Brush(Windows.UI.Color color) => BrushOf(color);
 }

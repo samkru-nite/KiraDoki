@@ -31,6 +31,9 @@ internal interface IPillHost
     /// <summary>A timer's stopwatch with its turning hand.</summary>
     UIElement Dial(TimerDial dial, Windows.UI.Color color, bool paused);
 
+    /// <summary>What an agent at work last said in this turn (its session record), or null.</summary>
+    string? AgentSaid(ActivityState state);
+
     SolidColorBrush Brush(Windows.UI.Color color);
 
     AudioMeter Meter { get; }
@@ -121,7 +124,8 @@ public sealed partial class PillView : UserControl
         var playing = state.Kind == ActivityKind.Music && state.Stage != "paused";
         var hasCover = state.Kind == ActivityKind.Music && Host.Cover(card) is not null;
         LeadSlot.Margin = new Thickness(8, 0, hasCover ? 11 : 8, 0);
-        IslandContent.Margin = new Thickness(0, 0, playing || card is { Type: CardType.Inform } ? 8 : 12, 0);   // 8 before the bars or the close button
+        // 8 before the bars; the button's 8 is its own (the gap is clickable, user 10-10)
+        IslandContent.Margin = new Thickness(0, 0, card is { Type: CardType.Inform } ? 0 : playing ? 8 : 12, 0);
         // compressing: the document outline gets zipper teeth (the drop hint uses the same outline without them)
         ZipTeeth.Opacity = state.Stage == "copy" && state.RunState == ActivityRunState.Running
                            && state.Glyph == FileOperationWatcher.CompressGlyph ? 1 : 0;
@@ -130,11 +134,15 @@ public sealed partial class PillView : UserControl
         ShowLeadPause(state.Kind == ActivityKind.Music && state.Stage == "paused");
         SetEqualizer(state.Kind == ActivityKind.Music && state.Stage != "paused");
         var now = DateTimeOffset.UtcNow;
-        // The done-alert hook only carries the session name (no folder name — user feedback 09-30). Without a name, just "Claude done"
+        // An agent card shows just the session's name (user 10-10). Without a name, "Claude done"
         var name = state.Name;
         if (state.Kind == ActivityKind.Timer)
         {
             ShowTimerText(state, now);
+        }
+        else if (state is { Kind: ActivityKind.Notice, Stage: "interrupted", Agent: not null } && !string.IsNullOrEmpty(name))
+        {
+            ShowIslandText(state, string.Empty, name);   // interrupted: just the session's name, like the agent's other stages (user 10-10)
         }
         else if (state.Kind == ActivityKind.Notice)
         {
@@ -147,6 +155,13 @@ public sealed partial class PillView : UserControl
             // music: title is the key part (bold), artist dimmed — "title · artist"
             ShowIslandText(state, state.Msg is null ? string.Empty : (name ?? string.Empty) + " · ", state.Msg ?? name ?? string.Empty);
         }
+        else if (state.Kind == ActivityKind.AgentWorking)
+        {
+            // at work: what it last said in this turn, else the session's name, else "Claude working" (user 10-10)
+            var line = OneLine(Host.AgentSaid(state)) ?? name;
+            _wordsState = state;
+            ShowIslandText(state, line is null ? PrefixFor(state, now) : string.Empty, line is null ? string.Empty : Steady(card, line, now));
+        }
         else
         {
             // a download whose name the browser hasn't given yet ("Unconfirmed 123"), or Explorer's progress window (it names no file)
@@ -154,6 +169,111 @@ public sealed partial class PillView : UserControl
             ShowIslandText(state, PrefixFor(state, now), name ?? string.Empty, state.MoreCount > 0 ? $"  +{state.MoreCount}" : string.Empty);
         }
         IslandText.Foreground = BrushOf(ForegroundFor(state));
+    }
+
+    // ---------------- An agent at work: its words ----------------
+
+    /// <summary>Each sentence stays at least this long; what comes meanwhile waits, and only the newest is shown (user 10-10).</summary>
+    private static readonly TimeSpan WordsAtLeast = TimeSpan.FromSeconds(3);
+
+    /// <summary>Half of the change: the old words fade out in this, the new ones fade in in this (user 10-10: ~0.2 s in all).</summary>
+    private static readonly TimeSpan WordsFade = TimeSpan.FromMilliseconds(100);
+
+    private string? _wordsKey;
+    private string _words = string.Empty;
+    private DateTimeOffset _wordsSince;
+    private bool _wordsFading;
+    private ActivityState? _wordsState;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _wordsTimer;
+    private DateTimeOffset _wordsFadeAt;
+
+    /// <summary>
+    /// The words to show for <paramref name="wanted"/>: a new card shows them at once; on the same card a change waits until the
+    /// shown words had <see cref="WordsAtLeast"/>, then the old fade out and the new fade in (<see cref="ChangeWords"/>).
+    /// </summary>
+    private string Steady(Card? card, string wanted, DateTimeOffset now)
+    {
+        if (_wordsFading && now - _wordsFadeAt > TimeSpan.FromSeconds(1))
+        {
+            // a change that never finished (its fade-in never came): show the words again rather than an empty pill
+            TaskbarHost.Log("pill: words change stuck — shown again");
+            _wordsTimer?.Stop();
+            _wordsTimer = null;
+            _wordsFading = false;
+            Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(MarqueeHost).Opacity = 1;
+        }
+
+        if (card?.Key != _wordsKey)
+        {
+            _wordsKey = card?.Key;
+            _words = wanted;
+            _wordsSince = now;
+            return wanted;
+        }
+
+        if (wanted != _words && !_wordsFading && now - _wordsSince >= WordsAtLeast)
+        {
+            ChangeWords(wanted);
+        }
+
+        return _words;
+    }
+
+    private void ChangeWords(string next)
+    {
+        if (!Animations.On || _frozen || Host.Flying)
+        {
+            _words = next;
+            _wordsSince = DateTimeOffset.UtcNow;
+            return;
+        }
+
+        _wordsFading = true;
+        _wordsFadeAt = DateTimeOffset.UtcNow;
+        var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(MarqueeHost);
+        FadeTo(visual, 0);
+        // held in a field: a timer only a local held was collected before it fired — the words faded out and never came back (10-10)
+        _wordsTimer?.Stop();
+        var swap = _wordsTimer = DispatcherQueue.CreateTimer();
+        swap.Interval = WordsFade;
+        swap.IsRepeating = false;
+        swap.Tick += (timer, _) =>
+        {
+            timer.Stop();
+            _wordsTimer = null;
+            _wordsFading = false;
+            TaskbarHost.Log($"pill: words changed ({next.Length} chars)");
+            _words = next;
+            _wordsSince = DateTimeOffset.UtcNow;
+            if (_card?.Key == _wordsKey && _wordsState is { } state)
+            {
+                ShowIslandText(state, string.Empty, next);
+            }
+
+            FadeTo(visual, 1);
+        };
+        swap.Start();
+    }
+
+    private static void FadeTo(Microsoft.UI.Composition.Visual visual, float to)
+    {
+        var fade = visual.Compositor.CreateScalarKeyFrameAnimation();
+        fade.InsertKeyFrame(1f, to);
+        fade.Duration = WordsFade;
+        visual.StartAnimation("Opacity", fade);
+    }
+
+    /// <summary>A said text on one line: Markdown marks and line breaks out, spaces squeezed. Null when nothing is left.</summary>
+    private static string? OneLine(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return null;
+        }
+
+        var plain = text.Replace("**", string.Empty, StringComparison.Ordinal).Replace("`", string.Empty, StringComparison.Ordinal);
+        var line = string.Join(' ', plain.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Where(w => w is not ("#" or "##" or "###" or "-" or "*" or ">")));
+        return line.Length == 0 ? null : line;
     }
 
     /// <summary>No card (nothing to show): the text, cover, bars and dial go; the icon back at its place.</summary>
@@ -181,6 +301,7 @@ public sealed partial class PillView : UserControl
         CloseChip.Radius = chipRadius;
         CloseLabel.Text = closeText;
         CloseLabel.Foreground = BrushOf(closeInk);
+        OpenIcon.Foreground = CloseLabel.Foreground;
     }
 
     /// <summary>The icon slot as a card has it: the font icon, the logos hidden until the card asks.</summary>
@@ -309,14 +430,17 @@ public sealed partial class PillView : UserControl
             if (_marqueeText != full)
             {
                 _marqueeText = full;
+                // an agent at work doesn't scroll on its own (user 10-10): its words change every few seconds, a lap would always be
+                // running in the corner of the eye and be out of date by its end — "…", a hover scrolls one lap
+                var still = state.Kind == ActivityKind.AgentWorking;
                 if (Host.Flying)
                 {
                     // a snapshot is about to be taken: it showed both copies unclipped, over the equalizer and past the pill
                     // (user 10-07) — rest with "…" now, the lap starts once the card has landed
-                    LapAfterFlight = true;
+                    LapAfterFlight = !still;
                     ShowMarqueeRest();
                 }
-                else if (_frozen)
+                else if (_frozen || still)
                 {
                     ShowMarqueeRest();   // holding still: "…", the lap waits for a hover
                 }
@@ -345,11 +469,11 @@ public sealed partial class PillView : UserControl
     /// <summary>
     /// Up and down: the 20 line box centred in the 32 pill (6 above), moved by <see cref="InkOffset"/> so the glyphs themselves sit
     /// in the middle — centring the line box left the text looking low (user 10-06, TODO 7.9 D).
-    /// <para>Left and right (user 10-07, fixed 10-10 — the "left" and "icon and text together" choices went): the icon stays at 8,
-    /// the text's middle on the card's middle. The card's middle is the pill's (110), or the middle of what is left of an inform
-    /// card's close zone. Centring inside the text area alone (first try)
-    /// put the text 10 right of the pill's middle and left the icon stranded — it didn't look centred. Text too long to fit stays
-    /// left-aligned and scrolls.</para>
+    /// <para>Left and right (user 10-07, fixed 10-10 — the "left" and "icon and text together" choices went): the icon stays at 8.
+    /// Nothing on the right: the text's middle on the pill's (110) — centring inside the text area alone (first try) put the text 10
+    /// right of it and left the icon stranded. Something on both sides (an inform card's button): the text's middle halfway between
+    /// the icon's right edge and the button's chip (user 10-10, measured: "middle of what the button leaves" ignored the icon and
+    /// left the text 26 nearer the icon). Text too long to fit stays left-aligned and scrolls.</para>
     /// </summary>
     internal void PlaceText()
     {
@@ -361,7 +485,10 @@ public sealed partial class PillView : UserControl
             var width = MarqueePanel.DesiredSize.Width;
             var area = AvailableTextWidth();
             var areaLeft = TextStart;
-            var middle = (BaseWidth - (CloseZone.Visibility == Visibility.Visible ? CloseZone.Width + CloseZone.Margin.Right : 0)) / 2;   // the card's middle, short of the close button
+            // between the icon (ends at 24) and the chip: 108.5 beside the ↗, 86.5 beside "Close"; else the pill's middle
+            var middle = CloseZone.Visibility == Visibility.Visible
+                ? ((TextStart - ButtonGap) + (BaseWidth - CloseZone.Width + ButtonGap)) / 2
+                : BaseWidth / 2;
             var start = middle - (width / 2);
             text = Math.Clamp(Math.Round((start - areaLeft) * 2) / 2, 0, Math.Max(0, area - width));   // half DIPs; never past the text area
         }
@@ -558,7 +685,8 @@ public sealed partial class PillView : UserControl
         visual.StopAnimation("Translation.X");
         visual.Properties.InsertVector3("Translation", System.Numerics.Vector3.Zero);
         ShowMarqueeRest();
-        var hold = DispatcherQueue.CreateTimer();
+        _marqueeHoldTimer?.Stop();
+        var hold = _marqueeHoldTimer = DispatcherQueue.CreateTimer();   // held in a field, like the words' timer (10-10)
         hold.Interval = _marqueeKind == ActivityKind.Notice ? TimeSpan.FromSeconds(1) : MarqueeHold;   // short notices can't wait 2 s
         hold.IsRepeating = false;
         hold.Tick += (_, _) =>
@@ -608,6 +736,7 @@ public sealed partial class PillView : UserControl
     }
 
     private int _marqueeRun;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _marqueeHoldTimer;
 
     private void RunMarquee(int myRun, double distance)
     {
@@ -1037,11 +1166,18 @@ public sealed partial class PillView : UserControl
 
     // ---------------- Close button ----------------
 
-    /// <summary>An inform card shows its close button on the right (TODO 7.3, A4; moved right 10-08); every other card doesn't.</summary>
-    internal void ShowClose(bool show)
+    /// <summary>
+    /// An inform card's button on the right (TODO 7.3, A4; moved right 10-08): "Close" — or, on a Claude card that can reach its
+    /// chat, a round ↗ "open" (user 10-10). Every other card has none.
+    /// </summary>
+    internal void ShowClose(PillButton button)
     {
-        CloseZone.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-        if (show && _closeInkFor != CloseLabel.Text)
+        CloseZone.Visibility = button == PillButton.None ? Visibility.Collapsed : Visibility.Visible;
+        var open = button == PillButton.Open;
+        CloseZone.Width = ButtonGap + (open ? OpenChip : CloseChipWidth) + ButtonInset;
+        CloseLabel.Visibility = open ? Visibility.Collapsed : Visibility.Visible;
+        OpenIcon.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+        if (button == PillButton.Close && _closeInkFor != CloseLabel.Text)
         {
             _closeInkFor = CloseLabel.Text;
             CentreCloseInk();
@@ -1050,6 +1186,14 @@ public sealed partial class PillView : UserControl
 
     private string? _closeInkFor;
 
+    /// <summary>
+    /// The button's sizes (user 10-10): 8 from the text to the chip — the same 8 as icon to text — the chip 5 in from the pill's edge
+    /// (22 high, concentric with its end). The clickable zone is all of it, gap included, the pill's whole height.
+    /// </summary>
+    private const double ButtonGap = 8;
+    private const double ButtonInset = 5;
+    private const double CloseChipWidth = 66;
+    private const double OpenChip = 22;
     /// <summary>
     /// "Close" centred by its glyphs, not its line box (user 10-07: it sat off-centre up and down): its own inked rows are found in
     /// a snapshot and the label is moved so their middle is the zone's middle, rounded to 0.5. Again when the text changes.
@@ -1102,17 +1246,11 @@ public sealed partial class PillView : UserControl
             ? $"{FormatClock(left)}  "   // paused shows as the left ⏸ icon + dimmed text (no emoji, it renders as a blue box)
             : $"{Host.Text.Done}  ",
         ActivityKind.Music => "",   // paused shows as the left ⏸ icon + dimmed text
-        ActivityKind.AgentDone => string.IsNullOrEmpty(state.Name)
-            ? $"{state.AgentLabel} {Host.Text.AgentDone}"
-            : $"{state.AgentLabel} {Host.Text.AgentDone} · ",   // no emoji, to avoid clashing with the left ✓ icon
-        // "Claude needs you · name" — the orange border alone carried the meaning since the left icon became the agent mark
-        // (the 🔔 used to say it); working and done both name their state, so this one does too (design check 10-01)
-        ActivityKind.AgentPermission => string.IsNullOrEmpty(state.Name)
-            ? $"{state.AgentLabel} {Host.Text.NeedsAnswer}"
-            : $"{state.AgentLabel} {Host.Text.NeedsAnswer} · ",
-        ActivityKind.AgentWorking => string.IsNullOrEmpty(state.Name)
-            ? $"{state.AgentLabel} {Host.Text.Working}"
-            : $"{state.AgentLabel} {Host.Text.Working} · ",
+        // Just the session's name, every stage (user 10-10): "Claude done · " took ~90 of the ~106 dip and hid the name. The logo
+        // says which agent, the border (and the button) which stage. No name: "Claude done" etc. as before.
+        ActivityKind.AgentDone => string.IsNullOrEmpty(state.Name) ? $"{state.AgentLabel} {Host.Text.AgentDone}" : "",
+        ActivityKind.AgentPermission => string.IsNullOrEmpty(state.Name) ? $"{state.AgentLabel} {Host.Text.NeedsAnswer}" : "",
+        ActivityKind.AgentWorking => string.IsNullOrEmpty(state.Name) ? $"{state.AgentLabel} {Host.Text.Working}" : "",
         _ => state.RunState switch
         {
             ActivityRunState.Done => $"{Host.Text.Done}  ",
@@ -1262,4 +1400,12 @@ public sealed partial class PillView : UserControl
             IslandText.FontFamily = IslandTextCopy.FontFamily = family;   // WinUI's Grid has no FontFamily — set it on the text elements directly
         }
     }
+}
+
+/// <summary>The button on the right of a card (<see cref="PillView.ShowClose"/>).</summary>
+internal enum PillButton
+{
+    None,
+    Close,
+    Open,
 }

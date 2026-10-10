@@ -206,7 +206,7 @@ public sealed partial class MainWindow
                 break;
             case SheetAction.OpenChat:
                 _lift?.Collapse();
-                Engine.ChatOpener.Open(state, _feed.Tails.RecordPath(state));
+                OpenChat(card);   // a done / interrupted card goes too, like its ↗ on the pill (user 10-10)
                 break;
         }
     }

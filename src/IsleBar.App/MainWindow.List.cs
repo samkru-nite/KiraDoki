@@ -56,7 +56,7 @@ public sealed partial class MainWindow
         }
 
         pill.ShowCardLead();
-        pill.ShowClose(card.Type == CardType.Inform);
+        pill.ShowClose(ButtonFor(card));
         pill.UpdateProgress(card.State);
         pill.Render(card.State, card, plainIcon: false);
     }

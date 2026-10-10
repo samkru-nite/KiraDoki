@@ -232,6 +232,9 @@ public sealed class LanguageStrings
     /// <summary>The close zone on an inform card (TODO 7.3): closes the card ("I've seen it").</summary>
     public required string CloseCard { get; init; }
 
+    /// <summary>The tooltip on the round "open" button of a done / interrupted card (user 10-10): "Open in {a}" — {a} = the app.</summary>
+    public required string OpenWith { get; init; }
+
     /// <summary>Right-click on the big pill: keep its card in the small pill (甲⑤).</summary>
     public required string Pin { get; init; }
 

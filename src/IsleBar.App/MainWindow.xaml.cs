@@ -160,9 +160,18 @@ public sealed partial class MainWindow : Window
                 return;
             }
 
-            if (IsInside(source, CloseZone) && !BigDimmed)
+            if (IsInside(source, CloseZone) && !BigDimmed && _shownCard is { } card)
             {
-                CloseCard(_shownCard);   // an inform card is closed only here or from its menu (TODO 7.2)
+                // ↗ = to the chat, and the card goes with it (user 10-10); else "Close" — an inform card is closed only here or from its menu (TODO 7.2)
+                if (OpensChat(card))
+                {
+                    OpenChat(card);
+                }
+                else
+                {
+                    CloseCard(card);
+                }
+
                 return;
             }
 
@@ -1314,6 +1323,7 @@ public sealed partial class MainWindow : Window
         BallRing.Stroke = BrushOf(_theme.Icon);
         CloseLabel.Text = _text.CloseCard;
         CloseLabel.Foreground = BrushOf(_theme.Foreground);
+        Big.OpenIcon.Foreground = CloseLabel.Foreground;
         SmallRule.Fill = BrushOf(ThemeColors.FromSystem().Light ? Windows.UI.Color.FromArgb(255, 0xD6, 0xD6, 0xD6) : Windows.UI.Color.FromArgb(255, 0x46, 0x46, 0x46));
         BallHover.Fill = BrushOf(HoverColor());
         PaintFill();
@@ -1405,16 +1415,75 @@ public sealed partial class MainWindow : Window
         Big.RefreshFades();
     }
 
-    /// <summary>An inform card shows its close button on the right (TODO 7.3, A4; moved right 10-08); every other card doesn't.</summary>
+    /// <summary>
+    /// An inform card shows its button on the right (TODO 7.3, A4; moved right 10-08): "Close", or ↗ "open" on a Claude done /
+    /// interrupted card that can reach its chat (user 10-10), with "Open in Claude" under the pointer. Every other card has none.
+    /// </summary>
     private void ShowCloseZone()
     {
-        var show = !_dropHover && _shownCard is { Type: CardType.Inform };
-        Big.ShowClose(show);
-        if (!show)
+        var button = _dropHover ? PillButton.None : ButtonFor(_shownCard);
+        Big.ShowClose(button);
+        var tip = button == PillButton.Open ? _text.OpenWith.Replace("{a}", _shownCard!.State.AgentLabel, StringComparison.Ordinal) : null;
+        if (tip != _openTip)
+        {
+            _openTip = tip;
+            Microsoft.UI.Xaml.Controls.ToolTipService.SetToolTip(CloseZone, tip);
+        }
+
+        if (button == PillButton.None)
         {
             _closeHover = false;
         }
     }
+
+    private string? _openTip;
+
+    /// <summary>The button a card has on the right (<see cref="ShowCloseZone"/>; the list's pills too).</summary>
+    private PillButton ButtonFor(Card? card)
+        => card is not { Type: CardType.Inform } ? PillButton.None : OpensChat(card) ? PillButton.Open : PillButton.Close;
+
+    /// <summary>
+    /// A Claude done / interrupted card whose chat the app can show (user 10-10: only then "open" — a button does what it says;
+    /// Codex, terminal sessions, timers and failures keep "Close").
+    /// </summary>
+    private bool OpensChat(Card card)
+        => card.State is { Agent: IsleBar.Core.Launch.AgentKind.Claude } s
+           && (s.Kind == ActivityKind.AgentDone || s is { Kind: ActivityKind.Notice, Stage: "interrupted" })
+           && Engine.ChatOpener.CanOpen(s, _feed.Tails.RecordPath(s));
+
+    /// <summary>
+    /// The chat opened from a card (its ↗ or the lifted card's "Open chat"); a done / interrupted card then goes 6 s later (user 10-10:
+    /// not at once) — unless it changed meanwhile (the chat started working again: that card mustn't be closed).
+    /// </summary>
+    private void OpenChat(Card card)
+    {
+        if (!Engine.ChatOpener.Open(card.State, _feed.Tails.RecordPath(card.State)) || card.Type != CardType.Inform)
+        {
+            return;
+        }
+
+        var (key, kind, at) = (card.Key, card.State.Kind, card.State.UpdatedAt);
+        var later = DispatcherQueue.CreateTimer();
+        later.Interval = IsleBar.Core.SystemWatch.NoticeLengths.Read;
+        later.IsRepeating = false;
+        _chatClosers.Add(later);   // held until it fires
+        later.Tick += (timer, _) =>
+        {
+            timer.Stop();
+            _chatClosers.Remove(timer);
+            if (_cards.Cards.FirstOrDefault(c => c.Key == key) is { Type: CardType.Inform } still && still.State.Kind == kind && still.State.UpdatedAt == at)
+            {
+                CloseCard(still);
+            }
+            else
+            {
+                TaskbarHost.Log($"open chat: {key} changed or went within the wait — left alone");
+            }
+        };
+        later.Start();
+    }
+
+    private readonly HashSet<Microsoft.UI.Dispatching.DispatcherQueueTimer> _chatClosers = [];
 
     /// <summary>The mouse on the big pill: it lifts slightly, like the real search box.</summary>
     private bool _hoverBig;

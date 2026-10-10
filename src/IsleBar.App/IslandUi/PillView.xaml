@@ -3,7 +3,7 @@
   One big pill as it draws a card (TODO 7.9 F3, plan B, 10-09): surface, content row, dim veil, border. The big pill on the taskbar
   is one (MainWindow's PillBody); the ⋯ list will use one per card. Moved out of MainWindow.xaml unchanged.
   Card layout = TODO 7.9 D final sizes (E2): icon 16 at 8 (centre x 16), text from x 32 to 208 (right margin 12), left-aligned;
-  an inform card puts a 72 close button on the right. Music: album art 22, then the now-playing bars before the right margin.
+  an inform card puts a button on the right ("Close" chip 66, or a 22 ↗ circle), 8 after the text. Music: album art 22, then the now-playing bars before the right margin.
 -->
 <UserControl
     x:Class="IsleBar.App.IslandUi.PillView"
@@ -26,17 +26,25 @@
                 <ColumnDefinition Width="Auto" />   <!-- close button (inform cards only) -->
             </Grid.ColumnDefinitions>
 
-            <!-- Inform card: a "Close" button on the right (user 10-08, B5): 72×28, 2 in from the pill's edge so its round right end is
-                 concentric with the pill's, the left end the mirror of it; smooth corners; "Close" centred by its glyphs both ways.
-                 Its colour is a step off the pill's (PaintFill), a step more under the pointer -->
-            <Grid x:Name="CloseZone" x:FieldModifier="internal" Grid.Column="4" Width="72" Height="28" Margin="0,0,2,0" VerticalAlignment="Center" Background="Transparent" Visibility="Collapsed">
-                <!-- the chip sits 3 in from the zone all round (user 10-10: the pill shows around it), 66×22 -->
-                <ui:SmoothBorder x:Name="CloseChip" x:FieldModifier="internal" Radius="11" Margin="3" IsHitTestVisible="False" />
-                <TextBlock x:Name="CloseLabel" x:FieldModifier="internal" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
-                    <TextBlock.RenderTransform>
-                        <TranslateTransform x:Name="CloseShift" />
-                    </TextBlock.RenderTransform>
-                </TextBlock>
+            <!-- Inform card: a button on the right (user 10-08, B5; 10-10): its round right end concentric with the pill's, the left end
+                 the mirror of it; smooth corners; "Close" centred by its glyphs both ways. Its colour is a step off the pill's
+                 (PaintFill), a step more under the pointer -->
+            <!-- What can be clicked (user 10-10): everything right of the text, the pill's whole height — a pointer coming at the chip
+                 from the top right no longer catches the pill first (it lifted, a flash). The look is the chip alone: 5 in from the
+                 pill's edge (top, bottom, right; 22 high, concentric with the pill's end), the 8 before it the gap after the text. -->
+            <Grid x:Name="CloseZone" x:FieldModifier="internal" Grid.Column="4" Width="79" Height="32" VerticalAlignment="Center" Background="Transparent" Visibility="Collapsed">
+                <Grid Margin="8,5,5,5">
+                    <!-- "Close": a 66×22 chip (user 10-10: the pill shows around it) -->
+                    <ui:SmoothBorder x:Name="CloseChip" x:FieldModifier="internal" Radius="11" IsHitTestVisible="False" />
+                    <TextBlock x:Name="CloseLabel" x:FieldModifier="internal" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
+                        <TextBlock.RenderTransform>
+                            <TranslateTransform x:Name="CloseShift" />
+                        </TextBlock.RenderTransform>
+                    </TextBlock>
+                    <!-- a Claude done / interrupted card that can reach its chat: a 22 circle with a 12 ↗ (user 10-10), concentric with the
+                         pill's end. Icon smaller than the 16 lead icon on purpose: a control, not content -->
+                    <FontIcon x:Name="OpenIcon" x:FieldModifier="internal" FontFamily="Segoe Fluent Icons" FontSize="12" Glyph="&#xE8AD;" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False" Visibility="Collapsed" />
+                </Grid>
             </Grid>
 
             <!-- Left icon 16. Glyphs are Segoe Fluent Icons (part of Windows; no third-party icon sets) -->
@@ -94,9 +102,9 @@
                                    Margin="40,0,0,0" Visibility="Collapsed" />
                     </StackPanel>
                 </Canvas>
-                <!-- While scrolling, the ends fade into the pill colour: left 10 (only while moving), right 18 (code paints the colour) -->
-                <Rectangle x:Name="FadeLeft" Width="10" Height="20" HorizontalAlignment="Left" VerticalAlignment="Center" IsHitTestVisible="False" Visibility="Collapsed" />
-                <Rectangle x:Name="FadeRight" Width="18" Height="20" HorizontalAlignment="Right" VerticalAlignment="Center" IsHitTestVisible="False" Visibility="Collapsed" />
+                <!-- While scrolling, the ends fade into the pill colour: 12 at both ends (user 10-10: was 10 / 18), the left only while moving -->
+                <Rectangle x:Name="FadeLeft" Width="12" Height="20" HorizontalAlignment="Left" VerticalAlignment="Center" IsHitTestVisible="False" Visibility="Collapsed" />
+                <Rectangle x:Name="FadeRight" Width="12" Height="20" HorizontalAlignment="Right" VerticalAlignment="Center" IsHitTestVisible="False" Visibility="Collapsed" />
             </Grid>
 
             <StackPanel x:Name="TailRow" Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
