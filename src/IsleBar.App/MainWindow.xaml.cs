@@ -162,12 +162,13 @@ public sealed partial class MainWindow : Window
 
             if (IsInside(source, CloseZone) && !BigDimmed && _shownCard is { } card)
             {
-                // ↗ = to the chat, and the card goes with it (user 10-10); else "Close" — an inform card is closed only here or from its menu (TODO 7.2)
-                if (OpensChat(card))
+                // ↗ = the card's next step (the chat, the copied address, the downloaded file — user 10-10); else "Close" — an inform
+                // card is closed only here or from its menu (TODO 7.2)
+                if (StepFor(card) != NextStep.None)
                 {
-                    OpenChat(card);
+                    TakeStep(card);
                 }
-                else
+                else if (ButtonFor(card) == PillButton.Close)
                 {
                     CloseCard(card);
                 }
@@ -1421,8 +1422,8 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>
-    /// An inform card shows its button on the right (TODO 7.3, A4; moved right 10-08): "Close", or ↗ "open" on a Claude done /
-    /// interrupted card that can reach its chat (user 10-10), with "Open in Claude" under the pointer. Every other card has none.
+    /// A card's button on the right (TODO 7.3, A4; moved right 10-08): ↗ when it has a next step (<see cref="StepFor"/>), with its hint
+    /// under the pointer; else "Close" on an inform card; else none.
     /// </summary>
     private void ShowCloseZone()
     {
@@ -1443,20 +1444,79 @@ public sealed partial class MainWindow : Window
 
     private string? _openTip;
 
-    /// <summary>The hint over a ↗: "Open in Claude".</summary>
-    private string OpenTip(Card card) => _text.OpenWith.Replace("{a}", card.State.AgentLabel, StringComparison.Ordinal);
+    /// <summary>The hint over a ↗: "Open in Claude", "Open in Microsoft Edge", "Open folder".</summary>
+    private string OpenTip(Card card) => StepFor(card) switch
+    {
+        NextStep.Link => _text.OpenWith.Replace("{a}", Interop.DefaultBrowser.Name() ?? _text.CardBrowser, StringComparison.Ordinal),
+        NextStep.Reveal => _text.CardOpenFolder,
+        _ => _text.OpenWith.Replace("{a}", card.State.AgentLabel, StringComparison.Ordinal),
+    };
 
     /// <summary>The button a card has on the right (<see cref="ShowCloseZone"/>; the list's pills too).</summary>
     private PillButton ButtonFor(Card? card)
-        => card is not { Type: CardType.Inform } ? PillButton.None : OpensChat(card) ? PillButton.Open : PillButton.Close;
+        => card is null ? PillButton.None
+            : StepFor(card) != NextStep.None ? PillButton.Open
+            : card.Type == CardType.Inform ? PillButton.Close
+            : PillButton.None;
 
     /// <summary>
-    /// A Claude done / interrupted card whose chat the app can show (user 10-10: only then "open" — a button does what it says;
-    /// Codex, terminal sessions, timers and failures keep "Close").
+    /// "Guess the next step" (TODO 一, user 10-10): what a card's ↗ does — only where the next step is very likely that, the user isn't
+    /// there yet, it surely works and nothing needs reading first. The chat (<see cref="OpensChat"/>); a copied web address (the copy
+    /// card's <c>Open</c>, <see cref="IsleBar.Core.SystemWatch.ClipboardRules.LinkOf"/>) in the default browser; a finished browser
+    /// download shown in its folder (selected, never run — it may be an exe). Copy / unzip / zip done, notifications and the rest:
+    /// none (TODO 六).
+    /// </summary>
+    private NextStep StepFor(Card card)
+    {
+        var s = card.State;
+        if (OpensChat(card))
+        {
+            return NextStep.Chat;
+        }
+
+        if (card.Key == IsleBar.Core.SystemWatch.SystemNotice.SourcePrefix + "clipboard" && s.Open is not null)
+        {
+            return NextStep.Link;
+        }
+
+        return card.Key == "download" && s is { Kind: ActivityKind.Transfer, RunState: ActivityRunState.Done, Open: { } open }
+               && (File.Exists(open) || Directory.Exists(open))
+            ? NextStep.Reveal
+            : NextStep.None;
+    }
+
+    /// <summary>Does a card's next step (<see cref="StepFor"/>): its ↗ on the big pill or in the list.</summary>
+    private void TakeStep(Card card)
+    {
+        switch (StepFor(card))
+        {
+            case NextStep.Chat:
+                OpenChat(card);
+                break;
+            case NextStep.Link when card.State.Open is { } link:
+                Engine.FileActions.Open(link, revealInFolder: false);   // the default browser takes an http(s) address
+                break;
+            case NextStep.Reveal when card.State.Open is { } done:
+                Engine.FileActions.Open(done, revealInFolder: File.Exists(done));   // one file: selected in its folder; several: the folder
+                break;
+        }
+    }
+
+    private enum NextStep
+    {
+        None,
+        Chat,
+        Link,
+        Reveal,
+    }
+
+    /// <summary>
+    /// A Claude card whose chat the app can show: done / interrupted (user 10-10: only then "open" — a button does what it says;
+    /// Codex, terminal sessions, timers and failures keep "Close"), and waiting for you (TODO ④, 10-10: the answer is given in Claude).
     /// </summary>
     private bool OpensChat(Card card)
         => card.State is { Agent: IsleBar.Core.Launch.AgentKind.Claude } s
-           && (s.Kind == ActivityKind.AgentDone || s is { Kind: ActivityKind.Notice, Stage: "interrupted" })
+           && (s.Kind is ActivityKind.AgentDone or ActivityKind.AgentPermission || s is { Kind: ActivityKind.Notice, Stage: "interrupted" })
            && Engine.ChatOpener.CanOpen(s, _feed.Tails.RecordPath(s));
 
     /// <summary>

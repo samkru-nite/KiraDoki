@@ -22,7 +22,6 @@ namespace IsleBar.App.SystemWatch;
 internal sealed class ClipboardWatcher : NoticeWatcher
 {
     private const string Key = "clipboard";
-    private static readonly TimeSpan Show = NoticeLengths.Glance;
     private const uint CoalesceMs = 150;
     private const int MaxTextChars = 4096;
 
@@ -153,10 +152,14 @@ internal sealed class ClipboardWatcher : NoticeWatcher
         }
 
         var now = DateTimeOffset.UtcNow;
-        Board.Flash(Key, SystemNotice.Make(notice.Title, notice.Glyph, now), Show, now);
+        Board.Flash(Key, SystemNotice.Make(notice.Title, notice.Glyph, now, open: notice.Link), ClipboardRules.ShowFor(notice.Long), now);
     }
 
-    private (string Title, string Glyph)? Read(IntPtr hwnd, string? owner)
+    /// <summary>
+    /// What a copy card says: its line and icon, the address its ↗ opens (<see cref="ClipboardRules.LinkOf"/>), and whether it stays
+    /// the longer time (an address, files, an image — TODO ④, user 10-10).
+    /// </summary>
+    private (string Title, string Glyph, string? Link, bool Long)? Read(IntPtr hwnd, string? owner)
     {
         // If another program holds the clipboard, wait briefly and retry (this thread is ours, so waiting is fine)
         var opened = false;
@@ -179,25 +182,26 @@ internal sealed class ClipboardWatcher : NoticeWatcher
             var s = Text;
             if (IsFlaggedSecret() || ClipboardRules.IsPasswordManager(owner))
             {
-                return (NoticeText.Copied(s, NoticeText.Masked), NoticeGlyphs.Copy);
+                return (NoticeText.Copied(s, NoticeText.Masked), NoticeGlyphs.Copy, null, false);
             }
 
             if (IsClipboardFormatAvailable(CfHdrop) && GetClipboardData(CfHdrop) is var drop && drop != IntPtr.Zero)
             {
                 var count = (int)DragQueryFile(drop, 0xFFFF_FFFF, null, 0);
-                return count > 0 ? (NoticeText.CopiedFiles(s, count), NoticeGlyphs.Files) : null;
+                return count > 0 ? (NoticeText.CopiedFiles(s, count), NoticeGlyphs.Files, null, true) : null;
             }
 
             if (IsClipboardFormatAvailable(CfUnicodeText) && ReadText() is { } text)
             {
                 // only spaces / punctuation: "Copied" alone (user 10-07)
-                return string.IsNullOrEmpty(text) ? null : (NoticeText.Copied(s, ClipboardRules.Preview(text)), NoticeGlyphs.Copy);
+                var link = ClipboardRules.LinkOf(text);
+                return string.IsNullOrEmpty(text) ? null : (NoticeText.Copied(s, ClipboardRules.Preview(text)), NoticeGlyphs.Copy, link, link is not null);
             }
 
             if (IsClipboardFormatAvailable(CfDib) || IsClipboardFormatAvailable(CfDibV5)
                 || IsClipboardFormatAvailable(CfBitmap) || (_formatPng != 0 && IsClipboardFormatAvailable(_formatPng)))
             {
-                return (s.NoticeCopiedImage, NoticeGlyphs.Image);
+                return (s.NoticeCopiedImage, NoticeGlyphs.Image, null, true);
             }
 
             return null;   // other formats (app-private data) aren't notified

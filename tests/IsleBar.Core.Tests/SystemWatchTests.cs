@@ -335,6 +335,31 @@ public sealed class SystemWatchTests
     public void Detects_password_manager(string? process, bool expected)
         => Assert.Equal(expected, ClipboardRules.IsPasswordManager(process));
 
+    [Theory]
+    [InlineData("https://github.com/ds3owl/islebar", "https://github.com/ds3owl/islebar")]
+    [InlineData("  http://localhost:3000/x \r\n", "http://localhost:3000/x")]
+    [InlineData("HTTPS://Example.com", "HTTPS://Example.com")]
+    [InlineData("www.bilibili.com/video/BV1xx", "https://www.bilibili.com/video/BV1xx")]
+    [InlineData("www.", null)]
+    [InlineData("bilibili.com", null)]                                    // bare domain: too easily ordinary text
+    [InlineData("see https://github.com", null)]                          // inside a sentence
+    [InlineData("https://a.com\nhttps://b.com", null)]                    // two lines
+    [InlineData("ftp://files.example.com", null)]
+    [InlineData("https://me:ghp_abcdefghijklmnop1234@github.com/x", null)] // a password in it: hidden, no button
+    [InlineData("", null)]
+    [InlineData(null, null)]
+    public void Opens_a_copied_address_only_when_the_copy_is_one(string? text, string? expected)
+        => Assert.Equal(expected, ClipboardRules.LinkOf(text));
+
+    [Fact]
+    public void Copy_cards_with_something_to_do_stay_longer()
+    {
+        Assert.Equal(NoticeLengths.Read, ClipboardRules.ShowFor(linkFilesOrImage: true));
+        Assert.Equal(NoticeLengths.Glance, ClipboardRules.ShowFor(linkFilesOrImage: false));
+        Assert.Null(ClipboardRules.LinkOf(new string('a', 10) + "https://x.com/" + new string('b', ClipboardRules.LinkLength)));
+        Assert.Null(ClipboardRules.LinkOf("https://x.com/" + new string('b', ClipboardRules.LinkLength)));
+    }
+
     // ---------------- CPU / memory ----------------
 
     [Fact]

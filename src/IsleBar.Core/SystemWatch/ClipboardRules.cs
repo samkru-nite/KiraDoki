@@ -115,6 +115,50 @@ public static class ClipboardRules
                || (letters && digit && value.Length >= 16);
     }
 
+    /// <summary>
+    /// The address to open when the whole copy is one web address (TODO ④, user 10-10) — the copy card's ↗; null otherwise.
+    /// Trimmed, it starts with <c>http://</c> / <c>https://</c>, or <c>www.</c> (opened as <c>https://</c>); no spaces or line breaks,
+    /// at most 2048 characters. An address inside a sentence doesn't count (which one would it open?), nor a bare <c>abc.com</c>
+    /// (too easily ordinary text), nor one that looks secret (a password in it: the card hides it and gets no button).
+    /// </summary>
+    public static string? LinkOf(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return null;
+        }
+
+        var value = text.Trim();
+        if (value.Length > LinkLength || value.Any(c => char.IsWhiteSpace(c) || char.IsControl(c)) || LooksSecret(value))
+        {
+            return null;
+        }
+
+        var www = value.StartsWith("www.", StringComparison.OrdinalIgnoreCase);
+        if (www)
+        {
+            value = "https://" + value;
+        }
+        else if (!value.StartsWith("http://", StringComparison.OrdinalIgnoreCase) && !value.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" && uri.Host.Length > 0
+               && (!www || uri.Host.Trim('.').Count(c => c == '.') >= 2)   // "www." alone isn't an address
+            ? value
+            : null;
+    }
+
+    /// <summary>The longest address <see cref="LinkOf"/> takes.</summary>
+    public const int LinkLength = 2048;
+
+    /// <summary>
+    /// How long a copy card stays (TODO ④, user 10-10): an address, files or an image → <see cref="NoticeLengths.Read"/> (there's
+    /// something to do with it); text and a hidden password → <see cref="NoticeLengths.Glance"/>.
+    /// </summary>
+    public static TimeSpan ShowFor(bool linkFilesOrImage) => linkFilesOrImage ? NoticeLengths.Read : NoticeLengths.Glance;
+
     /// <summary>Whether the copying program (exe name, with or without extension) is a password manager.</summary>
     public static bool IsPasswordManager(string? processName)
     {

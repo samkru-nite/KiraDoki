@@ -187,7 +187,7 @@ public sealed partial class MainWindow
     }
 
     /// <summary>
-    /// A list pill's button (user 10-10), as the big pill's: ↗ = to the chat (the card goes 6 s later) and the list goes back into
+    /// A list pill's button (user 10-10), as the big pill's: ↗ = the card's next step (a done chat's card goes 6 s later) and the list goes back into
     /// the circle; "Close" = the card closes, its pill shrinks away and the list stays (<see cref="ListWindow"/>).
     /// </summary>
     private void OnListButton(string key)
@@ -200,7 +200,7 @@ public sealed partial class MainWindow
         switch (ButtonFor(card))
         {
             case PillButton.Open:
-                OpenChat(card);
+                TakeStep(card);   // the chat, the copied address, the downloaded file — you go there, so the list goes back
                 CloseList();
                 break;
             case PillButton.Close:
