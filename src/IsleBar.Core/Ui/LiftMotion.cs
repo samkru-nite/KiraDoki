@@ -136,7 +136,7 @@ public static class LiftMotion
     public static TimeSpan OpenLength(bool bounce) => bounce ? OpenBounce : Open;
 
     /// <summary>The share of the way from the pill (0) to the card (1) at time share <paramref name="t"/> while opening (passes 1 a little with the bounce).</summary>
-    public static double Opening(double t, bool bounce) => SwapMotion.Move(t, bounce);   // the swap's curve, one style
+    public static double Opening(double t, bool bounce) => bounce ? SwapMotion.Spring(t, 0) : SwapMotion.Ease(t);   // no bounce on the card (10-10): Apple's smooth spring
 
     /// <summary>The same while closing: the plain opening backwards.</summary>
     public static double Closing(double t) => SwapMotion.Ease(1 - t);

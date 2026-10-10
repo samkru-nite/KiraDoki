@@ -72,6 +72,7 @@ internal sealed class LiftWindow : Window
     private const float GlassLeanSign = -1;
     private readonly Image _shot = new() { Stretch = Stretch.Fill, IsHitTestVisible = false };
     private readonly Canvas _content = new();
+    private readonly CompositeTransform _zoom = new();
     private readonly RectangleGeometry _contentClip = new();
     private readonly SolidColorBrush _fill = new();
     private readonly SolidColorBrush _edge = new();
@@ -135,6 +136,7 @@ internal sealed class LiftWindow : Window
         _frame.RenderTransform = _frameStretch;
 
         _content.Clip = _contentClip;
+        _content.RenderTransform = _zoom;
         _stage.Children.Add(_frame);
         _stage.Children.Add(_content);
         _stage.Transform3D = _tilt;
@@ -440,7 +442,9 @@ internal sealed class LiftWindow : Window
         var following = _closing && _follow is not null;
         Ride(following, follow, q);
 
-        var box = SwapMotion.Between(target, card, q);
+        // past the card's place it swells as a whole, its content with it (Apple's way, 10-10): the frame drawn bigger, the content
+        // scaled to match — before, the frame's far edges ran out alone ("the skin pulled out")
+        var (box, scale) = SwapMotion.Settle(target, card, q);
         var turn = LiftMotion.Window(q, 0, LiftMotion.ColourTurn);
         var shot = following ? 0 : 1 - LiftMotion.Window(q, 0, LiftMotion.PillTextOut);
         var content = LiftMotion.Window(q, LiftMotion.ContentIn, 1);
@@ -496,7 +500,20 @@ internal sealed class LiftWindow : Window
 
         // the content is laid out at the card's final place and size, never stretched; the frame uncovers it
         Place(_content, card);
-        _contentClip.Rect = new Windows.Foundation.Rect(box.X - card.X, box.Y - card.Y, Math.Max(0, box.Width), Math.Max(0, box.Height));
+        if (q > 1)
+        {
+            _zoom.ScaleX = _zoom.ScaleY = scale;
+            _zoom.TranslateX = box.X - card.X;
+            _zoom.TranslateY = box.Y - card.Y;   // upright by then (no lean past the end)
+            _contentClip.Rect = new Windows.Foundation.Rect(0, 0, card.Width, card.Height);
+        }
+        else
+        {
+            _zoom.ScaleX = _zoom.ScaleY = 1;
+            _zoom.TranslateX = _zoom.TranslateY = 0;
+            _contentClip.Rect = new Windows.Foundation.Rect(box.X - card.X, box.Y - card.Y, Math.Max(0, box.Width), Math.Max(0, box.Height));
+        }
+
         _content.Opacity = content;
     }
 

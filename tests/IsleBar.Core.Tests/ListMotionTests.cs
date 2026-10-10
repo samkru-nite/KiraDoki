@@ -41,9 +41,9 @@ public sealed class ListMotionTests
     public void Way_out_starts_at_the_dots_circle_ends_in_the_slot_and_bows_up()
     {
         var slot = ListMotion.Slot(2, Pill, 592);
-        Assert.Equal(Dots, ListMotion.Box(Dots, slot, 0));
-        Assert.Equal(slot, ListMotion.Box(Dots, slot, 1));
-        var mid = ListMotion.Box(Dots, slot, 0.5);
+        Assert.Equal(Dots, ListMotion.Box(Dots, slot, 0).Box);
+        Assert.Equal(slot, ListMotion.Box(Dots, slot, 1).Box);
+        var mid = ListMotion.Box(Dots, slot, 0.5).Box;
         var straight = (Dots.Y + slot.Y) / 2;
         Assert.Equal(straight - ListMotion.Arc, mid.Y, 6);
     }

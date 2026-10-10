@@ -322,11 +322,13 @@ internal sealed class ListWindow : Window
             {
                 case Phase.Opening:
                     var p = ListMotion.Out(i, elapsed, r.Bounce, ListMotion.StaggerMs);
-                    item.Place(ListMotion.Box(_ball, item.Slot, p), p);
+                    var (outBox, outScale) = ListMotion.Box(_ball, item.Slot, p);
+                    item.Place(outBox, p, outScale);
                     break;
                 case Phase.Closing:
                     var back = ListMotion.Back(t);
-                    item.Place(ListMotion.Box(_ball, item.Slot, back), back);
+                    var (backBox, backScale) = ListMotion.Box(_ball, item.Slot, back);
+                    item.Place(backBox, back, backScale);
                     break;
                 case Phase.Taking:
                     // the tapped one stays until the lifted card is surely drawn over it (a frame or two), then the card is it
@@ -349,6 +351,7 @@ internal sealed class ListWindow : Window
         private readonly SolidColorBrush _ringBrush = new();
         private readonly Canvas _inside = new() { IsHitTestVisible = false };
         private readonly RectangleGeometry _clip = new();
+        private readonly ScaleTransform _zoom = new();
 
         public Item(string key, MotionBox slot, Color pill, Color edge, double width, double height, IPillHost host)
         {
@@ -360,6 +363,7 @@ internal sealed class ListWindow : Window
             _ring.Visibility = Visibility.Collapsed;
             _inside.Children.Add(Pill);
             _inside.Clip = _clip;
+            _inside.RenderTransform = _zoom;
             Box.Children.Add(_back);
             Box.Children.Add(_inside);
             Box.Children.Add(_ring);
@@ -385,7 +389,8 @@ internal sealed class ListWindow : Window
         public double ContentOpacity => _inside.Opacity;
 
         /// <summary>Draws the pill as <paramref name="box"/>, at that box's share of its way out (shown / content by <see cref="ListMotion.Shows"/>).</summary>
-        public void Place(MotionBox box, double share)
+        /// <param name="scale">The card drawn this much bigger: past its slot it swells as a whole (<see cref="SwapMotion.Settle"/>).</param>
+        public void Place(MotionBox box, double share, double scale = 1)
         {
             var (shown, content) = ListMotion.Shows(share);
             var w = Math.Max(0, box.Width);
@@ -400,7 +405,8 @@ internal sealed class ListWindow : Window
             _ring.Radius = radius;
             _ring.SetSize(w, h);
 
-            _clip.Rect = new Windows.Foundation.Rect(0, 0, w, h);
+            _zoom.ScaleX = _zoom.ScaleY = scale;
+            _clip.Rect = new Windows.Foundation.Rect(0, 0, w / scale, h / scale);   // in the content's own (unscaled) units
             Box.Opacity = shown;
             _inside.Opacity = content;
         }

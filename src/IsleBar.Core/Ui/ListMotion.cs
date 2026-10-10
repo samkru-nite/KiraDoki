@@ -65,8 +65,11 @@ public static class ListMotion
     /// <summary>The share of the way back at time share <paramref name="t"/> of <see cref="Close"/> (1 → 0, all together).</summary>
     public static double Back(double t) => SwapMotion.Ease(1 - t);
 
-    /// <summary>A pill at share <paramref name="p"/> of its way from the circle to its slot: the swap's box between the two, bowing up.</summary>
-    public static MotionBox Box(MotionBox dots, MotionBox slot, double p) => SwapMotion.Between(dots, slot, p, -Arc);
+    /// <summary>
+    /// A pill at share <paramref name="p"/> of its way from the circle to its slot: the swap's box between the two, bowing up; past
+    /// the slot it swells as a whole, content and all (<see cref="SwapMotion.Settle"/>).
+    /// </summary>
+    public static (MotionBox Box, double Scale) Box(MotionBox dots, MotionBox slot, double p) => SwapMotion.Settle(dots, slot, p, -Arc);
 
     /// <summary>How much of the pill shows at share <paramref name="p"/>, and how much of its content.</summary>
     public static (double Pill, double Content) Shows(double p)

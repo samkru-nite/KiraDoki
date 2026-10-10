@@ -17,7 +17,7 @@ public static class SettingsCodec
         ["native_searchbox", "files", "file_results", "file_sort", "file_exclude", "mode_order", "modes_off", "history",
          "agent", "values", "codex_values", "folder", "recent_folders", "models", "codex_models", "models_checked", "flags",
          "pill_corners", "swap_animation", "swap_bounce", "transparency", "lift_animation", "list_stagger", "card_text_align",
-         "drop_command", "style_glass", "ball_side", "style_black", "advanced", "drop_transfer"];
+         "drop_command", "style_glass", "ball_side", "style_black", "advanced", "drop_transfer", "bouncy_trial"];
 
     // JSON key names (same as the Python version's claude_bar.json)
     private const string KeyLang = "lang";

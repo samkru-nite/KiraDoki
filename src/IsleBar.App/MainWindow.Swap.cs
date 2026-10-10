@@ -347,11 +347,11 @@ public sealed partial class MainWindow
                     var back = 1 - Math.Clamp((p - (1 - turn)) / turn, 0, 1);
                     var x = SwapMotion.ContentX(circle, aBox, a.IconX, 1 - p);
                     var y = row;
-                    var box = SwapMotion.Between(aBox, circle, p);
+                    var (box, scale) = SwapMotion.Settle(aBox, circle, p);   // past the cell: smaller as a whole, not squeezed
                     _oldCardBox = box;   // a lifted card follows it down (MainWindow.Lift)
                     mover.Place(box, x, y, a.IconX, 1, 1 - p, lit ? 1 - back : 0,
                         SwapMotion.Lerp(1, SwapMotion.FadeTo, Math.Clamp(p, 0, 1)),
-                        content: 1 - Math.Clamp(p / 0.35, 0, 1));
+                        content: 1 - Math.Clamp(p / 0.35, 0, 1), scale: scale);
                     Canvas.SetLeft(icon, x + a.IconX - (PillGeometry.Cell / 2));
                     Canvas.SetTop(icon, y);
                     if (big is not null)
@@ -387,10 +387,13 @@ public sealed partial class MainWindow
                 frames.Add((t, p) =>
                 {
                     var bg = Math.Clamp(p / turn, 0, 1);
-                    var x = SwapMotion.ContentX(circle, bBox, b.IconX, p);
-                    var y = row;
-                    mover.Place(SwapMotion.Between(circle, bBox, p), x, y,
-                        b.IconX, 1, p, lit ? 1 - bg : 0, 1, content: Math.Clamp((p - 0.45) / 0.4, 0, 1));   // shows once the box is nearly open
+                    // past its place the card swells as a whole, its content with it (Apple's way, 10-10), instead of its far edge
+                    // stretching out alone
+                    var (box, scale) = SwapMotion.Settle(circle, bBox, p);
+                    var x = p > 1 ? box.X : SwapMotion.ContentX(circle, bBox, b.IconX, p);
+                    var y = p > 1 ? box.Y : row;
+                    mover.Place(box, x, y,
+                        b.IconX, 1, p, lit ? 1 - bg : 0, 1, content: Math.Clamp((p - 0.45) / 0.4, 0, 1), scale: scale);   // shows once the box is nearly open
                     Canvas.SetLeft(icon, x + b.IconX - (PillGeometry.Cell / 2));
                     Canvas.SetTop(icon, y);
                     icon.Opacity = 1 - Math.Clamp((p - 0.7) / 0.25, 0, 1);   // under it the content's own icon is already there
@@ -527,6 +530,7 @@ public sealed partial class MainWindow
         private readonly SmoothBorder _back = new();   // the rounded fill (a Grid's own background ignored its corner radius: square slabs, user 10-07)
         private readonly Canvas _inside = new();
         private readonly Image _image;
+        private readonly ScaleTransform _zoom = new();
         private readonly Ellipse _disc;
         private readonly SmoothBorder _ring;
         private readonly SolidColorBrush _fill;
@@ -538,6 +542,7 @@ public sealed partial class MainWindow
             _fill = new SolidColorBrush(_pill);
             _back.Fill = _fill;
             _image = window.Snapshot(shot);
+            _image.RenderTransform = _zoom;
             _disc = new Ellipse { Width = SwapMotion.Circle, Height = SwapMotion.Circle, Fill = new SolidColorBrush(HoverColor()) };
             _ring = new SmoothBorder
             {
@@ -553,9 +558,12 @@ public sealed partial class MainWindow
         }
 
         /// <param name="contentX">Window x of the card content's left edge; <paramref name="contentY"/> its top.</param>
-        public void Place(MotionBox box, double contentX, double contentY, double iconX, double background, double ring, double disc, double opacity, double content = 1)
+        /// <param name="scale">The card's content drawn this much bigger (from <paramref name="contentX"/>/<paramref name="contentY"/>): it
+        /// swells with the box past the end of the way (<see cref="SwapMotion.Settle"/>).</param>
+        public void Place(MotionBox box, double contentX, double contentY, double iconX, double background, double ring, double disc, double opacity, double content = 1, double scale = 1)
         {
             _image.Opacity = Math.Clamp(content, 0, 1);
+            _zoom.ScaleX = _zoom.ScaleY = scale;
             if (box.X < 0)
             {
                 box = box with { X = 0, Width = box.Width + box.X };   // the window's left edge: a bounce past it is dropped, not cut

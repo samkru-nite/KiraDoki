@@ -85,7 +85,7 @@ public sealed class LiftMotionTests
         Assert.Equal(0, LiftMotion.Opening(0, bounce: false), 3);
         Assert.Equal(1, LiftMotion.Opening(1, bounce: true), 3);
         var peak = Enumerable.Range(1, 99).Max(i => LiftMotion.Opening(i / 100.0, bounce: true));
-        Assert.InRange(peak, 1.02, 1.035);   // a light overshoot, ~3%
+        Assert.True(peak <= 1);   // the card never overshoots (10-10)
         Assert.Equal(1, LiftMotion.Closing(0), 3);
         Assert.Equal(0, LiftMotion.Closing(1), 3);
         Assert.True(Enumerable.Range(0, 101).All(i => LiftMotion.Closing(i / 100.0) >= 0));   // never sinks past the pill

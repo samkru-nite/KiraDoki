@@ -22,9 +22,15 @@ public static class SwapMotion
     /// <summary>With the bounce on (Windows' animation effects, 10-10; was a setting from 10-07) movements take a little longer and overshoot by about this share before settling.</summary>
     public static readonly TimeSpan BounceDuration = TimeSpan.FromSeconds(0.37);
 
-    /// <summary>The bounce is a soft spring (user 10-08, the lifted card's, liked there): damping ratio 0.75 = one small overshoot of
-    /// e^(−ζπ/√(1−ζ²)) ≈ 2.8%, no second wobble; the speed has it settled (&lt;0.2%) by the end. Was an ease-out-back passing by ~5%.</summary>
-    public const double Damping = 0.75;
+    /// <summary>
+    /// How much the spring bounces, Apple's way (10-10): 0 = none (SwiftUI <c>.smooth</c>), 0.15 = <c>.snappy</c>, 0.3 = <c>.bouncy</c>;
+    /// damping ratio = 1 − bounce, so one overshoot of e^(−ζπ/√(1−ζ²)): 0.15 → 0.6%, 0.3 → 4.6% (was ζ 0.75 ≈ bounce 0.25, 2.8%).
+    /// The pills (swap, list) bounce 0.15; the lifted card doesn't (<see cref="LiftMotion.Opening"/>) — a big reading surface
+    /// that wobbles looks soft and its text shimmers (user 10-10 after trying 0.15 / 0.3).
+    /// </summary>
+    public const double Bounce = 0.15;
+
+    /// <summary>Speed of the spring over a movement (t 0 → 1): settled by the end for any bounce up to 0.3.</summary>
     public const double Speed = 8.3;
 
     /// <summary>Room kept right of the pills while things fly, for the bounce to overshoot into (dip).</summary>
@@ -104,6 +110,35 @@ public static class SwapMotion
     /// Where the card's content sits (its left edge, window x) while its box is <paramref name="box"/>: its icon (at
     /// <paramref name="iconX"/> inside the card) at the circle's centre at the cell end, at the pill's left edge at the pill end.
     /// </summary>
+    /// <summary>
+    /// <see cref="Between"/> the way Apple bounces (10-10): within the way (0..1) the same; past an end the shape doesn't stretch
+    /// on its own — its centre keeps going, and the size's overshoot becomes one <b>uniform scale</b> of the whole card, its content
+    /// with it (the user saw "the far side's skin pulled out and back": the box overshot by up to 8 dip on the far side while the
+    /// text stood still). Returns the drawn box (already scaled) and the scale for the content laid out at the end box's size.
+    /// </summary>
+    public static (MotionBox Box, double Scale) Settle(MotionBox from, MotionBox to, double p, double lift = 0)
+    {
+        if (p < 0)
+        {
+            return Settle(to, from, 1 - p);   // past the start (a card going back): the same, mirrored
+        }
+
+        if (p <= 1)
+        {
+            return (Between(from, to, p, lift), 1);
+        }
+
+        var over = p - 1;
+        var cx = Lerp(from.X + (from.Width / 2), to.X + (to.Width / 2), p);
+        var cy = Lerp(from.Y + (from.Height / 2), to.Y + (to.Height / 2), p);
+        // how much it grew (or shrank) on the way, as a share of where it ends: the overshoot carries that on, both sides alike
+        static double Grew(double a, double b) => b <= 0 ? 0 : (b - a) / b;
+        var scale = Math.Clamp(1 + (over * (Grew(from.Width, to.Width) + Grew(from.Height, to.Height)) / 2), 0.5, 1.5);
+        var w = to.Width * scale;
+        var h = to.Height * scale;
+        return (new MotionBox(cx - (w / 2), cy - (h / 2), w, h, to.Radius * scale), scale);
+    }
+
     public static double ContentX(MotionBox circle, MotionBox pill, double iconX, double p)
         => Lerp(circle.X + (circle.Width / 2) - iconX, pill.X, p);
 
@@ -113,18 +148,27 @@ public static class SwapMotion
     /// little and come back — that is the bounce; opacities clamp it).</summary>
     public static double Move(double t, bool bounce) => bounce ? Spring(t) : Ease(t);
 
-    /// <summary>A damped spring from 0 to 1 (<see cref="Damping"/>, <see cref="Speed"/>), exactly 1 at the end.</summary>
-    public static double Spring(double t)
+    /// <summary>A damped spring from 0 to 1 (<see cref="Bounce"/>, <see cref="Speed"/>), exactly 1 at the end.</summary>
+    public static double Spring(double t) => Spring(t, Bounce);
+
+    /// <summary><see cref="Spring(double)"/> with a given bounce (0 … 0.9).</summary>
+    public static double Spring(double t, double bounce)
     {
+        var damping = 1 - Math.Clamp(bounce, 0, 0.9);
         t = Math.Clamp(t, 0, 1);
         if (t >= 1)
         {
             return 1;
         }
 
-        var wd = Speed * Math.Sqrt(1 - (Damping * Damping));
-        var decay = Math.Exp(-Damping * Speed * t);
-        return 1 - (decay * (Math.Cos(wd * t) + (Damping * Speed / wd * Math.Sin(wd * t))));
+        if (damping >= 1)
+        {
+            return 1 - ((1 + (Speed * t)) * Math.Exp(-Speed * t));   // bounce 0: critically damped, no overshoot
+        }
+
+        var wd = Speed * Math.Sqrt(1 - (damping * damping));
+        var decay = Math.Exp(-damping * Speed * t);
+        return 1 - (decay * (Math.Cos(wd * t) + (damping * Speed / wd * Math.Sin(wd * t))));
     }
 
     public static TimeSpan Length(bool bounce) => bounce ? BounceDuration : Duration;
