@@ -14,15 +14,15 @@ public sealed record SystemWatchOptions(
     bool Clipboard = true,
     bool Load = true,
     bool Privacy = true,
-    string CalendarIcs = "",
+    string Calendars = "",
     bool Toasts = false,
     bool HideBanners = false)
 {
     /// <summary>Everything off.</summary>
     public static SystemWatchOptions None { get; } = new(false, false, false, false, false, false, false, "", Toasts: false, HideBanners: false);
 
-    /// <summary>Calendar notices are on only when a URL is set.</summary>
-    public bool Calendar => !string.IsNullOrWhiteSpace(CalendarIcs);
+    /// <summary>Calendar notices are on only when an address is set. <see cref="Calendars"/> = the addresses, one per line (a string keeps the record's equality).</summary>
+    public bool Calendar => !string.IsNullOrWhiteSpace(Calendars);
 
     public static SystemWatchOptions From(IsleBarSettings settings)
     {
@@ -35,7 +35,7 @@ public sealed record SystemWatchOptions(
             settings.NotifyClipboard,
             settings.NotifyLoad,
             settings.NotifyPrivacy,
-            settings.CalendarIcs?.Trim() ?? "",
+            string.Join('\n', settings.Calendars.Select(c => c.Trim()).Where(c => c.Length > 0)),
             settings.NotifyToasts,
             settings.NotifyToasts && settings.HideToastBanners);   // hiding Windows' banners only makes sense while the bar shows them
     }

@@ -1,49 +1,95 @@
 using System.Globalization;
 using System.Net.Http;
+using IsleBar.Core.Island;
 using IsleBar.Core.SystemWatch;
 
 namespace IsleBar.App.SystemWatch;
 
 /// <summary>
-/// Calendar notices. Fetches the ICS URL from settings (the "secret iCal address" of Google/Outlook calendars) every 10 minutes,
-/// re-evaluates against the current time every 15 s: from 10 min before start "in 10 min · Team meeting" (until start), then "Team meeting · now" (1 min).
-/// Parsing, recurrence expansion and notice rules are in Core (<see cref="IcsParser"/>, <see cref="IcsSchedule"/>, <see cref="CalendarLogic"/>) —
-/// the limits noted in their summaries (rules like BYMONTHDAY or "first Monday" only yield the first occurrence; all-day events aren't notified) apply as-is.
-/// If fetching fails (offline, bad URL), keeps notifying from the last fetched events.
-/// The URL contains a secret token, so it is never logged anywhere. No UI thread needed.
+/// Calendar notices (TODO ③ calendar, user 10-10): <b>one card all day</b> (a second one only while two events overlap) that changes looks — reminder, started, under way, ended,
+/// gap — worked out by <see cref="CalendarLogic"/>. Fetches every calendar in the settings (the "secret iCal address" of
+/// Google/Outlook calendars) every 10 minutes and works the look out again every second. If a fetch fails (offline, bad address),
+/// that calendar keeps its last events.
+/// Closing the card (<see cref="Close"/>) remembers that look until the end of the day: the next one comes as usual.
+/// The addresses contain a secret token, so they are never logged anywhere. No UI thread needed.
+/// <para>Test switch: a file <c>%LOCALAPPDATA%\IsleBar\calendar-test.ics</c> is read as one more calendar, again whenever it
+/// changes (to try the card with events a few minutes ahead — Google updates its address slowly). Delete it when done.</para>
 /// </summary>
 internal sealed class CalendarWatcher : NoticeWatcher
 {
+    /// <summary>The board key of the main card (its card key is <c>system:calendar</c>); an overlapping event's is this + ":" + its id.</summary>
+    private const string CardKey = "calendar";
+
     private static readonly TimeSpan FetchInterval = TimeSpan.FromMinutes(10);
-    private static readonly TimeSpan TickInterval = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan TickInterval = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan ExpandEvery = TimeSpan.FromMinutes(1);
     private static readonly HttpClient Http = CreateClient();
 
-    private readonly string _url;
+    private static readonly string TestFile = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "IsleBar", "calendar-test.ics");
+
+    private readonly string[] _urls;
+    private IReadOnlyList<IcsEvent> _testEvents = [];
+    private DateTime _testStamp;
+    private readonly IReadOnlyList<IcsEvent>[] _events;
     private readonly CancellationTokenSource _stop = new();
-    private IReadOnlyList<IcsEvent> _events = [];
+    private readonly object _gate = new();
+    private readonly HashSet<string> _closed = new(StringComparer.Ordinal);
+    private IReadOnlyList<IcsOccurrence> _occurrences = [];
+    private DateTimeOffset _expandedAt = DateTimeOffset.MinValue;
+    private DateTime _closedDay;
+    private string? _lastLook;
     private Timer? _tick;
     private bool _started;
 
-    public CalendarWatcher(Func<Core.Localization.LanguageStrings> strings, string icsUrl)
+    /// <param name="calendars">The addresses, one per line (<see cref="SystemWatchOptions.Calendars"/>).</param>
+    public CalendarWatcher(Func<Core.Localization.LanguageStrings> strings, string calendars)
         : base(strings)
     {
-        _url = NormalizeUrl(icsUrl);
+        _urls = Normalize(calendars);
+        _events = [.. _urls.Select(_ => (IReadOnlyList<IcsEvent>)[])];   // + the test file's, kept apart
     }
 
-    /// <summary>The URL this watcher uses (to compare whether the setting changed).</summary>
-    public string Url => _url;
+    /// <summary>The addresses this watcher uses, normalized and one per line (to compare whether the setting changed).</summary>
+    public string Urls => string.Join('\n', _urls);
 
     public override void Start() => Guard(() =>
     {
-        if (_started || _url.Length == 0)
+        if (_started || _urls.Length == 0)
         {
             return;
         }
 
         _started = true;
-        _ = Task.Run(FetchLoopAsync);
+        for (var i = 0; i < _urls.Length; i++)
+        {
+            var index = i;
+            _ = Task.Run(() => FetchLoopAsync(index));
+        }
+
         _tick = new Timer(_ => Guard(Tick), null, TickInterval, TickInterval);
     });
+
+    /// <summary>
+    /// The card was closed by hand: this look stays away (a reminder until the next reminder, a gap until the next event starts,
+    /// one under way until it ends…). True when the card was the calendar's.
+    /// </summary>
+    public bool Close(ActivityState card)
+    {
+        if (card.SourcePath?.StartsWith(SystemNotice.SourcePrefix + CardKey, StringComparison.Ordinal) != true || card.Look is not { } look)
+        {
+            return false;
+        }
+
+        lock (_gate)
+        {
+            _closed.Add(look);
+        }
+
+        Interop.AppLog.Write("calendar: closed " + look.Split(':')[0]);   // the kind only: the rest names the event
+        Guard(Tick);
+        return true;
+    }
 
     protected override void Stop()
     {
@@ -52,18 +98,25 @@ internal sealed class CalendarWatcher : NoticeWatcher
         _stop.Dispose();
     }
 
-    private async Task FetchLoopAsync()
+    private async Task FetchLoopAsync(int index)
     {
         var token = _stop.Token;
         while (!token.IsCancellationRequested)
         {
             try
             {
-                var text = await Http.GetStringAsync(_url, token).ConfigureAwait(false);
-                var events = IcsParser.Parse(text);
+                var text = await Http.GetStringAsync(_urls[index], token).ConfigureAwait(false);
+                var events = IcsParser.Parse(text, calendar: index);
                 if (events.Count > 0 || text.Contains("BEGIN:VCALENDAR", StringComparison.OrdinalIgnoreCase))
                 {
-                    _events = events;   // keep the previous events if the response is bogus (e.g. a login page)
+                    lock (_gate)
+                    {
+                        _events[index] = events;   // keep the previous events if the response is bogus (e.g. a login page)
+                        _expandedAt = DateTimeOffset.MinValue;
+                    }
+
+                    Interop.AppLog.Write($"calendar: #{index + 1} fetched, {events.Count} events, "
+                                         + $"{events.Count(e => e.Alarms.Count > 0)} with reminders");
                 }
 
                 Guard(Tick);
@@ -74,7 +127,8 @@ internal sealed class CalendarWatcher : NoticeWatcher
             }
             catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or InvalidOperationException or UriFormatException)
             {
-                // Retry on the next tick (timeouts arrive as OperationCanceledException)
+                // Retry on the next round (timeouts arrive as OperationCanceledException)
+                Interop.AppLog.Write($"calendar: #{index + 1} fetch failed ({ex.GetType().Name}), keeps its last events");
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
@@ -97,33 +151,108 @@ internal sealed class CalendarWatcher : NoticeWatcher
     private void Tick()
     {
         var now = DateTimeOffset.UtcNow;
-        var occurrences = IcsSchedule.Occurrences(_events, now - CalendarLogic.NowLinger, now + CalendarLogic.Lead);
-        var s = Text;
-        var notices = new List<KeyValuePair<string, Core.Island.ActivityState>>();
-        foreach (var alert in CalendarLogic.Alerts(occurrences, now))
+        ReadTestFile();
+        IReadOnlyList<IcsOccurrence> occurrences;
+        HashSet<string> closed;
+        lock (_gate)
         {
-            var o = alert.Occurrence;
-            var key = "calendar:" + o.Start.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture) + ":" + o.Summary;
-            var at = o.Start.ToLocalTime().ToString("t", CultureInfo.CurrentCulture);
-            var summary = string.IsNullOrWhiteSpace(o.Summary) ? at : o.Summary;
-            if (alert.Phase == CalendarPhase.Soon)
+            if (now - _expandedAt >= ExpandEvery)
             {
-                // Make the 10-minute ring fill up: total = 10 min, elapsed = 10 min − remaining
-                var lead = (long)CalendarLogic.Lead.TotalSeconds;
-                var left = (long)Math.Max(0, (o.Start - now).TotalSeconds);
-                notices.Add(new(key, SystemNotice.Make(
-                    NoticeText.EventSoon(s, alert.MinutesLeft, summary), NoticeGlyphs.Calendar, o.Start - CalendarLogic.Lead,
-                    msg: at, done: lead - Math.Min(lead, left), total: lead)));
+                _occurrences = IcsSchedule.Occurrences(_events.SelectMany(e => e).Concat(_testEvents),
+                    now - CalendarLogic.ExpandBefore, now + CalendarLogic.ExpandAfter);
+                _expandedAt = now;
             }
-            else
+
+            if (_closedDay != DateTime.Today)
             {
-                notices.Add(new(key + ":now", SystemNotice.Make(
-                    NoticeText.EventNow(s, summary), NoticeGlyphs.Calendar, o.Start, msg: at)));
+                _closedDay = DateTime.Today;   // what was closed yesterday can't come back: forget it
+                _closed.Clear();
             }
+
+            occurrences = _occurrences;
+            closed = [.. _closed];
         }
 
-        Board.ReplaceAll(notices);
+        // the main card, plus one per overlapping event (user 10-10, choice B) — swapped in at once, so nothing flickers
+        var s = Text;
+        var cards = CalendarLogic.Cards(occurrences, now, closed);
+        Board.ReplaceAll(cards.Select(c => new KeyValuePair<string, ActivityState>(
+            c.Card == CalendarLogic.MainCard ? CardKey : CardKey + ":" + c.Card, CardFor(c.Look, now, s))));
+
+        var looks = string.Join(" + ", cards.Select(c => c.Look.Kind.ToString()));
+        var tags = string.Join("|", cards.Select(c => c.Look.Tag));
+        if (tags != _lastLook)
+        {
+            _lastLook = tags;
+            Interop.AppLog.Write("calendar: look " + (looks.Length == 0 ? "none" : looks));
+        }
     }
+
+    /// <summary>The test switch's calendar (see the class notes), read again when the file changes.</summary>
+    private void ReadTestFile()
+    {
+        var stamp = File.Exists(TestFile) ? File.GetLastWriteTimeUtc(TestFile) : default;
+        if (stamp == _testStamp)
+        {
+            return;
+        }
+
+        _testStamp = stamp;
+        var events = stamp == default ? [] : IcsParser.Parse(File.ReadAllText(TestFile), calendar: _urls.Length);
+        lock (_gate)
+        {
+            _testEvents = events;
+            _expandedAt = DateTimeOffset.MinValue;
+        }
+
+        Interop.AppLog.Write($"calendar: test file {(stamp == default ? "gone" : $"read, {events.Count} events")}");
+    }
+
+    /// <summary>The card for a look: its words, colour, type and countdown.</summary>
+    /// <remarks>
+    /// The words come first and the event's name after, grey (user 10-10: a long name must not push "ended" out of sight; no " · "
+    /// between them): <see cref="ActivityState.Title"/> = the words, <see cref="ActivityState.Msg"/> = the name,
+    /// <see cref="ActivityState.Name"/> = its time "8:00 – 9:35" (only on the lifted card).
+    /// </remarks>
+    private static ActivityState CardFor(CalendarLook look, DateTimeOffset now, Core.Localization.LanguageStrings s)
+    {
+        var o = look.Event;
+        var (words, stage, state) = look.Kind switch
+        {
+            CalendarLookKind.Remind => (NoticeText.EventWhen(s, o.Start, now, CultureInfo.CurrentCulture), SystemNotice.KeepStage, SystemNotice.WaitState),
+            CalendarLookKind.Held => (s.NoticeEventNow, SystemNotice.KeepStage, SystemNotice.WaitState),
+            CalendarLookKind.Start => (s.NoticeEventNow, SystemNotice.HoldStage, SystemNotice.WaitState),
+            CalendarLookKind.Now => (s.NoticeEventOngoing, SystemNotice.HoldStage, "run"),
+            CalendarLookKind.End => (s.NoticeEventEnded, SystemNotice.HoldStage, "done"),
+            _ => (NoticeText.EventSoon(s, CalendarLogic.MinutesLeft(o.Start, now)), SystemNotice.KeepStage, "done"),
+        };
+
+        var span = o.Until > o.Start ? Clock(o.Start) + " – " + Clock(o.Until) : Clock(o.Start);
+        var card = SystemNotice.Make(words, NoticeGlyphs.Calendar, look.At, msg: Summary(o));
+        card.Name = span;
+        card.Stage = stage;
+        card.State = state;
+        card.Look = look.Tag;
+        card.DebutFor = look.Debuts ? CalendarLogic.DebutLength : null;
+        if (look.From is { } from)
+        {
+            // the countdown fills up: total = from the reminder (or the last end) to the start
+            var total = (long)Math.Max(1, (o.Start - from).TotalSeconds);
+            card.Total = total;
+            card.Done = Math.Clamp((long)(now - from).TotalSeconds, 0, total);
+        }
+
+        return card;
+    }
+
+    private static string Summary(IcsOccurrence o)
+        => string.IsNullOrWhiteSpace(o.Summary) ? Clock(o.Start) : o.Summary;
+
+    private static string Clock(DateTimeOffset at) => at.ToLocalTime().ToString("t", CultureInfo.CurrentCulture);
+
+    /// <summary>The addresses from the settings, one per line: normalized (<see cref="NormalizeUrl"/>), invalid ones and repeats left out.</summary>
+    internal static string[] Normalize(string? calendars)
+        => [.. (calendars ?? string.Empty).Split('\n').Select(NormalizeUrl).Where(u => u.Length > 0).Distinct()];
 
     /// <summary><c>webcal://</c> becomes https. Trims whitespace. Empty string (= off) if not http(s).</summary>
     internal static string NormalizeUrl(string? url)

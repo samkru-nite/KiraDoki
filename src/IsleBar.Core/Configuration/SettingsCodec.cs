@@ -17,7 +17,7 @@ public static class SettingsCodec
         ["native_searchbox", "files", "file_results", "file_sort", "file_exclude", "mode_order", "modes_off", "history",
          "agent", "values", "codex_values", "folder", "recent_folders", "models", "codex_models", "models_checked", "flags",
          "pill_corners", "swap_animation", "swap_bounce", "transparency", "lift_animation", "list_stagger", "card_text_align",
-         "drop_command", "style_glass", "ball_side", "style_black", "advanced", "drop_transfer", "bouncy_trial"];
+         "drop_command", "style_glass", "ball_side", "style_black", "advanced", "drop_transfer", "bouncy_trial", "calendar_ics"];
 
     // JSON key names (same as the Python version's claude_bar.json)
     private const string KeyLang = "lang";
@@ -40,7 +40,8 @@ public static class SettingsCodec
     private const string KeyHideToastBanners = "hide_toast_banners";
     private const string KeyBrowserMedia = "browser_media";
     private const string KeyMuteChimeFullscreen = "mute_chime_fullscreen";
-    private const string KeyCalendarIcs = "calendar_ics";
+    private const string KeyCalendars = "calendars";
+    private const string KeyCalendarIcsOld = "calendar_ics";   // one address until 10-10, read once into the list
 
     public static IsleBarSettings FromJson(JsonObject? raw)
     {
@@ -71,9 +72,13 @@ public static class SettingsCodec
         s.HideToastBanners = AsBool(raw[KeyHideToastBanners]) ?? s.HideToastBanners;
         s.BrowserMedia = AsBool(raw[KeyBrowserMedia]) ?? s.BrowserMedia;
         s.MuteChimeFullscreen = AsBool(raw[KeyMuteChimeFullscreen]) ?? s.MuteChimeFullscreen;
-        if (AsString(raw[KeyCalendarIcs]) is { } ics)
+        if (raw[KeyCalendars] is JsonArray calendarArr)
         {
-            s.CalendarIcs = ics.Trim();
+            s.Calendars = [.. calendarArr.Select(AsString).OfType<string>().Select(line => line.Trim()).Where(line => line.Length > 0)];
+        }
+        else if (AsString(raw[KeyCalendarIcsOld])?.Trim() is { Length: > 0 } ics)
+        {
+            s.Calendars = [ics];
         }
 
         s.Position = Ui.BarSlot.Key(Ui.BarSlot.Parse(AsString(raw[KeyPosition]) ?? s.Position));
@@ -132,7 +137,7 @@ public static class SettingsCodec
         raw[KeyHideToastBanners] = s.HideToastBanners;
         raw[KeyBrowserMedia] = s.BrowserMedia;
         raw[KeyMuteChimeFullscreen] = s.MuteChimeFullscreen;
-        raw[KeyCalendarIcs] = s.CalendarIcs;
+        raw[KeyCalendars] = new JsonArray([.. s.Calendars.Select(line => (JsonNode)line)]);
     }
 
     // ---- Return a value only when the type matches exactly. "true" (a string) or 1 is not a bool. ----

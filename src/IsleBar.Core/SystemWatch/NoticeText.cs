@@ -62,12 +62,32 @@ public static class NoticeText
 
     public static string Memory(LanguageStrings s, int percent) => Percent(s.NoticeMemory, percent);
 
-    /// <summary>"In 10 min · Team meeting".</summary>
-    public static string EventSoon(LanguageStrings s, int minutes, string summary)
-        => Join(Fill(s.NoticeEventSoon, "{m}", Math.Max(1, minutes)), summary);
+    /// <summary>
+    /// When a calendar event starts, for a reminder (user 10-10): within the hour "In 10 min" (it counts down); later the time —
+    /// "14:00" today, "Tomorrow 8:00", else the weekday "Wed 8:00" ("in 1 h" would be wrong a few minutes later).
+    /// The event's name follows apart (grey), not in this text.
+    /// </summary>
+    public static string EventWhen(LanguageStrings s, DateTimeOffset start, DateTimeOffset now, CultureInfo culture)
+    {
+        ArgumentNullException.ThrowIfNull(culture);
+        if (start - now <= TimeSpan.FromHours(1))
+        {
+            return EventSoon(s, CalendarLogic.MinutesLeft(start, now));
+        }
 
-    /// <summary>"Team meeting · Now".</summary>
-    public static string EventNow(LanguageStrings s, string summary) => Join(summary, s.NoticeEventNow);
+        var local = start.ToLocalTime();
+        var clock = local.ToString("t", culture);
+        var days = (local.Date - now.ToLocalTime().Date).Days;
+        return days switch
+        {
+            <= 0 => clock,
+            1 => s.NoticeEventTomorrow.Replace("{t}", clock, StringComparison.Ordinal),
+            _ => local.ToString("ddd", culture) + " " + clock,
+        };
+    }
+
+    /// <summary>"In 10 min" (a reminder within the hour, a gap).</summary>
+    public static string EventSoon(LanguageStrings s, int minutes) => Fill(s.NoticeEventSoon, "{m}", Math.Max(1, minutes));
 
     private static string Percent(string template, int percent) => Fill(template, "{p}", Math.Clamp(percent, 0, 100));
 

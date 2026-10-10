@@ -80,8 +80,8 @@ public sealed class IsleBarSettings
     /// </summary>
     public bool MuteChimeFullscreen { get; set; }
 
-    /// <summary>ICS URL for calendar notices. Empty string turns calendar notices off.</summary>
-    public string CalendarIcs { get; set; } = "";
+    /// <summary>The calendars' ICS addresses (each its own calendar: a gap only counts within one). None = calendar notices off.</summary>
+    public List<string> Calendars { get; set; } = [];
 
 
     public IsleBarSettings Clone() => new()
@@ -106,6 +106,6 @@ public sealed class IsleBarSettings
         HideToastBanners = HideToastBanners,
         BrowserMedia = BrowserMedia,
         MuteChimeFullscreen = MuteChimeFullscreen,
-        CalendarIcs = CalendarIcs,
+        Calendars = [.. Calendars],
     };
 }

@@ -148,6 +148,11 @@ public static class CardSheets
                 s.Name ?? text.CardSystem, null, SheetTone.Plain, Ago(Start(s), now, text), s.Title,
                 [s.Msg, .. s.Earlier.Reverse().Select(e => string.Join(" · ", new[] { e.Title, e.Msg }.Where(t => !string.IsNullOrWhiteSpace(t))))],
                 [new(SheetAction.Open, text.MenuOpen), .. close]),
+            // the calendar (10-10): the event's name, its state in the card's colour, its time "8:00 – 9:35"
+            ActivityKind.Notice when s.Look is not null => Sheet(
+                text.CardSystem, s.Title,
+                s.State == SystemWatch.SystemNotice.WaitState ? SheetTone.Waiting : s.RunState == ActivityRunState.Done ? SheetTone.Ok : SheetTone.Plain,
+                null, s.Msg ?? s.Title, [s.Name], close),
             ActivityKind.Notice => Sheet(
                 text.CardSystem, null, SheetTone.Plain, Ago(Start(s), now, text), s.Title, [s.Msg, s.Name], close),
             _ => Sheet(

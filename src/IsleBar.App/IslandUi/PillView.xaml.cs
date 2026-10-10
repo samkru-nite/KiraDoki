@@ -142,6 +142,7 @@ public sealed partial class PillView : UserControl
         ShowLeadPause(state.Kind == ActivityKind.Music && state.Stage == "paused");
         SetEqualizer(state.Kind == ActivityKind.Music && state.Stage != "paused");
         var now = DateTimeOffset.UtcNow;
+        _join = " · ";
         // An agent card shows just the session's name (user 10-10). Without a name, "Claude done"
         var name = state.Name;
         if (state.Kind == ActivityKind.Timer)
@@ -151,6 +152,13 @@ public sealed partial class PillView : UserControl
         else if (state is { Kind: ActivityKind.Notice, Stage: "interrupted", Agent: not null } && !string.IsNullOrEmpty(name))
         {
             ShowIslandText(state, string.Empty, name);   // interrupted: just the session's name, like the agent's other stages (user 10-10)
+        }
+        else if (state is { Kind: ActivityKind.Notice, Look: not null })
+        {
+            // the calendar (user 10-10): "Ended Maths" — the words first, the event's name grey after a gap, no " · " (its time is
+            // on the lifted card only)
+            _join = Gap;
+            ShowIslandText(state, (state.Title ?? string.Empty) + (string.IsNullOrWhiteSpace(state.Msg) ? string.Empty : Gap), state.Msg ?? string.Empty);
         }
         else if (state.Kind == ActivityKind.Notice)
         {
@@ -614,7 +622,7 @@ public sealed partial class PillView : UserControl
                 parts.Add(rest.Trim());
             }
 
-            hint = parts.Count > 0 ? " · " + string.Join(" · ", parts) : string.Empty;
+            hint = parts.Count > 0 ? _join + string.Join(_join, parts) : string.Empty;
         }
 
         block.Inlines.Clear();
@@ -630,6 +638,12 @@ public sealed partial class PillView : UserControl
             });
         }
     }
+
+    /// <summary>Between the key part and the rest: " · ", or <see cref="Gap"/> on a calendar card (set by <see cref="Render"/>).</summary>
+    private string _join = " · ";
+
+    /// <summary>One space — the gap between a calendar card's words and the event's name (user 10-10: no " · "; two spaces, 9 dip of ink to ink, was too wide — one is about 5).</summary>
+    private const string Gap = " ";
 
     /// <summary>
     /// Resting look: end with "…" so text isn't chopped off abruptly at the edge of the slot (user feedback 09-30: suggested using an ellipsis).

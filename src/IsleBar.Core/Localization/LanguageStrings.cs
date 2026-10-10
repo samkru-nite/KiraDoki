@@ -88,11 +88,20 @@ public sealed class LanguageStrings
     public required string NoticeCpu { get; init; }
     public required string NoticeMemory { get; init; }
 
-    /// <summary>Calendar "In {m} min" (followed by " · event name").</summary>
+    /// <summary>Calendar "In {m} min" (a reminder within the hour, a gap; the event name follows, grey).</summary>
     public required string NoticeEventSoon { get; init; }
 
-    /// <summary>Calendar event starting: "Now" (preceded by "event name · ").</summary>
+    /// <summary>Calendar event started: "Started" (the event name follows, grey).</summary>
     public required string NoticeEventNow { get; init; }
+
+    /// <summary>Calendar event under way: "Ongoing" (the event name follows, grey).</summary>
+    public required string NoticeEventOngoing { get; init; }
+
+    /// <summary>Calendar reminder for an event tomorrow: "Tomorrow {t}" ({t} = its start time).</summary>
+    public required string NoticeEventTomorrow { get; init; }
+
+    /// <summary>Calendar event over: "Ended" (the event name follows, grey).</summary>
+    public required string NoticeEventEnded { get; init; }
 
     public required string NoticeMicInUse { get; init; }
     public required string NoticeCameraInUse { get; init; }
@@ -152,10 +161,10 @@ public sealed class LanguageStrings
     /// <summary>Store build's first-start card: "Show what Claude Code / Codex is doing here — click to connect".</summary>
     public required string ConnectAgentsCard { get; init; }
 
-    /// <summary>Title of the ICS URL input for calendar notices.</summary>
+    /// <summary>Title of the calendar addresses box (ICS links, one per line).</summary>
     public required string CalendarIcs { get; init; }
 
-    /// <summary>Hint for the ICS input (shown when empty).</summary>
+    /// <summary>Hint under the calendar addresses box.</summary>
     public required string CalendarIcsHint { get; init; }
 
 

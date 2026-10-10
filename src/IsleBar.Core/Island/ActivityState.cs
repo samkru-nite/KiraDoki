@@ -125,6 +125,18 @@ public sealed class ActivityState
     [JsonIgnore]
     public IReadOnlyList<ActivityState> Earlier { get; set; } = [];
 
+    /// <summary>
+    /// What the card is showing now, for a card that keeps its key while it changes looks (the calendar, user 10-10: one card all
+    /// day). When set, the card's debuts follow its look instead of its type: a new look debuts if it asks to (<see cref="DebutFor"/>).
+    /// Not serialized to JSON.
+    /// </summary>
+    [JsonIgnore]
+    public string? Look { get; set; }
+
+    /// <summary>A new <see cref="Look"/> debuts for this long (null = it goes straight to its cell). Not serialized to JSON.</summary>
+    [JsonIgnore]
+    public TimeSpan? DebutFor { get; set; }
+
     /// <summary>Whether this is a paused transfer (a browser download whose file stopped growing).</summary>
     [JsonIgnore]
     public bool IsPausedTransfer => Kind == ActivityKind.Transfer && Stage == "paused";

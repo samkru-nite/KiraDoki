@@ -128,6 +128,15 @@ public static class SystemNotice
     /// <summary>Stage of a notice you must act on now (battery under 5%): a pending card — pinned, orange — until it goes.</summary>
     public const string CriticalStage = "critical";
 
+    /// <summary>Stage of a lasting notice that stays on the big pill until closed by hand (a calendar reminder): an inform card.</summary>
+    public const string KeepStage = "keep";
+
+    /// <summary>
+    /// <see cref="ActivityState.State"/> of a notice in orange (a calendar reminder or start); <c>"done"</c> = green. Its border
+    /// shows that colour on its debut too, and its small icon is that colour.
+    /// </summary>
+    public const string WaitState = "wait";
+
     /// <summary>
     /// One notice. If <paramref name="urgent"/>, State=error (orange border) — only turn it on when a human must do something to resolve it.
     /// Given <paramref name="done"/>/<paramref name="total"/>, the island draws the ratio as a bar/ring (battery % etc.).

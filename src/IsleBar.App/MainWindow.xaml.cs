@@ -768,6 +768,11 @@ public sealed partial class MainWindow : Window
         var (key, color) = card switch
         {
             _ when _dropHover => ("drop", _theme.Accent),   // dragging over — "drop here to send"
+            // a notice with its own colour (the calendar, 10-10): orange / green, on its debut too
+            { State: { Kind: ActivityKind.Notice, State: IsleBar.Core.SystemWatch.SystemNotice.WaitState } } when card.Pinned || card.Key == _cards.DebutKey
+                => ($"wait|{card.Key}", Attention()),
+            { State: { Kind: ActivityKind.Notice, RunState: ActivityRunState.Done } } when card.Pinned || card.Key == _cards.DebutKey
+                => ($"done|{card.Key}", _theme.Ok),
             null or { Pinned: false } => ((string?)null, _theme.Ok),
             { Type: CardType.Pending } => ($"ask|{card.Key}", Attention()),
             { Type: CardType.Inform } when card.State.RunState == ActivityRunState.Error => ($"fail|{card.Key}", Alarm()),   // interrupted / stopped / failed: red, not green (user 10-07)
@@ -1704,6 +1709,10 @@ public sealed partial class MainWindow : Window
         if (card.State.SourcePath is { } path && File.Exists(path))
         {
             ActivityFeed.DeleteState(path);
+        }
+        else if (_feed.Watchers?.Close(card.State) == true)
+        {
+            // the calendar: only this look goes, the card comes back with the next one (10-10)
         }
         else
         {

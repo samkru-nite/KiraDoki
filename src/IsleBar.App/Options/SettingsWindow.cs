@@ -151,7 +151,7 @@ internal sealed class SettingsWindow : Window
         {
             ToggleRow(_text.HideToastBanners, () => _settings.HideToastBanners, v => _settings.HideToastBanners = v);   // user 10-01 — a toggle, so it can ship
         }
-        TextRow(_text.CalendarIcs, _text.CalendarIcsHint, () => _settings.CalendarIcs, v => _settings.CalendarIcs = v);
+        CalendarsRow();
 
         // Timer: Pomodoro lengths + quick timers in the right-click menu (user feedback 09-30: in case they want to change the durations)
         Section(_text.Timer);
@@ -349,6 +349,47 @@ internal sealed class SettingsWindow : Window
             box.Text = system;
             Commit();
         };
+    }
+
+    /// <summary>
+    /// The calendars' ICS addresses, one per line (user 10-10: the timetable is a calendar of its own) — a line added or removed is
+    /// a calendar added or removed. Saved on leaving the box. The addresses hold a secret, so the box is never logged.
+    /// </summary>
+    private void CalendarsRow()
+    {
+        _body.Children.Add(new TextBlock { Text = _text.CalendarIcs, Margin = new Thickness(0, 8, 0, 4) });
+        var box = new TextBox
+        {
+            Text = string.Join("\r", _settings.Calendars),
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.NoWrap,
+            Height = 80,
+            IsSpellCheckEnabled = false,
+        };
+        ScrollViewer.SetVerticalScrollBarVisibility(box, ScrollBarVisibility.Auto);
+        ScrollViewer.SetHorizontalScrollBarVisibility(box, ScrollBarVisibility.Auto);
+        _body.Children.Add(box);
+        _body.Children.Add(new TextBlock
+        {
+            Text = _text.CalendarIcsHint,
+            FontSize = 12,
+            Opacity = 0.7,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 4, 0, 0),
+        });
+
+        void Commit()
+        {
+            var lines = box.Text.Split('\r', '\n').Select(line => line.Trim()).Where(line => line.Length > 0).Distinct().ToList();
+            if (!lines.SequenceEqual(_settings.Calendars))
+            {
+                _settings.Calendars = lines;
+                _changed();
+            }
+        }
+
+        box.LostFocus += (_, _) => Commit();
+        _commitOnClose.Add(Commit);
     }
 
     /// <summary>A name + text input box (saved on leaving the box or pressing Enter).</summary>

@@ -77,7 +77,9 @@ public static class TaskIcons
             },
             ActivityKind.Notice => s.RunState == ActivityRunState.Error
                 ? new(ErrorBadge, IconTone.Error, false, false)
-                : new(s.Glyph ?? Info, IconTone.Plain, false, false),
+                // a calendar reminder / start is orange, an end / gap green (10-10)
+                : new(s.Glyph ?? Info, s.State == SystemWatch.SystemNotice.WaitState ? IconTone.Waiting
+                    : s.RunState == ActivityRunState.Done ? IconTone.Done : IconTone.Plain, false, false),
             _ => new(s.Glyph ?? Info, IconTone.Plain, false, false),
         };
         var agent = s.Kind is ActivityKind.AgentWorking or ActivityKind.AgentPermission or ActivityKind.AgentDone

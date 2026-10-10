@@ -114,6 +114,8 @@ public sealed class CardStack
     /// <summary>A notification that merges with the next one from the same app (the others replace their content).</summary>
     private static bool IsMessage(ActivityState s) => s is { Kind: ActivityKind.Notice, Stage: "expand" };
     private readonly HashSet<string> _resumed = new(StringComparer.Ordinal);   // debuts of AI cards working again: ResumeDebutLength
+    private readonly Dictionary<string, string> _looks = new(StringComparer.Ordinal);   // each card's ActivityState.Look last seen
+    private readonly Dictionary<string, (string Look, TimeSpan Length)> _lookDebuts = new(StringComparer.Ordinal);   // debuts a look asked for
     private DateTimeOffset? _firstUpdate;
 
     /// <summary>The card on its debut now (null = none).</summary>
@@ -197,6 +199,7 @@ public sealed class CardStack
         // lasting notices (focus mode on) are status cards too; battery under 5% is pending: pinned, orange, until plugged in (user 10-10)
         ActivityKind.Notice when state.Stage == SystemWatch.SystemNotice.HoldStage => CardType.Status,
         ActivityKind.Notice when state.Stage == SystemWatch.SystemNotice.CriticalStage => CardType.Pending,
+        ActivityKind.Notice when state.Stage == SystemWatch.SystemNotice.KeepStage => CardType.Inform,   // a calendar reminder (10-10)
         ActivityKind.Notice => state.RunState == ActivityRunState.Error && state.Agent is not null ? CardType.Inform : CardType.Temporary,
         ActivityKind.Transfer => state.RunState switch
         {
@@ -338,12 +341,30 @@ public sealed class CardStack
             var pinned = type != CardType.Status && !_neverPin.Contains(state.Kind);
 
             // a card that changes type counts as newly arrived (working → done comes to the front; done → working again goes to the back)
-            if (!_arrived.TryGetValue(key, out var seen) || seen.Type != type)
+            var resumed = false;
+            var changed = !_arrived.TryGetValue(key, out var seen) || seen.Type != type;
+            if (changed)
             {
-                var resumed = seen.Since != default && state.Kind == ActivityKind.AgentWorking;   // done / waiting → working again
+                resumed = seen.Since != default && state.Kind == ActivityKind.AgentWorking;   // done / waiting → working again
                 seen = (type, now);
                 _arrived[key] = seen;
-                if (type == CardType.Status && TaskRules.Debuts(state) && !_hidden.Contains(key) && !_tucked.Contains(key))
+            }
+
+            // a card with looks (the calendar, 10-10) debuts when its look changes to one that asks for it, not when its type does
+            if (state.Look is { } look)
+            {
+                var newLook = !_looks.TryGetValue(key, out var was) || was != look;
+                _looks[key] = look;
+                changed = newLook && state.DebutFor is not null;
+                if (changed && type == CardType.Status)
+                {
+                    _lookDebuts[key] = (look, state.DebutFor!.Value);
+                }
+            }
+
+            if (changed && type == CardType.Status)
+            {
+                if (TaskRules.Debuts(state) && !_hidden.Contains(key) && !_tucked.Contains(key))
                 {
                     fresh.Add((key, state.UpdatedAt));
                     if (resumed)
@@ -351,7 +372,7 @@ public sealed class CardStack
                         _resumed.Add(key);
                     }
                 }
-                else if (type == CardType.Status)
+                else
                 {
                     _notes.Add($"{key} became status, no debut ({(_hidden.Contains(key) ? "closed" : _tucked.Contains(key) ? "tucked" : "rules")})");
                 }
@@ -367,6 +388,7 @@ public sealed class CardStack
         foreach (var gone in _arrived.Keys.Where(k => !present.Contains(k)).ToList())
         {
             _arrived.Remove(gone);
+            _looks.Remove(gone);
         }
 
         _hidden.RemoveWhere(k => !present.Contains(k));
@@ -527,8 +549,10 @@ public sealed class CardStack
     /// <summary>Starts, queues, hands over and ends debuts and temporary cards — one line, first come first (see the class notes).</summary>
     private void UpdateDebut(List<Card> cards, List<(string Key, DateTimeOffset Updated)> fresh, DateTimeOffset now)
     {
+        // a debut a look asked for lasts while the card still shows that look
         bool Present(string? key) => key is not null
-            && (_temps.TryGetValue(key, out var t) ? !t.Down : cards.Any(c => c.Key == key && c.Type == CardType.Status));
+            && (_temps.TryGetValue(key, out var t) ? !t.Down : cards.Any(c => c.Key == key && c.Type == CardType.Status
+                && (!_lookDebuts.TryGetValue(key, out var d) || c.State.Look == d.Look)));
         if (_hovering || now - _leftAt < HoldAfterLeave)
         {
             foreach (var f in fresh)
@@ -564,6 +588,16 @@ public sealed class CardStack
 
         _debutQueue.RemoveAll(k => !Present(k));
         _resumed.RemoveWhere(k => k != _debutKey && !_debutQueue.Contains(k) && !fresh.Any(f => f.Key == k));
+        foreach (var k in _lookDebuts.Keys.Where(k => k != _debutKey && !_debutQueue.Contains(k) && !fresh.Any(f => f.Key == k)).ToList())
+        {
+            _lookDebuts.Remove(k);
+        }
+
+        if (_debutKey is { } showing && _lookDebuts.ContainsKey(showing) && fresh.Any(f => f.Key == showing))
+        {
+            _debutSince = now;   // up, and a new look that debuts too came: its full time from now
+            _notes.Add($"debut of {showing} starts again (a new look)");
+        }
         if (now - _firstUpdate!.Value >= StartQuiet)
         {
             var add = fresh.OrderBy(f => f.Updated).ThenBy(f => f.Key, StringComparer.Ordinal).Select(f => f.Key)
@@ -586,10 +620,11 @@ public sealed class CardStack
         {
             EndIfOver(on, now);
         }
-        else if (_debutKey is not null && now - _debutSince >= (_debutQueue.Count > 0 ? DebutAtLeast : _resumed.Contains(_debutKey) ? ResumeDebutLength : DebutLength))
+        else if (_debutKey is not null && now - _debutSince >= LengthOf(_debutKey))
         {
             _notes.Add($"debut of {_debutKey} over");
             _resumed.Remove(_debutKey);
+            _lookDebuts.Remove(_debutKey);
             _debutKey = null;   // its turn is over: the next in the line
         }
 
@@ -609,6 +644,13 @@ public sealed class CardStack
             }
         }
     }
+
+    /// <summary>How long the card <paramref name="key"/>'s debut lasts: its look's own length, else the usual ones.</summary>
+    private TimeSpan LengthOf(string key)
+        => _lookDebuts.TryGetValue(key, out var d) ? d.Length
+            : _debutQueue.Count > 0 ? DebutAtLeast
+            : _resumed.Contains(key) ? ResumeDebutLength
+            : DebutLength;
 
     private int PickShown(List<Card> cards, DateTimeOffset now)
     {

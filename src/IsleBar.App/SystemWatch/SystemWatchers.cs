@@ -69,15 +69,31 @@ internal sealed class SystemWatchers : IDisposable
             _wantBannersHidden = options.HideBanners;
             ApplyBanners(BannersHidden(), wait: false);
 
-            // The calendar must refetch when its URL changes, so stop and restart it
-            if (_calendar is not null && (!options.Calendar || _calendar.Url != CalendarWatcher.NormalizeUrl(options.CalendarIcs)))
+            // The calendar must refetch when its addresses change, so stop and restart it
+            if (_calendar is not null && (!options.Calendar || _calendar.Urls != string.Join('\n', CalendarWatcher.Normalize(options.Calendars))))
             {
                 _calendar.Dispose();
                 _calendar = null;
             }
 
-            Toggle(ref _calendar, options.Calendar, () => new CalendarWatcher(_strings, options.CalendarIcs));
+            Toggle(ref _calendar, options.Calendar, () => new CalendarWatcher(_strings, options.Calendars));
         }
+    }
+
+    /// <summary>
+    /// A card closed by hand that its watcher keeps track of itself (the calendar's one card: closing hides only its look, 10-10).
+    /// True when handled — then the island must not hide the card's key.
+    /// </summary>
+    public bool Close(ActivityState card)
+    {
+        ArgumentNullException.ThrowIfNull(card);
+        CalendarWatcher? calendar;
+        lock (_gate)
+        {
+            calendar = _calendar;
+        }
+
+        return calendar?.Close(card) == true;
     }
 
     /// <summary>

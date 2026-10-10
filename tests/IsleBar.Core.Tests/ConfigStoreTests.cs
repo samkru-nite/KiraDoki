@@ -15,7 +15,7 @@ public sealed class ConfigStoreTests
         Assert.Equal("auto", settings.Lang);
         Assert.True(settings.NotifyPower);
         Assert.False(settings.NotifyToasts);
-        Assert.Equal("", settings.CalendarIcs);
+        Assert.Empty(settings.Calendars);
         Assert.Equal([5, 25], settings.QuickTimers);
     }
 
@@ -79,7 +79,7 @@ public sealed class ConfigStoreTests
         var settings = new ConfigStore(path).Load();
 
         Assert.Equal("auto", settings.Lang);                 // number → default
-        Assert.Equal("https://example.com/cal.ics", settings.CalendarIcs);   // survives
+        Assert.Equal(["https://example.com/cal.ics"], settings.Calendars);   // survives (the old single address)
         Assert.True(settings.NotifyPower);                   // "yes" isn't a bool → default
         Assert.Empty(settings.DownloadFolders);              // not a list → default
         Assert.Equal(12, settings.ManualOffset);             // not a number → default
@@ -122,13 +122,13 @@ public sealed class ConfigStoreTests
 
         var store = new ConfigStore(path);
         var settings = store.Load();
-        settings.CalendarIcs = "/tmp/새폴더";
+        settings.Calendars = ["/tmp/새폴더"];
         Assert.True(store.Save(settings));
 
         var raw = store.LoadRaw();
         Assert.Equal("dark", (string?)raw["theme"]);
         Assert.Equal(3, raw["내가_나중에_추가할_설정"]!["깊은"]!.AsArray().Count);
-        Assert.Equal("/tmp/새폴더", (string?)raw["calendar_ics"]);
+        Assert.Equal("/tmp/새폴더", (string?)raw["calendars"]![0]);
         Assert.Equal("ko", (string?)raw["lang"]);
     }
 
@@ -242,7 +242,7 @@ public sealed class ConfigStoreTests
             {
                 store.Update(s =>
                 {
-                    s.CalendarIcs = $"질문 {n++}";
+                    s.Calendars = [$"질문 {n++}"];
                     return true;
                 });
             }

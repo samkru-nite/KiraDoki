@@ -41,12 +41,36 @@ public sealed class IcsEvent
     /// <summary>STATUS:CANCELLED.</summary>
     public bool Cancelled { get; init; }
 
+    /// <summary>How long it lasts (DTEND − DTSTART, or DURATION). Zero when it has neither (a moment, RFC 5545); a day for an all-day one.</summary>
+    public TimeSpan Length { get; init; }
+
+    /// <summary>
+    /// Its reminders (VALARM), as how long before the start each goes off — zero = at the start (Google exports "P0D"). Only
+    /// reminders at or before the start, relative to it; ACTION:NONE (a reminder turned off) is left out.
+    /// </summary>
+    public IReadOnlyList<TimeSpan> Alarms { get; init; } = [];
+
+    /// <summary>Which of the calendars in the settings it came from (0 = the first) — a gap only counts within one calendar.</summary>
+    public int Calendar { get; init; }
+
     /// <summary>Start time (UTC).</summary>
     public DateTimeOffset StartUtc => IcsParser.ToUtc(Start, Zone);
 }
 
 /// <summary>One expanded occurrence.</summary>
-public readonly record struct IcsOccurrence(string Summary, DateTimeOffset Start, bool AllDay);
+/// <param name="Uid">The event's UID (the same for every occurrence of a recurring event).</param>
+/// <param name="Alarms">How long before <paramref name="Start"/> each reminder goes off (see <see cref="IcsEvent.Alarms"/>).</param>
+public readonly record struct IcsOccurrence(
+    string Summary, DateTimeOffset Start, bool AllDay, DateTimeOffset End = default, string Uid = "", int Calendar = 0,
+    IReadOnlyList<TimeSpan>? Alarms = null)
+{
+    /// <summary>The end; the start for a moment without one (<see cref="End"/> left default).</summary>
+    public DateTimeOffset Until => End > Start ? End : Start;
+
+    /// <summary>One occurrence among all the calendars' (its event, start and calendar).</summary>
+    public string Id => (Uid.Length > 0 ? Uid : Summary) + "@" + Start.UtcTicks.ToString(CultureInfo.InvariantCulture) + "#"
+                        + Calendar.ToString(CultureInfo.InvariantCulture);
+}
 
 /// <summary>
 /// ICS (iCalendar) reading — just enough to read Google/Outlook calendars' "secret iCal address".
@@ -64,12 +88,14 @@ public static class IcsParser
 
     /// <summary>ICS text to a VEVENT list. Broken lines and unknown properties are skipped (never throws).</summary>
     /// <param name="local">Time zone for floating times and all-day events. Defaults to this PC's.</param>
-    public static IReadOnlyList<IcsEvent> Parse(string? text, TimeZoneInfo? local = null)
+    /// <param name="calendar">Which calendar in the settings this text is (<see cref="IcsEvent.Calendar"/>).</param>
+    public static IReadOnlyList<IcsEvent> Parse(string? text, TimeZoneInfo? local = null, int calendar = 0)
     {
         local ??= TimeZoneInfo.Local;
         var events = new List<IcsEvent>();
         Builder? current = null;
         var depth = 0;   // sub-blocks inside a VEVENT, such as VALARM
+        Alarm? alarm = null;   // the VALARM being read (directly inside the VEVENT)
 
         foreach (var line in Unfold(text ?? string.Empty))
         {
@@ -87,6 +113,10 @@ public static class IcsParser
                 else if (current is not null)
                 {
                     depth++;
+                    if (depth == 1 && value.Equals("VALARM", StringComparison.OrdinalIgnoreCase))
+                    {
+                        alarm = new Alarm();
+                    }
                 }
 
                 continue;
@@ -96,16 +126,44 @@ public static class IcsParser
             {
                 if (current is not null && depth > 0)
                 {
+                    if (depth == 1 && alarm?.Before() is { } before)
+                    {
+                        current.Alarms.Add(before);
+                    }
+
+                    if (depth == 1)
+                    {
+                        alarm = null;
+                    }
+
                     depth--;
                 }
                 else if (current is not null && value.Equals("VEVENT", StringComparison.OrdinalIgnoreCase))
                 {
-                    if (current.Build() is { } built)
+                    if (current.Build(calendar) is { } built)
                     {
                         events.Add(built);
                     }
 
                     current = null;
+                }
+
+                continue;
+            }
+
+            if (current is not null && depth == 1 && alarm is not null)
+            {
+                switch (name)
+                {
+                    case "ACTION":
+                        alarm.Off = value.Trim().Equals("NONE", StringComparison.OrdinalIgnoreCase);
+                        break;
+                    case "TRIGGER":
+                        // only relative to the start: "-PT15M", "P0D" (an absolute date-time or RELATED=END is left out)
+                        var related = parameters.TryGetValue("RELATED", out var rel) && rel.Equals("END", StringComparison.OrdinalIgnoreCase);
+                        var absolute = parameters.TryGetValue("VALUE", out var kind) && kind.Equals("DATE-TIME", StringComparison.OrdinalIgnoreCase);
+                        alarm.Trigger = related || absolute ? null : ParseDuration(value);
+                        break;
                 }
 
                 continue;
@@ -133,6 +191,12 @@ public static class IcsParser
                         current.Start = start;
                     }
 
+                    break;
+                case "DTEND":
+                    current.End = ParseTime(value, parameters, local);
+                    break;
+                case "DURATION":
+                    current.Duration = ParseDuration(value);
                     break;
                 case "RRULE":
                     current.RuleText = value;
@@ -261,6 +325,65 @@ public static class IcsParser
 
         var zone = parameters.TryGetValue("TZID", out var tzid) ? ResolveZone(tzid) ?? local : local;
         return (wall, zone, false);
+    }
+
+    /// <summary>
+    /// An RFC 5545 duration — "PT15M", "-P1DT2H", "P1W", "+PT0S" — or null if it isn't one. Negative = before.
+    /// </summary>
+    public static TimeSpan? ParseDuration(string? text)
+    {
+        var value = (text ?? string.Empty).Trim().ToUpperInvariant();
+        var sign = 1;
+        if (value.StartsWith('-') || value.StartsWith('+'))
+        {
+            sign = value[0] == '-' ? -1 : 1;
+            value = value[1..];
+        }
+
+        if (!value.StartsWith('P') || value.Length < 3)
+        {
+            return null;
+        }
+
+        var total = TimeSpan.Zero;
+        var number = 0L;
+        var digits = 0;
+        var inTime = false;
+        foreach (var c in value[1..])
+        {
+            if (c is >= '0' and <= '9')
+            {
+                number = Math.Min(number * 10 + (c - '0'), 100_000);
+                digits++;
+                continue;
+            }
+
+            if (c == 'T' && digits == 0 && !inTime)
+            {
+                inTime = true;
+                continue;
+            }
+
+            TimeSpan? part = (c, inTime) switch
+            {
+                ('W', false) => TimeSpan.FromDays(7 * number),
+                ('D', false) => TimeSpan.FromDays(number),
+                ('H', true) => TimeSpan.FromHours(number),
+                ('M', true) => TimeSpan.FromMinutes(number),
+                ('S', true) => TimeSpan.FromSeconds(number),
+                _ => null,
+            };
+            if (digits == 0 || part is null)
+            {
+                return null;   // a letter out of place
+            }
+
+            total += part.Value;
+            number = 0;
+            digits = 0;
+        }
+
+        return digits == 0 ? sign * total : null;
     }
 
     /// <summary>RFC 5545 line unfolding: a line starting with a space or tab is appended to the previous line.</summary>
@@ -462,6 +585,17 @@ public static class IcsParser
         _ => null,
     };
 
+    /// <summary>A VALARM being read.</summary>
+    private sealed class Alarm
+    {
+        public TimeSpan? Trigger { get; set; }
+
+        public bool Off { get; set; }
+
+        /// <summary>How long before the start it goes off; null when it doesn't count (off, after the start, not relative to the start).</summary>
+        public TimeSpan? Before() => !Off && Trigger is { } t && t <= TimeSpan.Zero ? -t : null;
+    }
+
     private sealed class Builder
     {
         public string Uid { get; set; } = string.Empty;
@@ -478,15 +612,26 @@ public static class IcsParser
 
         public bool Cancelled { get; set; }
 
-        public IcsEvent? Build()
+        public (DateTime Wall, TimeZoneInfo Zone, bool AllDay)? End { get; set; }
+
+        public TimeSpan? Duration { get; set; }
+
+        public List<TimeSpan> Alarms { get; } = [];
+
+        public IcsEvent? Build(int calendar)
         {
             if (Start is not { } start)
             {
                 return null;   // an event without a start time cannot be announced
             }
 
+            var length = End is { } end ? ToUtc(end.Wall, end.Zone) - ToUtc(start.Wall, start.Zone)
+                : Duration ?? (start.AllDay ? TimeSpan.FromDays(1) : TimeSpan.Zero);
             return new IcsEvent
             {
+                Length = length > TimeSpan.Zero ? length : TimeSpan.Zero,
+                Alarms = [.. Alarms.Distinct().Order()],
+                Calendar = calendar,
                 Uid = Uid,
                 Summary = Summary,
                 Start = start.Wall,
@@ -536,7 +681,7 @@ public static class IcsSchedule
                     continue;
                 }
 
-                result.Add(new IcsOccurrence(e.Summary, start, e.AllDay));
+                result.Add(new IcsOccurrence(e.Summary, start, e.AllDay, start + e.Length, e.Uid, e.Calendar, e.Alarms));
             }
         }
 
@@ -658,46 +803,4 @@ public static class IcsSchedule
     private static DateTime WeekStart(DateTime start) => start.AddDays(-MondayOffset(start.DayOfWeek));
 
     private static int MondayOffset(DayOfWeek day) => ((int)day + 6) % 7;
-}
-
-/// <summary>Calendar notice stage.</summary>
-public enum CalendarPhase
-{
-    /// <summary>Starting soon — "In 10 min · Meeting", until it starts.</summary>
-    Soon,
-
-    /// <summary>Started — "Meeting · Now", for 1 minute.</summary>
-    Now,
-}
-
-/// <summary>One calendar notice to show now.</summary>
-public readonly record struct CalendarAlert(IcsOccurrence Occurrence, CalendarPhase Phase, int MinutesLeft);
-
-/// <summary>
-/// Calendar notice rules: "In N min" from 10 minutes before the start until the start, then "Now" for 1 minute after it starts.
-/// All-day events are not announced (there is no basis for when to announce them, and they must not occupy the island all day).
-/// The state is determined by time alone, so nothing is remembered — the same answer comes out whenever the app is started.
-/// </summary>
-public static class CalendarLogic
-{
-    public static readonly TimeSpan Lead = TimeSpan.FromMinutes(10);
-    public static readonly TimeSpan NowLinger = TimeSpan.FromMinutes(1);
-
-    public static IReadOnlyList<CalendarAlert> Alerts(IEnumerable<IcsOccurrence> occurrences, DateTimeOffset now)
-    {
-        var alerts = new List<CalendarAlert>();
-        foreach (var o in occurrences.Where(o => !o.AllDay).DistinctBy(o => (o.Summary, o.Start.UtcTicks)))
-        {
-            if (now >= o.Start - Lead && now < o.Start)
-            {
-                alerts.Add(new CalendarAlert(o, CalendarPhase.Soon, (int)Math.Ceiling((o.Start - now).TotalMinutes)));
-            }
-            else if (now >= o.Start && now < o.Start + NowLinger)
-            {
-                alerts.Add(new CalendarAlert(o, CalendarPhase.Now, 0));
-            }
-        }
-
-        return [.. alerts.OrderBy(a => a.Occurrence.Start)];
-    }
 }

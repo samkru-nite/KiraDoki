@@ -101,8 +101,7 @@ public sealed class SystemWatchTests
         Assert.Equal("CPU 96% · chrome", NoticeText.Cpu(Ko, 96, "chrome"));
         Assert.Equal("CPU 96%", NoticeText.Cpu(Ko, 96, null));
         Assert.Equal("메모리 93%", NoticeText.Memory(Ko, 93));
-        Assert.Equal("10분 후 · 팀 회의", NoticeText.EventSoon(Ko, 10, "팀 회의"));
-        Assert.Equal("팀 회의 · 지금", NoticeText.EventNow(Ko, "팀 회의"));
+        Assert.Equal("10분 후", NoticeText.EventSoon(Ko, 10));
     }
 
     [Theory]
@@ -138,7 +137,8 @@ public sealed class SystemWatchTests
             // No placeholders remain after filling
             Assert.DoesNotContain("{", NoticeText.BatteryLow(s, 20, TimeSpan.FromMinutes(95)));
             Assert.DoesNotContain("{", NoticeText.CopiedFiles(s, 4));
-            Assert.DoesNotContain("{", NoticeText.EventSoon(s, 3, "x"));
+            Assert.DoesNotContain("{", NoticeText.EventSoon(s, 3));
+            Assert.Contains("{t}", s.NoticeEventTomorrow);
         }
     }
 
@@ -543,21 +543,254 @@ public sealed class SystemWatchTests
     }
 
     [Fact]
-    public void Event_alerts_run_from_10_minutes_before_to_1_minute_after_start()
+    public void Reads_end_length_and_reminders()
     {
-        var start = T0.AddMinutes(30);
-        IcsOccurrence[] occ = [new("회의", start, false), new("휴가", start, true)];
+        var ics = Calendar(
+            "BEGIN:VEVENT", "UID:a", "SUMMARY:고등수학", "DTSTART:20261012T000000Z", "DTEND:20261012T013500Z",
+            "BEGIN:VALARM", "ACTION:DISPLAY", "TRIGGER:-PT15M", "END:VALARM",
+            "BEGIN:VALARM", "ACTION:DISPLAY", "TRIGGER:P0D", "END:VALARM",
+            "BEGIN:VALARM", "ACTION:NONE", "TRIGGER:-PT30M", "END:VALARM",
+            "BEGIN:VALARM", "ACTION:DISPLAY", "TRIGGER;RELATED=END:-PT5M", "END:VALARM",
+            "BEGIN:VALARM", "ACTION:DISPLAY", "TRIGGER;VALUE=DATE-TIME:20261011T000000Z", "END:VALARM",
+            "BEGIN:VALARM", "ACTION:DISPLAY", "TRIGGER:PT10M", "END:VALARM",
+            "END:VEVENT",
+            "BEGIN:VEVENT", "UID:b", "SUMMARY:b", "DTSTART:20261012T020000Z", "DURATION:PT1H30M", "END:VEVENT",
+            "BEGIN:VEVENT", "UID:c", "SUMMARY:c", "DTSTART:20261012T040000Z", "END:VEVENT",
+            "BEGIN:VEVENT", "UID:d", "SUMMARY:d", "DTSTART;VALUE=DATE:20261012", "END:VEVENT");
 
-        Assert.Empty(CalendarLogic.Alerts(occ, start.AddMinutes(-11)));
+        var events = IcsParser.Parse(ics, Seoul, calendar: 1);
+        Assert.Equal(TimeSpan.FromMinutes(95), events[0].Length);
+        Assert.Equal([TimeSpan.Zero, TimeSpan.FromMinutes(15)], events[0].Alarms);   // off, after the start, absolute, from the end: left out
+        Assert.Equal(TimeSpan.FromMinutes(90), events[1].Length);
+        Assert.Equal(TimeSpan.Zero, events[2].Length);   // neither end nor duration: a moment
+        Assert.Equal(TimeSpan.FromDays(1), events[3].Length);
+        Assert.All(events, e => Assert.Equal(1, e.Calendar));
 
-        var soon = Assert.Single(CalendarLogic.Alerts(occ, start.AddMinutes(-10)));
-        Assert.Equal(CalendarPhase.Soon, soon.Phase);
-        Assert.Equal(10, soon.MinutesLeft);
-        Assert.Equal(1, CalendarLogic.Alerts(occ, start.AddSeconds(-20))[0].MinutesLeft);   // rounded up
+        var o = IcsSchedule.Occurrences(events, new(2026, 10, 11, 0, 0, 0, TimeSpan.Zero), new(2026, 10, 13, 0, 0, 0, TimeSpan.Zero))
+            .Single(o => o.Summary == "고등수학");
+        Assert.Equal(new DateTimeOffset(2026, 10, 12, 1, 35, 0, TimeSpan.Zero), o.End);
+        Assert.Equal(1, o.Calendar);
+        Assert.Equal(2, o.Alarms!.Count);
+    }
 
-        var now = Assert.Single(CalendarLogic.Alerts(occ, start.AddSeconds(30)));
-        Assert.Equal(CalendarPhase.Now, now.Phase);
-        Assert.Empty(CalendarLogic.Alerts(occ, start.AddMinutes(1)));
+    [Theory]
+    [InlineData("PT15M", 15)]
+    [InlineData("-PT15M", -15)]
+    [InlineData("P0D", 0)]
+    [InlineData("-P1DT2H", -1560)]
+    [InlineData("P1W", 10080)]
+    [InlineData("+PT90S", 1.5)]
+    public void Reads_durations(string text, double minutes)
+        => Assert.Equal(TimeSpan.FromMinutes(minutes), IcsParser.ParseDuration(text));
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("15M")]
+    [InlineData("PT")]
+    [InlineData("P15M")]
+    [InlineData("PTM")]
+    [InlineData("PT15")]
+    public void Rejects_broken_durations(string text) => Assert.Null(IcsParser.ParseDuration(text));
+
+    // ---------------- Calendar card (TODO ③, user 10-10) ----------------
+
+    private static readonly DateTimeOffset Morning = new(2026, 10, 12, 8, 0, 0, TimeSpan.Zero);
+
+    /// <summary>An event at <paramref name="at"/> (h.mm, 8.00 = 8:00), <paramref name="minutes"/> long, with reminders that many minutes before.</summary>
+    private static IcsOccurrence Ev(string name, double at, int minutes, int calendar = 0, params int[] alarms)
+    {
+        var start = At(at);
+        return new(name, start, false, start.AddMinutes(minutes), name, calendar, [.. alarms.Select(a => TimeSpan.FromMinutes(a))]);
+    }
+
+    private static DateTimeOffset At(double hm, int seconds = 0)
+    {
+        var hours = (int)Math.Floor(hm + 0.0001);
+        var minutes = (int)Math.Round((hm - hours) * 100);
+        return Morning.Date.AddHours(hours).AddMinutes(minutes).AddSeconds(seconds);
+    }
+
+    private static string Shows(IEnumerable<IcsOccurrence> events, DateTimeOffset now, params string[] closed)
+        => CalendarLogic.Look(events, now, closed.ToHashSet()) is { } look ? look.Kind + " " + look.Event.Summary : "-";
+
+    private static string TagAt(IEnumerable<IcsOccurrence> events, DateTimeOffset now) => CalendarLogic.Look(events, now)!.Tag;
+
+    /// <summary>Every card, main first: "Now 수업 | Start 회의".</summary>
+    private static string ShowsAll(IEnumerable<IcsOccurrence> events, DateTimeOffset now, params string[] closed)
+    {
+        var cards = CalendarLogic.Cards(events, now, closed.ToHashSet());
+        return cards.Count == 0 ? "-" : string.Join(" | ", cards.Select(c => c.Look.Kind + " " + c.Look.Event.Summary));
+    }
+
+    [Fact]
+    public void A_reminder_says_minutes_within_the_hour_then_the_time()
+    {
+        var zh = LanguageCatalog.For("zh");
+        var culture = System.Globalization.CultureInfo.GetCultureInfo("zh-CN");
+        DateTimeOffset noon = new DateTime(2026, 10, 12, 12, 0, 0, DateTimeKind.Local);   // a Monday
+        string Clock(int hour) => new DateTime(2026, 10, 12, hour, 0, 0).ToString("t", culture);   // "08:00" in zh-CN
+
+        Assert.Equal("10 分钟后", NoticeText.EventWhen(zh, noon.AddMinutes(10), noon, culture));
+        Assert.Equal("60 分钟后", NoticeText.EventWhen(zh, noon.AddHours(1), noon, culture));
+        Assert.Equal(Clock(14), NoticeText.EventWhen(zh, noon.AddHours(2), noon, culture));
+        Assert.Equal("明天 " + Clock(8), NoticeText.EventWhen(zh, noon.AddHours(20), noon, culture));
+        Assert.Equal("周三 " + Clock(8), NoticeText.EventWhen(zh, noon.AddHours(44), noon, culture));
+    }
+
+    [Fact]
+    public void A_class_day_goes_reminder_start_under_way_end_gap()
+    {
+        IcsOccurrence[] day = [Ev("수학", 8.00, 95, 0, 5), Ev("영어", 9.45, 95)];
+
+        Assert.Equal("-", Shows(day, At(7.54)));
+        Assert.Equal("Remind 수학", Shows(day, At(7.55)));   // its own reminder, 5 min before
+        Assert.Equal(At(7.55), CalendarLogic.Look(day, At(7.57))!.From);
+        Assert.Equal("Start 수학", Shows(day, At(8.00)));
+        Assert.True(CalendarLogic.Look(day, At(8.00))!.Debuts);
+        Assert.Equal("Start 수학", Shows(day, At(8.00, 5)));
+        Assert.Equal("Now 수학", Shows(day, At(8.00, 6)));   // 6 s, then in its cell
+        Assert.Equal("End 수학", Shows(day, At(9.35)));
+        Assert.Equal("Gap 영어", Shows(day, At(9.35, 6)));   // the same calendar's next within 25 min
+        Assert.Equal(At(9.35), CalendarLogic.Look(day, At(9.40))!.From);
+        Assert.Equal(5, CalendarLogic.MinutesLeft(At(9.45), At(9.40)));
+        Assert.Equal(1, CalendarLogic.MinutesLeft(At(9.45), At(9.44, 50)));   // rounded up
+        Assert.Equal("Start 영어", Shows(day, At(9.45)));   // no reminder: no remind look, straight to the start
+        Assert.Equal("Now 영어", Shows(day, At(10.00)));
+        Assert.Equal("End 영어", Shows(day, At(11.20, 3)));
+        Assert.Equal("-", Shows(day, At(11.20, 6)));   // nothing next: gone
+    }
+
+    [Fact]
+    public void Back_to_back_changes_each_get_their_six_seconds()
+    {
+        IcsOccurrence[] day = [Ev("수학", 8.00, 60), Ev("영어", 9.00, 60)];
+
+        Assert.Equal("End 수학", Shows(day, At(9.00)));
+        Assert.Equal("End 수학", Shows(day, At(9.00, 5)));
+        Assert.Equal("Start 영어", Shows(day, At(9.00, 6)));
+        Assert.Equal("Start 영어", Shows(day, At(9.00, 11)));
+        Assert.Equal("Now 영어", Shows(day, At(9.00, 12)));
+
+        // a change closed by hand gives its time to the next
+        Assert.Equal("Start 영어", Shows(day, At(9.00, 1), "end:" + day[0].Id));
+    }
+
+    [Fact]
+    public void A_gap_only_counts_within_one_calendar_and_up_to_25_minutes()
+    {
+        Assert.Equal("-", Shows([Ev("수업", 8.00, 60, 0), Ev("택배", 9.10, 10, 1)], At(9.00, 6)));
+        Assert.Equal("-", Shows([Ev("수업", 8.00, 60), Ev("다음", 9.26, 60)], At(9.00, 6)));
+        Assert.Equal("Gap 다음", Shows([Ev("수업", 8.00, 60), Ev("다음", 9.25, 60)], At(9.00, 6)));
+
+        // closed: until the next one starts
+        IcsOccurrence[] day = [Ev("수업", 8.00, 60), Ev("다음", 9.10, 60)];
+        var gap = TagAt(day, At(9.05));
+        Assert.Equal("-", Shows(day, At(9.05), gap));
+        Assert.Equal("Start 다음", Shows(day, At(9.10), gap));
+    }
+
+    [Fact]
+    public void A_reminder_at_the_start_holds_until_closed()
+    {
+        IcsOccurrence[] day = [Ev("시험", 8.00, 60, 0, 0)];
+
+        Assert.Equal("-", Shows(day, At(7.59)));
+        Assert.Equal("Held 시험", Shows(day, At(8.00)));
+        Assert.False(CalendarLogic.Look(day, At(8.00))!.Debuts);
+        Assert.Equal("Held 시험", Shows(day, At(8.30)));
+        Assert.Equal("Now 시험", Shows(day, At(8.30), "held:" + day[0].Id));
+        Assert.Equal("End 시험", Shows(day, At(9.00)));
+    }
+
+    [Fact]
+    public void Each_reminder_comes_back_after_the_last_was_closed()
+    {
+        IcsOccurrence[] day = [Ev("회의", 9.00, 60, 0, 15, 5)];
+
+        var first = TagAt(day, At(8.45));
+        Assert.Equal("Remind 회의", Shows(day, At(8.45)));
+        Assert.Equal("-", Shows(day, At(8.50), first));
+        Assert.Equal("Remind 회의", Shows(day, At(8.55), first));
+        Assert.NotEqual(first, TagAt(day, At(8.55)));
+    }
+
+    [Fact]
+    public void An_event_starting_while_the_main_one_runs_gets_a_card_of_its_own()
+    {
+        // a short one inside a long one: its own card from start to end, the main card stays on the long one
+        IcsOccurrence[] inside = [Ev("긴 일정", 8.00, 120), Ev("짧은 일정", 9.00, 30)];
+        Assert.Equal("Now 긴 일정", ShowsAll(inside, At(8.59)));
+        Assert.Equal("Now 긴 일정 | Start 짧은 일정", ShowsAll(inside, At(9.00)));
+        Assert.Equal("Now 긴 일정 | Now 짧은 일정", ShowsAll(inside, At(9.10)));
+        Assert.Equal("Now 긴 일정 | End 짧은 일정", ShowsAll(inside, At(9.30)));
+        Assert.Equal("Now 긴 일정", ShowsAll(inside, At(9.30, 6)));   // its card gone
+        Assert.Equal("End 긴 일정", ShowsAll(inside, At(10.00)));
+
+        // one that ends later: the same — and once the main one ends, the main card is free (no gap: it's another card's event)
+        IcsOccurrence[] later = [Ev("수업", 8.00, 120), Ev("회의", 9.00, 120)];
+        Assert.Equal("Now 수업 | Start 회의", ShowsAll(later, At(9.00)));
+        Assert.Equal("End 수업 | Now 회의", ShowsAll(later, At(10.00)));
+        Assert.Equal("Now 회의", ShowsAll(later, At(10.00, 6)));
+        Assert.Equal("End 회의", ShowsAll(later, At(11.00)));
+
+        // two starting at once: the first in order on the main card
+        IcsOccurrence[] same = [Ev("가", 9.00, 60), Ev("나", 9.00, 30)];
+        Assert.Equal("Start 가 | Start 나", ShowsAll(same, At(9.00)));
+
+        // back to back is not overlapping: one card
+        Assert.Equal("End 수학", ShowsAll([Ev("수학", 8.00, 60), Ev("영어", 9.00, 60)], At(9.00)));
+    }
+
+    [Fact]
+    public void An_overlapping_events_reminder_is_on_its_own_card_and_all_day_events_are_left_out()
+    {
+        IcsOccurrence[] day = [Ev("수업", 8.00, 120), Ev("면담", 9.30, 30, 1, 10), new("휴가", Morning.Date, true, Morning.Date.AddDays(1))];
+
+        Assert.Equal("Now 수업", ShowsAll(day, At(9.00)));
+        Assert.Equal("Now 수업 | Remind 면담", ShowsAll(day, At(9.20)));   // the class stays on its card
+        var remind = CalendarLogic.Cards(day, At(9.20))[1].Look.Tag;
+        Assert.Equal("Now 수업", ShowsAll(day, At(9.25), remind));
+        Assert.Equal("Now 수업 | Start 면담", ShowsAll(day, At(9.30), remind));
+        Assert.Equal("-", ShowsAll([new("휴가", Morning.Date, true, Morning.Date.AddDays(1))], At(9.00)));
+    }
+
+    [Fact]
+    public void Calendar_card_new_looks_debut_their_own_length()
+    {
+        var stack = new CardStack();
+        static ActivityState Card(string look, string stage, TimeSpan? debut) => new()
+        {
+            RawKind = ActivityState.KindNotice, Title = look, Stage = stage, SourcePath = "system:calendar", Look = look, DebutFor = debut,
+            UpdatedAt = T0,
+        };
+
+        stack.Update([], T0);
+        stack.Update([Card("now:a", SystemNotice.HoldStage, null)], T0.AddSeconds(3));
+        Assert.Null(stack.DebutKey);   // under way: straight to its cell
+
+        var six = TimeSpan.FromSeconds(6);
+        stack.Update([Card("end:a", SystemNotice.HoldStage, six)], T0.AddSeconds(4));
+        Assert.Equal("system:calendar", stack.DebutKey);   // same card, same type, a new look: debuts
+        stack.Update([Card("end:a", SystemNotice.HoldStage, six)], T0.AddSeconds(9));
+        Assert.Equal("system:calendar", stack.DebutKey);   // its own 6 s, not the usual 2
+        stack.Update([Card("start:b", SystemNotice.HoldStage, six)], T0.AddSeconds(9.5));
+        Assert.Equal("system:calendar", stack.DebutKey);   // the next look: its full time again
+        stack.Update([Card("start:b", SystemNotice.HoldStage, six)], T0.AddSeconds(15));
+        Assert.Equal("system:calendar", stack.DebutKey);
+        stack.Update([Card("start:b", SystemNotice.HoldStage, six)], T0.AddSeconds(15.5));
+        Assert.Null(stack.DebutKey);
+
+        // a pinned reminder closed into an under-way look changes type but asks for no debut
+        stack.Update([Card("held:c", SystemNotice.KeepStage, null)], T0.AddSeconds(20));
+        Assert.Equal(CardType.Inform, stack.Shown!.Type);
+        stack.Update([Card("now:c", SystemNotice.HoldStage, null)], T0.AddSeconds(21));
+        Assert.Null(stack.DebutKey);
+
+        // a look that moved on ends its debut
+        stack.Update([Card("end:c", SystemNotice.HoldStage, six)], T0.AddSeconds(22));
+        Assert.Equal("system:calendar", stack.DebutKey);
+        stack.Update([Card("gap:d", SystemNotice.KeepStage, null)], T0.AddSeconds(23));
+        Assert.Null(stack.DebutKey);
     }
 
     // ---------------- Settings ----------------
@@ -574,7 +807,7 @@ public sealed class SystemWatchTests
         Assert.True(settings.NotifyClipboard);
         Assert.True(settings.NotifyLoad);
         Assert.True(settings.NotifyPrivacy);
-        Assert.Equal("", settings.CalendarIcs);
+        Assert.Empty(settings.Calendars);
 
         var options = SystemWatchOptions.From(settings);
         Assert.Equal(new SystemWatchOptions(), options);
@@ -589,23 +822,41 @@ public sealed class SystemWatchTests
         var settings = store.Load();
         settings.NotifyClipboard = false;
         settings.NotifyLoad = false;
-        settings.CalendarIcs = "https://calendar.example.com/private/basic.ics";
+        settings.Calendars = ["https://calendar.example.com/private/basic.ics", "https://calendar.example.com/private/class.ics"];
         Assert.True(store.Save(settings));
 
         var text = File.ReadAllText(store.Path);
         Assert.Contains("\"notify_clipboard\": false", text);
-        Assert.Contains("\"calendar_ics\"", text);
+        Assert.Contains("\"calendars\"", text);
 
         var loaded = store.Load();
         Assert.False(loaded.NotifyClipboard);
         Assert.False(loaded.NotifyLoad);
         Assert.True(loaded.NotifyPower);
-        Assert.Equal("https://calendar.example.com/private/basic.ics", loaded.CalendarIcs);
+        Assert.Equal(settings.Calendars, loaded.Calendars);
         Assert.True(SystemWatchOptions.From(loaded).Calendar);
+        Assert.Equal(string.Join('\n', settings.Calendars), SystemWatchOptions.From(loaded).Calendars);
 
         var clone = loaded.Clone();
         Assert.False(clone.NotifyClipboard);
-        Assert.Equal(loaded.CalendarIcs, clone.CalendarIcs);
+        Assert.Equal(loaded.Calendars, clone.Calendars);
+        Assert.NotSame(loaded.Calendars, clone.Calendars);
+    }
+
+    [Fact]
+    public void The_one_calendar_address_of_before_becomes_the_first_of_the_list()
+    {
+        using var dir = new TempDir();
+        var path = dir.File("islebar.json");
+        File.WriteAllText(path, """{ "calendar_ics": " https://example.com/old.ics " }""");
+        var store = new ConfigStore(path);
+        var settings = store.Load();
+        Assert.Equal(["https://example.com/old.ics"], settings.Calendars);
+
+        Assert.True(store.Save(settings));
+        var text = File.ReadAllText(path);
+        Assert.DoesNotContain("calendar_ics", text);
+        Assert.Equal(["https://example.com/old.ics"], store.Load().Calendars);
     }
 
     [Fact]
@@ -613,10 +864,10 @@ public sealed class SystemWatchTests
     {
         using var dir = new TempDir();
         var path = dir.File("islebar.json");
-        File.WriteAllText(path, """{ "notify_power": "no", "notify_focus": false, "calendar_ics": 5 }""");
+        File.WriteAllText(path, """{ "notify_power": "no", "notify_focus": false, "calendars": 5 }""");
         var settings = new ConfigStore(path).Load();
         Assert.True(settings.NotifyPower);
         Assert.False(settings.NotifyFocus);
-        Assert.Equal("", settings.CalendarIcs);
+        Assert.Empty(settings.Calendars);
     }
 }
