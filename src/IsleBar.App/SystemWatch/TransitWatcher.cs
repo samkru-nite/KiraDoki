@@ -5,14 +5,14 @@ namespace IsleBar.App.SystemWatch;
 
 /// <summary>
 /// The transit station card (中转站, TODO ④, user 10-10; the list in <see cref="TransitShelf"/>). Files dropped on the pill go in
-/// (only their paths), one status card says "中转站 3 个文件", no colour; something new going in → debut 6 s. Dragging the big pill
+/// (only their paths), one status card says "中转站 3 个文件", no colour; something new going in → debut 10 s, even with the mouse on the pill (it was dropped there). Dragging the big pill
 /// drags them all out; what the receiver moved away leaves (<see cref="Dragged"/>), what it copied stays. Empty = no card. Kept over a
 /// restart in <c>%LOCALAPPDATA%\IsleBar\transit.txt</c>. Log "transit: …" (counts only, never file names).
 /// </summary>
 internal sealed class TransitWatcher : NoticeWatcher
 {
     private const string Key = TransitShelf.Key;
-    private static readonly TimeSpan DebutLength = TimeSpan.FromSeconds(6);   // 2 was too short (user 10-10)
+    private static readonly TimeSpan DebutLength = TimeSpan.FromSeconds(10);   // 2 was too short, then 6 (user 10-10)
 
     /// <summary>How often to look whether the files are still where they were (the lifted list says "not found").</summary>
     private static readonly TimeSpan GoneCheck = TimeSpan.FromSeconds(2);
@@ -175,6 +175,7 @@ internal sealed class TransitWatcher : NoticeWatcher
         card.Gone = _gone;
         card.Look = "in" + _adds;
         card.DebutFor = debut ? DebutLength : null;
+        card.ByHand = debut;
         Board.Hold(Key, card);
     }
 

@@ -107,6 +107,13 @@ public sealed class ActivityState
     [JsonIgnore]
     public IReadOnlyList<string>? Apps { get; set; }
 
+    /// <summary>
+    /// Came from the person's own act — files dropped on the pill (10-10): it debuts even with the mouse on the pills (they're looking
+    /// right at it). Not serialized to JSON.
+    /// </summary>
+    [JsonIgnore]
+    public bool ByHand { get; set; }
+
     /// <summary>The transit station's files, oldest first (TODO ④, 10-10). Not serialized to JSON.</summary>
     [JsonIgnore]
     public IReadOnlyList<string>? Files { get; set; }

@@ -831,6 +831,56 @@ public sealed class SystemWatchTests
     }
 
     [Fact]
+    public void A_debut_stays_while_the_mouse_is_on_it_and_gets_its_whole_time_after()
+    {
+        var stack = new CardStack();
+        static ActivityState Card(string look, TimeSpan? debut) => new()
+        {
+            RawKind = ActivityState.KindNotice, Title = look, Stage = SystemNotice.HoldStage, SourcePath = "system:calendar", Look = look,
+            DebutFor = debut, UpdatedAt = T0,
+        };
+
+        var six = TimeSpan.FromSeconds(6);
+        stack.Update([], T0);
+        stack.Update([Card("now:a", null)], T0.AddSeconds(3));
+        stack.Update([Card("end:a", six)], T0.AddSeconds(4));
+        stack.SetHover(true, T0.AddSeconds(5));
+        stack.Update([Card("end:a", six)], T0.AddSeconds(30));
+        Assert.Equal("system:calendar", stack.DebutKey);   // the mouse came: it stays (it used to be dropped)
+        stack.SetHover(false, T0.AddSeconds(30));
+        stack.Update([Card("end:a", six)], T0.AddSeconds(35));
+        Assert.Equal("system:calendar", stack.DebutKey);   // its whole 6 s again from the mouse leaving
+        stack.Update([Card("end:a", six)], T0.AddSeconds(36.5));
+        Assert.Null(stack.DebutKey);
+    }
+
+    [Fact]
+    public void Files_dropped_on_the_pill_debut_with_the_mouse_still_there()
+    {
+        var stack = new CardStack();
+        var ten = TimeSpan.FromSeconds(10);
+        ActivityState Transit(string look, TimeSpan? debut, string? title = null) => new()
+        {
+            RawKind = ActivityState.KindNotice, Title = title ?? "中转站", Stage = SystemNotice.HoldStage, SourcePath = "system:transit",
+            Look = look, DebutFor = debut, ByHand = debut is not null, UpdatedAt = T0,
+        };
+        var music = new ActivityState { RawKind = ActivityState.KindMusic, SourcePath = "m", UpdatedAt = T0 };
+
+        stack.Update([music], T0);
+        stack.SetHover(true, T0.AddSeconds(3));
+        stack.Update([music], T0.AddSeconds(3));
+        Assert.Equal("m", stack.Shown!.Key);
+        stack.Update([music, Transit("in1", ten)], T0.AddSeconds(4));
+        Assert.Equal("system:transit", stack.DebutKey);   // dropped there: up at once
+        Assert.Equal("system:transit", stack.Shown!.Key);
+        stack.SetHover(false, T0.AddSeconds(8));
+        stack.Update([music, Transit("in1", ten)], T0.AddSeconds(17));
+        Assert.Equal("system:transit", stack.Shown!.Key);   // 10 s from the mouse leaving
+        stack.Update([music, Transit("in1", ten)], T0.AddSeconds(18.5));
+        Assert.Null(stack.DebutKey);
+    }
+
+    [Fact]
     public void Calendar_card_new_looks_debut_their_own_length()
     {
         var stack = new CardStack();

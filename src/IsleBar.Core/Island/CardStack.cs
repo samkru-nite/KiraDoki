@@ -292,9 +292,33 @@ public sealed class CardStack
         if (_hovering && !hovering)
         {
             _leftAt = now;
+            RestartDebut(now);
         }
 
         _hovering = hovering;
+    }
+
+    /// <summary>
+    /// The mouse left while a card was having its turn on the big pill: its whole time again from now (user 10-10: "the mouse was on
+    /// it, so I didn't read it yet" — any pause counts from when the mouse goes, not from when the card came up).
+    /// </summary>
+    private void RestartDebut(DateTimeOffset now)
+    {
+        if (_debutKey is not { } key)
+        {
+            return;
+        }
+
+        if (_temps.TryGetValue(key, out var t))
+        {
+            t.Last = now;
+        }
+        else
+        {
+            _debutSince = now;
+        }
+
+        _notes.Add($"debut of {key}: the mouse left, its time starts again");
     }
 
     /// <summary>"Close" on a status card that can't be ended from here (music, a download, an agent working): hidden until it ends.</summary>
@@ -557,21 +581,32 @@ public sealed class CardStack
         {
             foreach (var f in fresh)
             {
+                if (cards.FirstOrDefault(c => c.Key == f.Key) is { State.ByHand: true } hand)
+                {
+                    // the person's own act (files dropped on the pill, 10-10): up at once, the mouse there or not
+                    if (_debutKey is { } before && before != hand.Key && _temps.ContainsKey(before))
+                    {
+                        _debutQueue.Insert(0, before);   // a temporary card it pushed aside comes back after it
+                    }
+
+                    _debutKey = hand.Key;
+                    _debutSince = now;
+                    _shownKey = hand.Key;
+                    _notes.Add($"{f.Key} became status by hand: debut now, mouse or not");
+                    continue;
+                }
+
                 _notes.Add($"{f.Key} became status, no debut (mouse {(_hovering ? "on the pills" : "just left")})");
             }
 
             var debuts = _debutQueue.Count(k => !_temps.ContainsKey(k));
-            if ((_debutKey is not null && !_temps.ContainsKey(_debutKey)) || debuts > 0)
+            if (debuts > 0)
             {
-                _notes.Add($"debut of {(_debutKey is { } d && !_temps.ContainsKey(d) ? d : "-")} and {debuts} waiting dropped (mouse)");
+                _notes.Add($"{debuts} waiting debut(s) dropped (mouse)");
             }
 
-            // the mouse is there: new status cards go straight to their cells; temporary ones wait (and the one up stays up)
-            if (_debutKey is not null && !_temps.ContainsKey(_debutKey))
-            {
-                _debutKey = null;
-            }
-
+            // the mouse is there: new status cards go straight to their cells; temporary ones wait. The one up stays up — its time
+            // starts again when the mouse leaves (RestartDebut; user 10-10: it used to be dropped, and went 2 s after the mouse left)
             _debutQueue.RemoveAll(k => !_temps.ContainsKey(k));
             return;
         }

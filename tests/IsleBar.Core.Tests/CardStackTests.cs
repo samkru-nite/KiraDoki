@@ -517,7 +517,9 @@ public sealed class CardStackTests
         Assert.Contains("system:toast:qq", Keys(stack));
         stack.SetHover(false, T0.AddSeconds(20));
         stack.Update([music], T0.AddSeconds(22));
-        Assert.Equal("system:toast:qq", ShownKey(stack));   // the hold over: the next in the line
+        Assert.Equal("copied", ShownKey(stack));   // its whole time again from the mouse leaving (user 10-10)
+        stack.Update([music], T0.AddSeconds(26));
+        Assert.Equal("system:toast:qq", ShownKey(stack));   // then the next in the line
     }
 
     // ---------------- Keep in the small pill (甲⑤) ----------------
