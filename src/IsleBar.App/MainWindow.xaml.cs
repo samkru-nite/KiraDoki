@@ -181,6 +181,11 @@ public sealed partial class MainWindow : Window
             // pointer between press and release takes the release, and the pill then waited for it forever and ignored every
             // later press, right clicks included (10-08)
             _liftPress = IsInside(source, PillBody);
+            if (_liftPress)
+            {
+                DragReady();   // the transit station may be dragged out from this press: ready now, not when the drag begins
+            }
+
             if (_liftPress && _lift?.OpenKey is not null)
             {
                 PressFeedback.Hold(PillBody);   // this click puts the card back: the pill stays down until it lands (user 10-08)
@@ -1675,12 +1680,10 @@ public sealed partial class MainWindow : Window
         e.DragUIOverride.IsGlyphVisible = false;
         if (_draggingOut)
         {
-            // our own drag: over its place, Windows' drag image hides and our picture of the pill takes over (the same, so nothing
-            // shows the change) — at the drop Windows took its image away before we could put ours: "it vanished for a moment"
-            // (user 10-11, slow motion). Judged here too, so the two swap in the same moment.
+            // our own drag: over its place our picture of the pill lies under Windows' drag image (TrackHome) — Windows' stays
+            // shown, moved by the system: hidden for ours, ours stuttered whenever the bar was busy (user 10-11)
             NativeMethods.GetCursorPos(out var at);
             TrackHome(at);
-            e.DragUIOverride.IsContentVisible = !_dragBack;
             return;
         }
 
@@ -1774,6 +1777,8 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private void WatchDrags()
     {
+        // made now, not at the first drag: making a window took part of the moment the transit station stuck to its place (10-11)
+        _catcher ??= NewCatcher();
         _dragWatch = DispatcherQueue.CreateTimer();
         _dragWatch.Interval = TimeSpan.FromMilliseconds(50);
         _dragWatch.Tick += (_, _) =>
@@ -1815,7 +1820,9 @@ public sealed partial class MainWindow : Window
             && (Math.Abs(at.X - _pressAt.X) >= DragMove || Math.Abs(at.Y - _pressAt.Y) >= DragMove)));
         if (!dragging || bar is not { } rect || !NativeMethods.GetWindowRect(_hwnd, out var window))
         {
-            if (_catcher is { IsUp: true, Holding: false } && !down)   // (holding: the station's picture still on its way home)
+            // (holding: the station's picture still on its way home). Not while our own drag hasn't ended: the button comes up a
+            // little before Windows says the drop is done — taken down then, the put-back slid on a hidden window (user 10-11)
+            if (_catcher is { Holding: false } catcher && (catcher.IsUp || catcher.IsWarm) && !down && !_draggingOut)
             {
                 _catcher.Down();
                 _zone = null;
@@ -1849,13 +1856,15 @@ public sealed partial class MainWindow : Window
         }
 
         _zone = span;
-        _catcher ??= new IslandUi.DropCatcher { Over = e => OnDropOver(e), Left = () => OnDropLeft(), Dropped = OnDropped };
+        _catcher ??= NewCatcher();
         // the station dragged out: a pill's height more above the taskbar — its picture is drawn here while it's over its place, and
         // a third on its place can stick that far up (user 10-11: drawn only within the taskbar it "stuck to the taskbar's edge")
         var above = CatcherOverlap + (_draggingOut ? DpiSetup.Px(PillGeometry.Height) : 0);
         _catcher.Cover(span.Left, rect.Top - above, span.Right, rect.Bottom);
         TaskbarHost.Log($"dropzone: up {span.Left}–{span.Right} × {rect.Top}–{rect.Bottom} ({(big ? "big pill out" : "circle only")})");
     }
+
+    private IslandUi.DropCatcher NewCatcher() => new() { Over = e => OnDropOver(e), Left = () => OnDropLeft(), Dropped = OnDropped };
 
     /// <summary>The taskbar this bar sits on (screen pixels), or null when it can't be found.</summary>
     private NativeMethods.RECT? TaskbarRect()
@@ -1896,19 +1905,11 @@ public sealed partial class MainWindow : Window
             var deferral = e.GetDeferral();
             try
             {
-                var items = new List<Windows.Storage.IStorageItem>();
-                foreach (var path in transit.Paths)
-                {
-                    if (File.Exists(path))
-                    {
-                        items.Add(await Windows.Storage.StorageFile.GetFileFromPathAsync(path));
-                    }
-                    else if (Directory.Exists(path))
-                    {
-                        items.Add(await Windows.Storage.StorageFolder.GetFolderFromPathAsync(path));
-                    }
-                }
-
+                // got ready as it was pressed (DragReady): Windows shows no drag image till this is done, and the pill stuck to its
+                // place meanwhile (~0.12 s, 10-11)
+                var prepared = _dragReady ?? ReadyDragOut(transit);
+                _dragReady = null;
+                var (items, picture) = await prepared;
                 if (items.Count == 0)
                 {
                     TaskbarHost.Log("transit: drag — none of the files are there any more");
@@ -1919,11 +1920,11 @@ public sealed partial class MainWindow : Window
                 e.Data.SetStorageItems(items);
                 e.AllowedOperations = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy
                     | Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
-                if (await PillPicture() is { } picture)
+                if (picture is { } shot)
                 {
                     // the whole big pill is lifted and follows the mouse, held where it was pressed (TODO ④ 丙). The anchor and
                     // GetPosition are the same pixels: scaled once more it sat twice as far off at 200 % (user 10-11)
-                    e.DragUI.SetContentFromSoftwareBitmap(picture.Bitmap, _grab);
+                    e.DragUI.SetContentFromSoftwareBitmap(shot.Bitmap, _grab);
                 }
 
                 TaskbarHost.Log($"transit: drag started with {items.Count}");

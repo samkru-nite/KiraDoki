@@ -93,6 +93,25 @@ internal sealed class DropCatcher : Window
 
     public bool IsUp { get; private set; }
 
+    /// <summary>Shown off-screen, ready to be moved in (<see cref="Warm"/>).</summary>
+    public bool IsWarm { get; private set; }
+
+    /// <summary>
+    /// Shown off-screen ahead of a drag that may come (the transit station pressed, 10-11): showing it took part of the ~0.12 s the
+    /// station stuck to its place before Windows' drag image came — moved in then, it's ready. Off-screen, it takes no mouse from the pill.
+    /// </summary>
+    public void Warm()
+    {
+        if (IsUp || IsWarm)
+        {
+            return;
+        }
+
+        AppWindow.MoveAndResize(new Windows.Graphics.RectInt32(-32000, -32000, 64, 64));
+        AppWindow.Show(activateWindow: false);
+        IsWarm = true;
+    }
+
     /// <summary>Up over this rectangle (screen pixels), or moved there when it's up already.</summary>
     public void Cover(int left, int top, int right, int bottom)
     {
@@ -100,8 +119,13 @@ internal sealed class DropCatcher : Window
         _at = (left, top);
         if (!IsUp)
         {
-            AppWindow.Show(activateWindow: false);
+            if (!IsWarm)
+            {
+                AppWindow.Show(activateWindow: false);
+            }
+
             IsUp = true;
+            IsWarm = false;
         }
 
         SeeThrough.OnTop(_hwnd);
@@ -118,10 +142,11 @@ internal sealed class DropCatcher : Window
         }
 
         HideHand();
-        if (IsUp)
+        if (IsUp || IsWarm)
         {
             AppWindow.Hide();
             IsUp = false;
+            IsWarm = false;
         }
     }
 }

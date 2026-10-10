@@ -36,13 +36,6 @@ public sealed partial class MainWindow
     /// <summary>The card the big pill should draw for the state decided now.</summary>
     private Card? WantedBig => _snapshot.IsActive ? _shownCard : null;
 
-    /// <summary>The big pill's card goes at once, not dropping out (the transit station lifted off by a drag, MainWindow.Transit).</summary>
-    private bool _vanishBig;
-
-    /// <summary>The new big card comes unseen (the transit station brought back over its place: it waits hidden for the hand, which
-    /// puts it down with a picture — MainWindow.Transit).</summary>
-    private bool _unseenBig;
-
     /// <summary>The scene to draw differs from the one drawn: another card on the big pill, or other cells.</summary>
     private bool SceneChanged()
         => WantedBig?.Key != _bigCard?.Key
@@ -79,8 +72,6 @@ public sealed partial class MainWindow
 
         if (!SceneChanged() || !_placement.Visible || !_taskbar.IsAttached)
         {
-            _vanishBig = false;
-            _unseenBig = false;
             RenderTaskCells();
             RenderIsland();
             return;
@@ -131,7 +122,7 @@ public sealed partial class MainWindow
 
             // stand-ins for the old look over a taskbar-coloured sheet, while the new state is drawn underneath (no flash of it)
             Put(new Rectangle { Width = spanWidth, Height = _layout.Height / DpiSetup.Scale, Fill = Root.Background }, 0, 0);
-            if (oldBig is not null && oldShot is not null && !_vanishBig)   // lifted off by a drag: gone at once, no stand-in
+            if (oldBig is not null && oldShot is not null && !InHand(oldBig))   // lifted off by a drag: gone at once, no stand-in
             {
                 new Mover(this, oldShot, GlowOf(oldBig)).Place(before.BigBox!.Value, before.BigBox.Value.X, before.RowTop, oldIconX, 1, 1, 0, 1);
             }
@@ -188,8 +179,6 @@ public sealed partial class MainWindow
         finally
         {
             Phase("end");
-            _vanishBig = false;
-            _unseenBig = false;
             TaskbarHost.Log($"transition{phases}");   // ms since it started — a slow step shows here
             FlyLayer.Children.Clear();
             PillRow.Opacity = 1;
@@ -326,7 +315,11 @@ public sealed partial class MainWindow
         if (a.Big is { } ac && a.BigBox is { } aBox)
         {
             var mover = new Mover(this, a.Shot!, GlowOf(ac));
-            if (b.Big?.Key == ac.Key && b.BigBox is { } same)
+            if (InHand(ac))
+            {
+                mover.Place(aBox, aBox.X, row, a.IconX, 1, 1, 0, 0);   // lifted off by a drag: the drag image is it now
+            }
+            else if (b.Big?.Key == ac.Key && b.BigBox is { } same)
             {
                 frames.Add((t, p) => mover.Place(SwapMotion.Between(aBox, same, p), SwapMotion.Lerp(aBox.X, same.X, p), row, a.IconX, 1, 1, 0, 1));
             }
@@ -374,10 +367,6 @@ public sealed partial class MainWindow
                     _oldIconCentre = (x + a.IconX, y + (PillGeometry.Height / 2));   // a lifted card's icon rides down to it
                 });
             }
-            else if (_vanishBig)
-            {
-                mover.Place(aBox, aBox.X, row, a.IconX, 1, 1, 0, 0);   // lifted off by a drag: the drag image is it now
-            }
             else
             {
                 frames.Add((t, p) =>
@@ -393,7 +382,7 @@ public sealed partial class MainWindow
         if (b.Big is { } bc && b.BigBox is { } bBox && bc.Key != a.Big?.Key)
         {
             var mover = new Mover(this, b.Shot!, GlowOf(bc));
-            if (_unseenBig)
+            if (InHand(bc))
             {
                 mover.Place(bBox, bBox.X, row, b.IconX, 1, 1, 0, 0);   // waits hidden for the hand (the transit station)
             }

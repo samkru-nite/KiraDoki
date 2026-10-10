@@ -88,6 +88,15 @@ public sealed partial class MainWindow
             GiveCellBack();
         }
 
+        // in the hand, only the hand decides: over its place (or the only card) the station, unseen; away, the card under it. The
+        // stack's own turns (a debut started again as the mouse left) set off swaps of their own mid-drag: a pill flashed up on
+        // the taskbar while it was still held (user 10-11)
+        if (_draggingOut)
+        {
+            var station = _cards.Cards.FirstOrDefault(c => c.Key == TransitKey);
+            return _dragBack || _keepUnseen ? station ?? shown : OtherThanTransit() ?? shown;
+        }
+
         // lifted off — unless it was the only card: then it stays on the big pill unseen while in the hand (_keepUnseen)
         return PickedUp && shown?.Key == TransitKey && !(_keepUnseen && _draggingOut) ? null : shown;
     }
@@ -171,6 +180,45 @@ public sealed partial class MainWindow
         return cards.FirstOrDefault(c => c.Pinned) ?? cards.FirstOrDefault(c => c.Key == _beforeTransit) ?? cards.FirstOrDefault();
     }
 
+    /// <summary>What a drag out of the station needs, got ready as the big pill is pressed (<see cref="DragReady"/>).</summary>
+    private Task<(List<Windows.Storage.IStorageItem> Items, (Windows.Graphics.Imaging.SoftwareBitmap Bitmap, double Scale)? Picture)>? _dragReady;
+
+    /// <summary>
+    /// The big pill pressed while it shows the transit station: the files, the pill's picture and the drop window (shown off-screen)
+    /// are got ready now. Done when the drag began, they kept the pill stuck to its place ~0.12 s (files 40 ms, picture 25 ms, the
+    /// drop window 55 ms) before Windows' drag image came — then it jumped to the mouse (user 10-11 slow motion). A click only wastes it.
+    /// </summary>
+    private void DragReady()
+    {
+        if (!TransitShown || _feed.Watchers?.Transit is not { } transit)
+        {
+            _dragReady = null;
+            return;
+        }
+
+        _catcher?.Warm();
+        _dragReady = ReadyDragOut(transit);
+    }
+
+    private async Task<(List<Windows.Storage.IStorageItem>, (Windows.Graphics.Imaging.SoftwareBitmap Bitmap, double Scale)?)> ReadyDragOut(
+        SystemWatch.TransitWatcher transit)
+    {
+        var items = new List<Windows.Storage.IStorageItem>();
+        foreach (var path in transit.Paths)
+        {
+            if (File.Exists(path))
+            {
+                items.Add(await Windows.Storage.StorageFile.GetFileFromPathAsync(path));
+            }
+            else if (Directory.Exists(path))
+            {
+                items.Add(await Windows.Storage.StorageFolder.GetFolderFromPathAsync(path));
+            }
+        }
+
+        return (items, await PillPicture());
+    }
+
     /// <summary>The station's drag began: it is lifted off the pills, the card under it comes up.</summary>
     private void PickUp(string[] paths)
     {
@@ -208,8 +256,9 @@ public sealed partial class MainWindow
             TaskbarHost.Log("dropzone: " + ex.Message);
         }
 
-        HoldOverPlace();   // our picture is there before the pill hides (Windows' image comes a few frames later, and is hidden then)
-        HideSoon();
+        // our picture there, the pill hides in the same go (Windows' image comes over ours a few frames later). Hidden 50 ms later, as
+        // when Windows' image was hidden for ours, the pill left on its place and the one in the hand made a double (user 10-11 photo)
+        HoldOverPlace();
         Restage();
     }
 
@@ -228,28 +277,22 @@ public sealed partial class MainWindow
     private bool _keepUnseen;
 
     /// <summary>The big pill is drawn but not seen: the station in the hand (when it was the only card) or waiting for it.</summary>
-    private bool StationUnseen => DateTimeOffset.UtcNow >= _unseenAfter
-                                  && (_returnPending || (_keepUnseen && PickedUpOrHeld && _shownCard?.Key == TransitKey));
+    private bool StationUnseen => _returnPending || (_keepUnseen && PickedUpOrHeld && _shownCard?.Key == TransitKey);
 
     private bool PickedUpOrHeld => _draggingOut || DateTimeOffset.UtcNow < _heldOutUntil;
 
     /// <summary>
     /// The station's picture in the hand while it's over its place: drawn on the drop window (<see cref="IslandUi.DropCatcher"/>,
-    /// see-through, over this stretch of taskbar and a pill's height above it), following the mouse every frame in place of Windows'
-    /// drag image (hidden then, <c>DragUIOverride.IsContentVisible</c>) — so letting go needs no hand-over: Windows takes its image away
-    /// at once at the drop, and ours came a moment later ("it vanished for an instant", user 10-11, slow motion). Not in the bar's own
-    /// window: a strip inside the taskbar, it stuck the picture to the taskbar's edge, cut it at its end, and had to be reshaped every
-    /// frame to show it (it stuttered).
+    /// see-through, over this stretch of taskbar and a pill's height above it), following the mouse every frame <em>under</em> Windows'
+    /// drag image — so letting go needs no hand-over: Windows takes its image away at once at the drop, and ours, put there only then,
+    /// came a moment later ("it vanished for an instant", user 10-11, slow motion). Under it, not in its place: hidden for ours, the
+    /// pill in the hand stuttered whenever the bar was busy; Windows moves its own image. Windows' drag image is no window of the
+    /// z-order (none was found over ours while dragging, 10-11), so ours, however topmost, stays under it. Not in the bar's own window:
+    /// a strip inside the taskbar, it stuck the picture to the taskbar's edge, cut it at its end, and had to be reshaped every frame.
     /// </summary>
     private bool _handShown;
 
-    /// <summary>Picked up, the pill hides this much after the picture shows over it (two windows: each draws in its own time).</summary>
-    private static readonly TimeSpan HideBehindPicture = TimeSpan.FromMilliseconds(50);
-
-    private DateTimeOffset _unseenAfter = DateTimeOffset.MinValue;
-    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _hideTimer;   // a field: a timer only in a local gets collected (10-10)
-
-    /// <summary>Over its place: our picture takes over from Windows' drag image, where that was.</summary>
+    /// <summary>Over its place: our picture lies under Windows' drag image, where that is.</summary>
     private void HoldOverPlace()
     {
         if (_handShown || _handShot is not { } shot || _catcher is not { IsUp: true } catcher)
@@ -285,50 +328,32 @@ public sealed partial class MainWindow
         _catcher?.MoveHand(at.X - _grab.X, at.Y - _grab.Y);
     }
 
-    /// <summary>Hides the pill under the picture a moment later (and redraws then).</summary>
-    private void HideSoon()
-    {
-        _unseenAfter = DateTimeOffset.UtcNow + HideBehindPicture;
-        _hideTimer ??= _ui.CreateTimer();
-        _hideTimer.Interval = HideBehindPicture + TimeSpan.FromMilliseconds(5);
-        _hideTimer.IsRepeating = false;
-        _hideTimer.Tick -= HideNow;
-        _hideTimer.Tick += HideNow;
-        _hideTimer.Start();
-    }
-
-    private void HideNow(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
-    {
-        if (!_flying)
-        {
-            RenderIsland();
-        }
-    }
-
     /// <summary>
-    /// Every 50 ms while it's in the hand, and once more as it's let go: moved off its place → the card the big pill would show
-    /// without it comes up; back on it (by the pill's area, <see cref="InSlot"/>) → that card goes down and the place waits for it.
+    /// Every 50 ms while it's in the hand: over its place (by the pill's area, <see cref="InSlot"/>) our picture lies under Windows'
+    /// drag image at once; the cards follow — moved off, the card the big pill would show without it comes up; back on, that card goes
+    /// down and the place waits for it. A swap still flying finishes first (the next look catches up): one cut short left the next
+    /// one undone and the bar's own tick finished it without the station hidden — a pill flashed up mid-drag (user 10-11).
     /// </summary>
     private void TrackHome(NativeMethods.POINT at)
     {
         var home = InSlot(at);
-        if (home == _dragBack)
+        if (home && !_handShown)
+        {
+            HoldOverPlace();
+        }
+        else if (!home && _handShown)
+        {
+            LetHandGo();
+        }
+
+        if (home == _dragBack || _flying)
         {
             return;
         }
 
         _dragBack = home;
-        TaskbarHost.Log(home ? "transit: dragged back over the pills" : "transit: dragged away again");
         _returnPending = home;
-        if (home)
-        {
-            HoldOverPlace();
-        }
-        else
-        {
-            LetHandGo();
-        }
-
+        TaskbarHost.Log(home ? "transit: dragged back over the pills" : "transit: dragged away again");
         if (_keepUnseen)
         {
             RenderIsland();   // the only card: it never left the big pill, nothing moves
@@ -337,20 +362,18 @@ public sealed partial class MainWindow
 
         if (home)
         {
-            _unseenBig = true;   // the card that took its place goes down; it comes up unseen
-            _cards.Choose(TransitKey, DateTimeOffset.UtcNow);
+            _cards.Choose(TransitKey, DateTimeOffset.UtcNow);   // the card that took its place goes down; the station comes up unseen
         }
-        else
+        else if (OtherThanTransit() is { } other)
         {
-            _vanishBig = true;   // its unseen self goes; the other card comes back up
-            if (OtherThanTransit() is { } other)
-            {
-                _cards.Choose(other.Key, DateTimeOffset.UtcNow);
-            }
+            _cards.Choose(other.Key, DateTimeOffset.UtcNow);   // its unseen self goes; the other card comes back up
         }
 
         Restage();
     }
+
+    /// <summary>The station is in the hand or waiting unseen for it: in a card swap it neither shows nor leaves a stand-in.</summary>
+    private bool InHand(Card? card) => card?.Key == TransitKey && (PickedUpOrHeld || _returnPending);
 
     /// <summary>The drag ended (dropped, cancelled, or the button came up without word): moved files leave; the next ticks show what's left.</summary>
     private void FinishDragOut(string how)
@@ -361,39 +384,73 @@ public sealed partial class MainWindow
         }
 
         NativeMethods.GetCursorPos(out var at);
-        TrackHome(at);   // where it was let go decides, not the last 50 ms look
+        var back = InSlot(at);   // where it was let go decides, not the last 50 ms look
+        var wasHome = _dragBack;   // the cards as they stand: the station waiting unseen on the big pill, or the other card up
         _draggingOut = false;
+        _dragBack = false;
         var late = _upSince is { } up ? $", {(DateTime.UtcNow - up).TotalMilliseconds:0} ms after the button came up" : string.Empty;
         _upSince = null;
-        TaskbarHost.Log($"transit: dropped — {how}{(_dragBack ? " (back on the pills)" : string.Empty)}{late}"
+        TaskbarHost.Log($"transit: dropped — {how}{(back ? " (back on the pills)" : string.Empty)}{late}"
                         + $"{(_keepUnseen ? " [only card]" : string.Empty)}, pill {(PillBody.Visibility == Visibility.Visible ? "shown" : "folded")}");
-        var back = _dragBack;
-        if (!back)
-        {
-            _heldOutUntil = DateTimeOffset.UtcNow + PutDownLength;
-            LetHandGo();
-        }
-
         _ = AfterDragOut(_draggedPaths, _dragSince, back);
-        _dragBack = false;
         _draggedPaths = [];
         if (back)
         {
-            _ = PutBackAsync(at);
+            _ = PutBackAsync(at, wasHome);
+            return;
         }
-        else if (_keepUnseen)
+
+        _heldOutUntil = DateTimeOffset.UtcNow + PutDownLength;
+        LetHandGo();
+        if (_keepUnseen || wasHome)
         {
-            _vanishBig = true;   // the unseen only card goes without a stand-in; it comes back (copied) or not (moved) after
-            Restage();
+            // the unseen station goes without a stand-in (the only card: it comes back, copied, or not, moved); waiting on its place,
+            // the card under it comes back up
+            _returnPending = false;
+            if (!_keepUnseen && OtherThanTransit() is { } other)
+            {
+                _cards.Choose(other.Key, DateTimeOffset.UtcNow);
+            }
+
+            _ = RestageWhenStill();
         }
     }
 
+    /// <summary>Restages once the swap still flying is done (a swap asked for mid-flight is dropped).</summary>
+    private async Task RestageWhenStill()
+    {
+        for (var wait = 0; _flying && wait < 40; wait++)
+        {
+            await Task.Delay(25);
+        }
+
+        Restage();
+    }
+
+    /// <summary>Put back while the card under it was up: that card goes down, the station takes the big pill unseen.</summary>
+    private async Task SettleHome()
+    {
+        for (var wait = 0; _flying && wait < 40; wait++)
+        {
+            await Task.Delay(25);
+        }
+
+        if (!_keepUnseen)
+        {
+            _cards.Choose(TransitKey, DateTimeOffset.UtcNow);
+        }
+
+        Restage();
+    }
+
     /// <summary>
-    /// Put back (user 10-11): the pill's picture — already in the hand over its place, on the drop window — slides from where it was
-    /// let go into its place, fast at once, slowing in, no bounce (<see cref="SwapMotion.PutBack"/>); then the real pill, there unseen
-    /// all along, shows under it and the picture fades off. The drop window stays up till then (<see cref="IslandUi.DropCatcher.Holding"/>).
+    /// Put back (user 10-11): the pill's picture — lying under Windows' drag image while over its place, on the drop window — slides
+    /// from where it was let go into its place, fast at once, slowing in, no bounce (<see cref="SwapMotion.PutBack"/>). Meanwhile the
+    /// cards settle: if the card under it was still up (put back as a swap was flying), it goes down now and the station waits unseen.
+    /// Then the real pill shows under the picture and the picture fades off. The drop window stays up till then
+    /// (<see cref="IslandUi.DropCatcher.Holding"/>).
     /// </summary>
-    private async Task PutBackAsync(NativeMethods.POINT at)
+    private async Task PutBackAsync(NativeMethods.POINT at, bool wasHome)
     {
         CompositionTarget.Rendering -= FollowHand;   // it stays where it was let go
         var catcher = _catcher;
@@ -404,30 +461,40 @@ public sealed partial class MainWindow
 
         try
         {
-            for (var wait = 0; _flying && wait < 40; wait++)
+            _returnPending = true;
+            _feed.Watchers?.Transit?.PutBack();   // up for 2 s once down: a pinned card mustn't take the big pill at once (user 10-11)
+            var settling = wasHome ? Task.CompletedTask : SettleHome();
+            HoldOverPlace();   // (normally there already)
+            if (_handShown && catcher is { IsUp: true })
             {
-                await Task.Delay(25);   // the card that had come up is still going down (moved back on at the very last moment)
+                var s = DpiSetup.Scale;
+                var (fromX, fromY) = ((double)at.X - _grab.X, (double)at.Y - _grab.Y);   // screen pixels, the picture's top-left
+                var (toX, toY) = ((double)_slot.Left, (double)_slot.Top);
+                var distance = Math.Sqrt(Math.Pow(toX - fromX, 2) + Math.Pow(toY - fromY, 2)) / s;
+                var length = Animations.On ? SwapMotion.PutBackLength(distance) : TimeSpan.FromMilliseconds(1);
+                TaskbarHost.Log($"put back: from {fromX:0},{fromY:0} to {toX:0},{toY:0} px, {distance:0} dip in {length.TotalMilliseconds:0} ms"
+                                + (wasHome ? string.Empty : " (the card under it goes down now)"));
+                await Animate(length, t =>
+                {
+                    var e = SwapMotion.PutBack(t);
+                    catcher.MoveHand(SwapMotion.Lerp(fromX, toX, e), SwapMotion.Lerp(fromY, toY, e));
+                });
+            }
+            else
+            {
+                TaskbarHost.Log($"put back: no picture in the hand (shown {_handShown}, drop window up {catcher?.IsUp == true})");
             }
 
-            HoldOverPlace();   // (normally there already)
-            if (!_handShown || catcher is null || _layout.Big is not { } big || _flying || !NativeMethods.GetWindowRect(_hwnd, out var window))
+            await settling;
+            for (var wait = 0; _flying && wait < 40; wait++)
+            {
+                await Task.Delay(25);   // the real pill shows only once the cards stand still
+            }
+
+            if (!_handShown || catcher is null)
             {
                 return;
             }
-
-            var s = DpiSetup.Scale;
-            var (fromX, fromY) = ((double)at.X - _grab.X, (double)at.Y - _grab.Y);   // screen pixels, the picture's top-left
-            var (toX, toY) = ((double)window.Left + big.Left, (double)window.Top + big.Top);
-            var distance = Math.Sqrt(Math.Pow(toX - fromX, 2) + Math.Pow(toY - fromY, 2)) / s;
-            var length = Animations.On ? SwapMotion.PutBackLength(distance) : TimeSpan.FromMilliseconds(1);
-            TaskbarHost.Log($"put back: from {fromX:0},{fromY:0} to {toX:0},{toY:0} px, {distance:0} dip in {length.TotalMilliseconds:0} ms");
-
-            _feed.Watchers?.Transit?.PutBack();   // up for 2 s once down: a pinned card mustn't take the big pill at once (user 10-11)
-            await Animate(length, t =>
-            {
-                var e = SwapMotion.PutBack(t);
-                catcher.MoveHand(SwapMotion.Lerp(fromX, toX, e), SwapMotion.Lerp(fromY, toY, e));
-            });
 
             // down: the real pill shows under the picture, then the picture fades off it. Swapped in one frame, they flashed — the
             // picture was taken under the pressing hand (lit or dimmed), the pill now looks as it does (user 10-11)
