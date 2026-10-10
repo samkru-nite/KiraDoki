@@ -25,8 +25,67 @@ internal sealed class DropCatcher : Window
         root.DragOver += (_, e) => Over?.Invoke(e);
         root.DragLeave += (_, _) => Left?.Invoke();
         root.Drop += (_, e) => Dropped?.Invoke(e);
+        root.Children.Add(_layer);
         Content = root;
     }
+
+    // ---- the transit station in the hand (TODO ④ 丙, user 10-11): over its place its picture is drawn here, not in the bar's own
+    // window — that is a strip inside the taskbar: it couldn't draw above it ("sticks to the taskbar's edge"), was cut at its end,
+    // and showing a moving picture there meant reshaping the window every frame (it stuttered). This one is see-through.
+    private readonly Canvas _layer = new() { IsHitTestVisible = false };
+    private Image? _hand;
+    private (int Left, int Top) _at;   // the window's top-left on screen (pixels)
+
+    /// <summary>Shows the picture (sized in dip like the pill it shows).</summary>
+    public void ShowHand(ImageSource picture, double width, double height)
+    {
+        if (_hand is null)
+        {
+            _hand = new Image { Stretch = Stretch.Fill, IsHitTestVisible = false };
+            _layer.Children.Add(_hand);
+        }
+
+        _hand.Source = picture;
+        _hand.Width = width;
+        _hand.Height = height;
+        _hand.Opacity = 1;
+        _hand.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>Puts the picture's top-left at this screen point (pixels).</summary>
+    public void MoveHand(double x, double y)
+    {
+        if (_hand is null)
+        {
+            return;
+        }
+
+        var scale = Content.XamlRoot?.RasterizationScale ?? 1;
+        Canvas.SetLeft(_hand, (x - _at.Left) / scale);
+        Canvas.SetTop(_hand, (y - _at.Top) / scale);
+    }
+
+    public double HandOpacity
+    {
+        set
+        {
+            if (_hand is not null)
+            {
+                _hand.Opacity = value;
+            }
+        }
+    }
+
+    public void HideHand()
+    {
+        if (_hand is not null)
+        {
+            _hand.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    /// <summary>While the picture is on its way home the window stays up (the button is up: the drag watch would take it down).</summary>
+    public bool Holding { get; set; }
 
     public Action<DragEventArgs>? Over { get; set; }
     public Action? Left { get; set; }
@@ -38,6 +97,7 @@ internal sealed class DropCatcher : Window
     public void Cover(int left, int top, int right, int bottom)
     {
         AppWindow.MoveAndResize(new Windows.Graphics.RectInt32(left, top, right - left, bottom - top));
+        _at = (left, top);
         if (!IsUp)
         {
             AppWindow.Show(activateWindow: false);
@@ -52,6 +112,12 @@ internal sealed class DropCatcher : Window
 
     public void Down()
     {
+        if (Holding)
+        {
+            return;
+        }
+
+        HideHand();
         if (IsUp)
         {
             AppWindow.Hide();

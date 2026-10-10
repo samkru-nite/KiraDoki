@@ -177,4 +177,20 @@ public static class SwapMotion
     public static double EaseIn(double t) => Math.Clamp(t, 0, 1) * Math.Clamp(t, 0, 1);
 
     public static double EaseOut(double t) => 1 - Math.Pow(1 - Math.Clamp(t, 0, 1), 3);
+
+    /// <summary>
+    /// Put back from the hand (the transit station let go over its place, user 10-11): fast at once — the hand was moving — then
+    /// slowing into its place, no bounce (it's set down, not popping up; the swap's spring overshot along the way, "flung to the
+    /// bottom right"). Near is quick, far takes longer: <see cref="PutBackShortest"/> … <see cref="PutBackLongest"/> over
+    /// <see cref="PutBackFar"/> dip.
+    /// </summary>
+    public static double PutBack(double t) => EaseOut(t);
+
+    public static readonly TimeSpan PutBackShortest = TimeSpan.FromSeconds(0.15);
+    public static readonly TimeSpan PutBackLongest = TimeSpan.FromSeconds(0.3);
+    public const double PutBackFar = 300;
+
+    /// <summary>How long putting back takes for a distance (dip).</summary>
+    public static TimeSpan PutBackLength(double distance)
+        => PutBackShortest + ((PutBackLongest - PutBackShortest) * Math.Clamp(distance / PutBackFar, 0, 1));
 }

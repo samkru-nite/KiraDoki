@@ -1113,6 +1113,7 @@ public sealed partial class MainWindow : Window
     {
         _bigCard = _snapshot.IsActive ? _shownCard : null;
         PillBody.CanDrag = TransitShown;   // only the transit station's card can be dragged out (TODO ④, 10-10)
+        PillBody.Opacity = StationUnseen ? 0 : 1;   // the station in the hand / waiting for it, unseen (MainWindow.Transit)
         LayoutPills();
         ShowCloseZone();
         Big.UpdateProgress(_snapshot.Primary);
@@ -1674,13 +1675,12 @@ public sealed partial class MainWindow : Window
         e.DragUIOverride.IsGlyphVisible = false;
         if (_draggingOut)
         {
-            if (from != "zone")
-            {
-                return;   // only the drop zone counts: the pill's own window changes shape as the cards move (false "left"s)
-            }
-
-            DragOverPills();   // our own drag brought back: the station goes back up (let go here, nothing happens)
-            e.DragUIOverride.IsContentVisible = !_dragBack;   // … and the picture in the hand goes: it was put back, not copied
+            // our own drag: over its place, Windows' drag image hides and our picture of the pill takes over (the same, so nothing
+            // shows the change) — at the drop Windows took its image away before we could put ours: "it vanished for a moment"
+            // (user 10-11, slow motion). Judged here too, so the two swap in the same moment.
+            NativeMethods.GetCursorPos(out var at);
+            TrackHome(at);
+            e.DragUIOverride.IsContentVisible = !_dragBack;
             return;
         }
 
@@ -1698,11 +1698,6 @@ public sealed partial class MainWindow : Window
     {
         if (_draggingOut)
         {
-            if (from == "zone")
-            {
-                DragLeftPills();
-            }
-
             return;
         }
 
@@ -1810,13 +1805,17 @@ public sealed partial class MainWindow : Window
 
         _buttonWasDown = down;
         WatchDragOutEnd(down);
+        if (_draggingOut && down)
+        {
+            TrackHome(at);
+        }
         // files coming in (the press began off the taskbar), or the transit station dragged out of the pill (TODO ④ 丙)
         var dragging = down && _placement.Visible && (_draggingOut || (_pressCounts
             && DateTime.UtcNow - _pressSince >= DragHold
             && (Math.Abs(at.X - _pressAt.X) >= DragMove || Math.Abs(at.Y - _pressAt.Y) >= DragMove)));
         if (!dragging || bar is not { } rect || !NativeMethods.GetWindowRect(_hwnd, out var window))
         {
-            if (_catcher?.IsUp == true && !down)
+            if (_catcher is { IsUp: true, Holding: false } && !down)   // (holding: the station's picture still on its way home)
             {
                 _catcher.Down();
                 _zone = null;
@@ -1851,7 +1850,10 @@ public sealed partial class MainWindow : Window
 
         _zone = span;
         _catcher ??= new IslandUi.DropCatcher { Over = e => OnDropOver(e), Left = () => OnDropLeft(), Dropped = OnDropped };
-        _catcher.Cover(span.Left, rect.Top - CatcherOverlap, span.Right, rect.Bottom);
+        // the station dragged out: a pill's height more above the taskbar — its picture is drawn here while it's over its place, and
+        // a third on its place can stick that far up (user 10-11: drawn only within the taskbar it "stuck to the taskbar's edge")
+        var above = CatcherOverlap + (_draggingOut ? DpiSetup.Px(PillGeometry.Height) : 0);
+        _catcher.Cover(span.Left, rect.Top - above, span.Right, rect.Bottom);
         TaskbarHost.Log($"dropzone: up {span.Left}–{span.Right} × {rect.Top}–{rect.Bottom} ({(big ? "big pill out" : "circle only")})");
     }
 
@@ -1890,6 +1892,7 @@ public sealed partial class MainWindow : Window
                 return;
             }
 
+            _grab = e.GetPosition(PillBody);   // before any await: where the hand holds it (screen pixels, see _grab)
             var deferral = e.GetDeferral();
             try
             {
@@ -1918,10 +1921,9 @@ public sealed partial class MainWindow : Window
                     | Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
                 if (await PillPicture() is { } picture)
                 {
-                    // the whole big pill is lifted and follows the mouse, held where it was pressed (TODO ④ 丙)
-                    var at = e.GetPosition(PillBody);
-                    e.DragUI.SetContentFromSoftwareBitmap(picture.Bitmap,
-                        new Windows.Foundation.Point(at.X * picture.Scale, at.Y * picture.Scale));
+                    // the whole big pill is lifted and follows the mouse, held where it was pressed (TODO ④ 丙). The anchor and
+                    // GetPosition are the same pixels: scaled once more it sat twice as far off at 200 % (user 10-11)
+                    e.DragUI.SetContentFromSoftwareBitmap(picture.Bitmap, _grab);
                 }
 
                 TaskbarHost.Log($"transit: drag started with {items.Count}");

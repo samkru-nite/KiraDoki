@@ -233,6 +233,7 @@ internal sealed class TransitWatcher : NoticeWatcher
         if (debut)
         {
             _adds++;
+            (_look, _lookFor) = ("in" + _adds, DebutLength);
         }
 
         var s = Text;
@@ -240,11 +241,28 @@ internal sealed class TransitWatcher : NoticeWatcher
             msg: TransitShelf.CountText(_shelf.Count, s.NoticeTransitOne, s.NoticeTransitFiles));
         card.Files = [.. _shelf.Paths];
         card.Gone = _gone;
-        card.Look = "in" + _adds;
-        card.DebutFor = debut ? DebutLength : null;
-        card.ByHand = debut;
+        card.Look = _look;   // kept until the next change: going back to an older look would end a debut early
+        card.DebutFor = _lookFor;
+        card.ByHand = true;
         Board.Hold(Key, card);
     }
+
+    private string _look = "in0";
+    private TimeSpan? _lookFor;
+    private int _backs;
+
+    /// <summary>How long it stays up after being put back on its place (user 10-11: 2 s — else a pinned card took the big pill at once).</summary>
+    private static readonly TimeSpan BackLength = TimeSpan.FromSeconds(2);
+
+    /// <summary>Dragged out and put back on its place: a short debut, so it holds the big pill for <see cref="BackLength"/>.</summary>
+    public void PutBack() => Guard(() =>
+    {
+        lock (_gate)
+        {
+            (_look, _lookFor) = ("back" + ++_backs, BackLength);
+            Show(debut: false);
+        }
+    });
 
     /// <summary>Call under the lock. A failed write only loses the list over a restart.</summary>
     private void Save()
