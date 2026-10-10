@@ -148,9 +148,9 @@ internal sealed class SheetView
 
             for (var i = 0; i < words.Count && i < _texts.Count; i++)
             {
-                if (_texts[i].Text != words[i])
+                if (Words(_texts[i]) != words[i])
                 {
-                    _texts[i].Text = words[i];
+                    SetWords(_texts[i], words[i]);
                 }
             }
         }
@@ -162,9 +162,9 @@ internal sealed class SheetView
             lines.AddRange(next.Body);
             for (var i = 0; i < lines.Count && i < _songText.Count; i++)
             {
-                if (_songText[i].Text != lines[i])
+                if (Words(_songText[i]) != lines[i])
                 {
-                    _songText[i].Text = lines[i];
+                    SetWords(_songText[i], lines[i]);
                 }
             }
         }
@@ -315,7 +315,7 @@ internal sealed class SheetView
             var p = Text(paragraph, strong: false);
             _texts.Add(p);
             p.Foreground = Brush(_palette.Hint);
-            p.Margin = new Thickness(0, stack.Children.Count == 0 ? 0 : sheet.Title is not null && stack.Children.Count == 1 ? CardSheets.TitleBodyGap : CardSheets.ParagraphGap, 0, 0);
+            p.Margin = new Thickness(0, stack.Children.Count == 0 ? 0 : sheet.Title is not null && stack.Children.Count == 1 ? CardSheets.TitleGap : CardSheets.ParagraphGap, 0, 0);
             stack.Children.Add(p);
         }
 
@@ -324,7 +324,7 @@ internal sealed class SheetView
             _footnote = MdNote(footnote, _palette.Hint);
             _footnote.TextWrapping = TextWrapping.NoWrap;
             _footnote.TextTrimming = TextTrimming.CharacterEllipsis;
-            _footnote.Margin = new Thickness(0, stack.Children.Count == 0 ? 0 : MdGap, 0, 0);
+            _footnote.Margin = new Thickness(0, stack.Children.Count == 0 ? 0 : sheet.Title is not null && stack.Children.Count == 1 ? CardSheets.TitleGap : MdGap, 0, 0);
             stack.Children.Add(_footnote);
         }
 
@@ -338,7 +338,7 @@ internal sealed class SheetView
             _texts.Add(code);
             stack.Children.Add(new Border
             {
-                Margin = new Thickness(0, stack.Children.Count == 0 ? 0 : 6, 0, 0),
+                Margin = new Thickness(0, stack.Children.Count == 0 ? 0 : sheet.Title is not null && stack.Children.Count == 1 ? CardSheets.TitleGap : 6, 0, 0),
                 Padding = new Thickness(8, 6, 8, 6),
                 CornerRadius = new CornerRadius(4),
                 Background = Brush(Faint(_palette.Fore, 0.06)),
@@ -413,7 +413,7 @@ internal sealed class SheetView
             };
             var listRun = block.Kind is MdKind.Bullet or MdKind.Number && last is MdKind.Bullet or MdKind.Number;
             var top = stack.Children.Count == 0 ? 0
-                : last is null ? CardSheets.TitleBodyGap   // right under the title
+                : last is null ? CardSheets.TitleGap   // under the title
                 : listRun ? MdItemGap
                 : block.Kind == MdKind.Heading ? MdGap + MdHeadingExtra
                 : MdGap;
@@ -787,7 +787,7 @@ internal sealed class SheetView
     private TextBlock Text(string text, bool strong)
     {
         var (normal, bold) = Fonts(text);
-        return new TextBlock
+        var t = new TextBlock
         {
             Text = text,
             FontFamily = strong ? bold : normal,
@@ -797,8 +797,58 @@ internal sealed class SheetView
             LineStackingStrategy = LineStackingStrategy.BlockLineHeight,
             TextWrapping = TextWrapping.Wrap,
             Foreground = Brush(_palette.Fore),
+            Tag = strong ? new StrongWords(string.Empty) : null,
         };
+        if (strong)
+        {
+            SetWords(t, text);
+        }
+
+        return t;
     }
+
+    /// <summary>A strong text's words (its <c>Text</c> is split into runs, see <see cref="SetWords"/>).</summary>
+    private sealed record StrongWords(string Text);
+
+    private static string Words(TextBlock t) => t.Tag is StrongWords s ? s.Text : t.Text;
+
+    /// <summary>
+    /// Puts <paramref name="text"/> in <paramref name="t"/>. A strong one (a title) is split: Han characters, kana and full-width
+    /// marks in the system CJK font's <b>Bold</b>, the rest in Pretendard Medium as it was. Asked for Medium the Han characters fell
+    /// back to Microsoft YaHei UI, which has no Medium, and came out Regular — the title looked like the text under it; asking the
+    /// whole line for 600 didn't reach the fallback either (user 10-10).
+    /// </summary>
+    private void SetWords(TextBlock t, string text)
+    {
+        if (t.Tag is not StrongWords)
+        {
+            t.Text = text;
+            return;
+        }
+
+        t.Tag = new StrongWords(text);
+        t.Inlines.Clear();
+        var cjk = AppFonts.Family(IsleBar.Core.Localization.UiFonts.Stack(null, _language, IsleBar.Core.Localization.UiFonts.Entry(_language)));
+        var start = 0;
+        for (var i = 1; i <= text.Length; i++)
+        {
+            if (i < text.Length && IsCjk(text[i]) == IsCjk(text[start]))
+            {
+                continue;
+            }
+
+            var piece = text[start..i];
+            t.Inlines.Add(IsCjk(text[start])
+                ? new Run { Text = piece, FontFamily = cjk, FontWeight = FontWeights.Bold }
+                : new Run { Text = piece });
+            start = i;
+        }
+    }
+
+    /// <summary>Drawn by a CJK font, not Pretendard (which has Latin, digits and Hangul): Han, kana, CJK and full-width marks.</summary>
+    private static bool IsCjk(char c)
+        => c is (>= '\u2E80' and <= '\u9FFF') or (>= '\uF900' and <= '\uFAFF') or (>= '\uFE30' and <= '\uFE4F') or (>= '\uFF00' and <= '\uFFEF')
+           || char.IsSurrogate(c);
 
     /// <summary>12/16 notes.</summary>
     private static TextBlock Note() => new()

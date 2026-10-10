@@ -87,6 +87,13 @@ public static class CardSheets
     public const double BarHeight = 4;
     public const double BarLabelGap = 6;
     public const double TitleBodyGap = 2;
+
+    /// <summary>
+    /// A card's title and the text under it, every stage alike (user 10-10): 2 apart it read as the text's first line. Now the title's
+    /// Han characters are really bold (see SheetView.SetWords) the weight parts them, so a little over the paragraphs' 6 is enough
+    /// (12 looked too loose). Tried and dropped: a hairline between, a grey 12 title (the same look as a section name).
+    /// </summary>
+    public const double TitleGap = 8;
     public const double ParagraphGap = 8;
     public const double Fade = 16;
     public const double NoteSize = 12, NoteLine = 16;
