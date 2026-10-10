@@ -34,6 +34,9 @@ internal interface IPillHost
     /// <summary>What an agent at work last said in this turn (its session record), or null.</summary>
     string? AgentSaid(ActivityState state);
 
+    /// <summary>A finished agent's last answer (its session record), or null.</summary>
+    string? AgentAnswer(ActivityState state);
+
     SolidColorBrush Brush(Windows.UI.Color color);
 
     AudioMeter Meter { get; }
@@ -162,6 +165,10 @@ public sealed partial class PillView : UserControl
             _wordsState = state;
             ShowIslandText(state, line is null ? PrefixFor(state, now) : string.Empty, line is null ? string.Empty : Steady(card, line, now));
         }
+        else if (state.Kind == ActivityKind.AgentDone && FirstSentence(Host.AgentAnswer(state)) is { } first)
+        {
+            ShowIslandText(state, string.Empty, first);   // done: its answer's first sentence — usually the outcome (user 10-10)
+        }
         else
         {
             // a download whose name the browser hasn't given yet ("Unconfirmed 123"), or Explorer's progress window (it names no file)
@@ -261,6 +268,49 @@ public sealed partial class PillView : UserControl
         fade.InsertKeyFrame(1f, to);
         fade.Duration = WordsFade;
         visual.StartAnimation("Opacity", fade);
+    }
+
+    /// <summary>
+    /// The first sentence of an answer (user 10-10: the outcome, where answers put it): the first line with words in it — headings,
+    /// list marks, quotes, tables and code fences skipped — up to 。！？!? or a full stop before a space. Bold and code marks out,
+    /// a closing 。 dropped. Null when there is none.
+    /// </summary>
+    private static string? FirstSentence(string? answer)
+    {
+        if (string.IsNullOrWhiteSpace(answer))
+        {
+            return null;
+        }
+
+        foreach (var raw in answer.Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line.Length == 0 || line.StartsWith("```", StringComparison.Ordinal) || line.StartsWith('|'))
+            {
+                continue;
+            }
+
+            line = line.TrimStart('#', '>', '-', '*', '+', ' ').Trim();
+            line = System.Text.RegularExpressions.Regex.Replace(line, @"^\d+[.)、]\s*", string.Empty);   // "1. " "2) " "3、"
+            if (OneLine(line) is not { } words)
+            {
+                continue;
+            }
+
+            for (var i = 0; i < words.Length; i++)
+            {
+                var c = words[i];
+                if (c is '。' or '！' or '？' or '!' or '?' || (c == '.' && (i + 1 == words.Length || words[i + 1] == ' ')))
+                {
+                    words = words[..(c is '。' or '.' ? i : i + 1)];
+                    break;
+                }
+            }
+
+            return words.Length == 0 ? null : words;
+        }
+
+        return null;
     }
 
     /// <summary>A said text on one line: Markdown marks and line breaks out, spaces squeezed. Null when nothing is left.</summary>

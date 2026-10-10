@@ -49,5 +49,7 @@ public sealed partial class MainWindow : IPillHost
 
     string? IPillHost.AgentSaid(ActivityState state) => _feed.Tails.For(state)?.Said;
 
+    string? IPillHost.AgentAnswer(ActivityState state) => _feed.Tails.For(state)?.Answer;
+
     SolidColorBrush IPillHost.Brush(Windows.UI.Color color) => BrushOf(color);
 }
