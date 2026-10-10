@@ -137,7 +137,7 @@ internal sealed class TaskbarTracker : IDisposable
                     // finding elements walks the taskbar's tree (keeps Explorer busy) — only now and then; reading a found
                     // element's rectangle is cheap and done every pass. Apps come and go, so in the modes that sit beside them
                     // the app buttons are looked up more often.
-                    var lookupEvery = position is BarPosition.Center or BarPosition.BesideTray ? TimeSpan.FromSeconds(1) : TimeSpan.FromSeconds(3);
+                    var lookupEvery = position is BarPosition.Center ? TimeSpan.FromSeconds(1) : TimeSpan.FromSeconds(3);
                     if (DateTime.UtcNow - lookedUp > lookupEvery)
                     {
                         elements = Elements.Find(automation, tray);

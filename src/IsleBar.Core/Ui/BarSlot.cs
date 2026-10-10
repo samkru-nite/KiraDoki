@@ -9,9 +9,6 @@ public enum BarPosition
     /// <summary>The middle of the screen (for icons on the left); moves right when the icons reach it.</summary>
     Center,
 
-    /// <summary>Just left of the tray (clock, network, …).</summary>
-    BesideTray,
-
     /// <summary>A fixed distance from the taskbar's left end, set by hand (calibration when the others don't fit a setup).</summary>
     Manual,
 }
@@ -52,12 +49,6 @@ public static class BarSlot
                 return new BarSpot(true, x, y);
             }
 
-            case BarPosition.BesideTray:
-            {
-                var x = trayLeft - gap - width;
-                return new BarSpot(x >= bar.Left && (bar.IconsRight is not { } icons || x >= icons + near), x, y);
-            }
-
             case BarPosition.Center:
             {
                 var x = bar.Left + ((bar.Right - bar.Left - width) / 2);
@@ -81,7 +72,6 @@ public static class BarSlot
     public static BarPosition Parse(string? value) => value switch
     {
         "center" => BarPosition.Center,
-        "tray" => BarPosition.BesideTray,
         "manual" => BarPosition.Manual,
         _ => BarPosition.Left,
     };
@@ -89,7 +79,6 @@ public static class BarSlot
     public static string Key(BarPosition position) => position switch
     {
         BarPosition.Center => "center",
-        BarPosition.BesideTray => "tray",
         BarPosition.Manual => "manual",
         _ => "left",
     };

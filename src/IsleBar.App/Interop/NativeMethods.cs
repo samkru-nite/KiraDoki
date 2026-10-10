@@ -20,6 +20,13 @@ internal static partial class NativeMethods
     [DllImport("user32.dll")]
     private static extern short GetAsyncKeyState(int key);
 
+    /// <summary>
+    /// Whether the primary button (the one that drags — the right one when the buttons are swapped for the left hand) is held down
+    /// right now, wherever the mouse is.
+    /// </summary>
+    internal static bool PrimaryButtonDown()
+        => (GetAsyncKeyState(GetSystemMetrics(23 /* SM_SWAPBUTTON */) != 0 ? 0x02 : 0x01) & 0x8000) != 0;
+
     /// <summary>Whether a mouse button (left, right or middle) is held down right now.</summary>
     internal static bool MouseButtonDown()
         => (GetAsyncKeyState(0x01) & 0x8000) != 0 || (GetAsyncKeyState(0x02) & 0x8000) != 0 || (GetAsyncKeyState(0x04) & 0x8000) != 0;

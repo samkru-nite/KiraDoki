@@ -231,7 +231,6 @@ public sealed class LanguageStrings
     public required string PositionCenter { get; init; }
 
     /// <summary>Position choice: left of the tray.</summary>
-    public required string PositionTray { get; init; }
 
     /// <summary>Position choice: set by hand.</summary>
     public required string PositionManual { get; init; }

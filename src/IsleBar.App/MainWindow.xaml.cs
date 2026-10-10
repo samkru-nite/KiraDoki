@@ -1626,7 +1626,6 @@ public sealed partial class MainWindow : Window
         var name = BarSlot.Parse(_settings.Position) switch
         {
             BarPosition.Center => _text.PositionCenter,
-            BarPosition.BesideTray => _text.PositionTray,
             BarPosition.Manual => _text.PositionManual,
             _ => _text.PositionLeft,
         };
@@ -1682,61 +1681,188 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private void HookFileDrop()
     {
-        Root.DragOver += (_, e) =>
-        {
-            if (_draggingOut || !e.DataView.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.StorageItems))
-            {
-                return;   // our own drag passing over the pill isn't a drop
-            }
+        Root.DragEnter += (_, e) => OnDropOver(e, "pill");
+        Root.DragOver += (_, e) => OnDropOver(e, "pill");
+        Root.DragLeave += (_, _) => OnDropLeft("pill");
+        Root.Drop += (_, e) => OnDropped(e);
+        WatchDrags();
+    }
 
-            e.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy;
-            e.DragUIOverride.IsCaptionVisible = false;
-            e.DragUIOverride.IsGlyphVisible = false;
-            if (!_dropHover)
-            {
-                _dropHover = true;
-                _dropNames = null;
-                RenderIsland();
-                _ = ReadDropNamesAsync(e.DataView);
-            }
-        };
-        Root.DragLeave += (_, _) =>
+    private void OnDropOver(DragEventArgs e, string from = "zone")
+    {
+        if (_draggingOut || !e.DataView.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.StorageItems))
         {
-            _dropHover = false;
-            RenderIsland();
-        };
-        Root.Drop += async (_, e) =>
-        {
-            _dropHover = false;
-            RenderIsland();
-            if (_draggingOut || !e.DataView.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.StorageItems))
-            {
-                return;
-            }
+            return;   // our own drag passing over the pill isn't a drop
+        }
 
-            var deferral = e.GetDeferral();
+        e.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy;
+        e.DragUIOverride.IsCaptionVisible = false;
+        e.DragUIOverride.IsGlyphVisible = false;
+        if (!_dropHover)
+        {
+            _dropHover = true;
+            _dropNames = null;
+            TaskbarHost.Log($"dropzone: files over it ({from})");
+            RenderIsland();
+            _ = ReadDropNamesAsync(e.DataView);
+        }
+    }
+
+    private void OnDropLeft(string from = "zone")
+    {
+        if (_dropHover)
+        {
+            TaskbarHost.Log($"dropzone: files left it ({from})");
+        }
+
+        _dropHover = false;
+        RenderIsland();
+    }
+
+    private async void OnDropped(DragEventArgs e)
+    {
+        _dropHover = false;
+        RenderIsland();
+        if (_draggingOut || !e.DataView.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.StorageItems))
+        {
+            return;
+        }
+
+        var deferral = e.GetDeferral();
+        try
+        {
+            var items = await e.DataView.GetStorageItemsAsync();
+            var paths = items.Select(i => i.Path).Where(p => !string.IsNullOrEmpty(p)).ToArray();
+            if (_feed.Watchers?.Transit is { } transit && paths.Length > 0)
+            {
+                transit.Add(paths);
+            }
+            else
+            {
+                TaskbarHost.Log($"drop: {items.Count} item(s), none with a path");   // e.g. from a zip's insides or a phone
+            }
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)   // async void: anything escaping ends the app (review 10-03)
+        {
+            TaskbarHost.Log("drop failed: " + ex.Message);
+        }
+        finally
+        {
+            deferral.Complete();
+        }
+    }
+
+    // ---------------- the drop zone (TODO ④ 乙, user 10-10) ----------------
+
+    private IslandUi.DropCatcher? _catcher;
+    private DispatcherQueueTimer? _dragWatch;   // a field: a timer only in a local gets collected (10-10)
+    private bool _buttonWasDown;
+    private bool _pressCounts;   // this press began off the taskbar: it may be a drag coming in
+    private NativeMethods.POINT _pressAt;
+    private DateTime _pressSince;
+    private (int Left, int Right)? _zone;
+
+    /// <summary>The drag threshold: a hold this long that has moved this far is a drag, not a click (no window up on every click).</summary>
+    private static readonly TimeSpan DragHold = TimeSpan.FromMilliseconds(150);
+    private const int DragMove = 8;
+
+    /// <summary>The drop window reaches this many pixels above the taskbar: its very top row, where the layout's rounding may leave no
+    /// element, showed WinUI's 🚫 with the mouse's tip right on the taskbar's edge (user 10-10 photo).</summary>
+    private const int CatcherOverlap = 2;
+
+    /// <summary>
+    /// Every 50 ms: is something being dragged that began off the taskbar? Then an invisible window (<see cref="IslandUi.DropCatcher"/>)
+    /// covers the drop zone — the whole taskbar height, the pills and where the big pill comes out (<see cref="DropZone"/>) — so files
+    /// brought in show "放入中转站" instead of the taskbar's 🚫; it goes when the button comes up. A press on the taskbar (moving its
+    /// icons, dragging our own pill out) never brings it. Log "dropzone: …".
+    /// </summary>
+    private void WatchDrags()
+    {
+        _dragWatch = DispatcherQueue.CreateTimer();
+        _dragWatch.Interval = TimeSpan.FromMilliseconds(50);
+        _dragWatch.Tick += (_, _) =>
+        {
             try
             {
-                var items = await e.DataView.GetStorageItemsAsync();
-                var paths = items.Select(i => i.Path).Where(p => !string.IsNullOrEmpty(p)).ToArray();
-                if (_feed.Watchers?.Transit is { } transit && paths.Length > 0)
-                {
-                    transit.Add(paths);
-                }
-                else
-                {
-                    TaskbarHost.Log($"drop: {items.Count} item(s), none with a path");   // e.g. from a zip's insides or a phone
-                }
+                CheckDrag();
             }
-            catch (Exception ex) when (ex is not OutOfMemoryException)   // async void: anything escaping ends the app (review 10-03)
+            catch (Exception ex) when (ex is not OutOfMemoryException)
             {
-                TaskbarHost.Log("drop failed: " + ex.Message);
-            }
-            finally
-            {
-                deferral.Complete();
+                TaskbarHost.Log("dropzone: " + ex.Message);
+                _catcher?.Down();
             }
         };
+        _dragWatch.Start();
+    }
+
+    private void CheckDrag()
+    {
+        var down = NativeMethods.PrimaryButtonDown();
+        NativeMethods.GetCursorPos(out var at);
+        var bar = TaskbarRect();
+        if (down && !_buttonWasDown)
+        {
+            _pressAt = at;
+            _pressSince = DateTime.UtcNow;
+            _pressCounts = bar is not { } b || !(at.X >= b.Left && at.X < b.Right && at.Y >= b.Top && at.Y < b.Bottom);
+        }
+
+        _buttonWasDown = down;
+        var dragging = down && _pressCounts && !_draggingOut && _placement.Visible
+            && DateTime.UtcNow - _pressSince >= DragHold
+            && (Math.Abs(at.X - _pressAt.X) >= DragMove || Math.Abs(at.Y - _pressAt.Y) >= DragMove);
+        if (!dragging || bar is not { } rect || !NativeMethods.GetWindowRect(_hwnd, out var window))
+        {
+            if (_catcher?.IsUp == true && !down)
+            {
+                _catcher.Down();
+                _zone = null;
+                TaskbarHost.Log("dropzone: down (button up)");
+            }
+
+            return;
+        }
+
+        if (_catcher?.IsUp == true)
+        {
+            _catcher.OnTop();   // the taskbar lifts itself over every topmost window as things pass over it (the lifted card's lesson)
+        }
+
+        if (_catcher?.IsUp == true && _zone is not null && _dropHover)
+        {
+            return;   // files over it: leave it be (the big pill coming out mustn't move it under the hand)
+        }
+
+        var big = BigVisible && !_dropHover && _layout.Big is not null;
+        var right = window.Left + (big ? _layout.Big!.Value.Right : _layout.Small.Right);
+        var span = DropZone.Span(BarSlot.Parse(_settings.Position), window.Left + _layout.Small.Left, right, big, DpiSetup.Scale);
+        if (_zone is { } was)
+        {
+            span = (Math.Min(span.Left, was.Left), Math.Max(span.Right, was.Right));   // never shrinks under a drag
+        }
+
+        if (_catcher?.IsUp == true && _zone == span)
+        {
+            return;
+        }
+
+        _zone = span;
+        _catcher ??= new IslandUi.DropCatcher { Over = e => OnDropOver(e), Left = () => OnDropLeft(), Dropped = OnDropped };
+        _catcher.Cover(span.Left, rect.Top - CatcherOverlap, span.Right, rect.Bottom);
+        TaskbarHost.Log($"dropzone: up {span.Left}–{span.Right} × {rect.Top}–{rect.Bottom} ({(big ? "big pill out" : "circle only")})");
+    }
+
+    /// <summary>The taskbar this bar sits on (screen pixels), or null when it can't be found.</summary>
+    private NativeMethods.RECT? TaskbarRect()
+    {
+        var bar = TaskbarHwnd();
+        return bar != IntPtr.Zero && NativeMethods.GetWindowRect(bar, out var r) ? r : null;
+    }
+
+    private IntPtr TaskbarHwnd()
+    {
+        var root = NativeMethods.GetAncestor(_hwnd, NativeMethods.GA_ROOT);
+        return root != IntPtr.Zero && root != _hwnd ? root : NativeMethods.FindWindow("Shell_TrayWnd", null);
     }
 
     private bool _draggingOut;

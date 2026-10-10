@@ -53,14 +53,6 @@ public sealed class BarSlotTests
         => Assert.False(BarSlot.Place(BarPosition.Center, Centred with { IconsRight = 2200 }, W, H, Gap, 0).Fits);
 
     [Fact]
-    public void Beside_the_tray_ends_a_gap_before_it()
-        => Assert.Equal(new BarSpot(true, 2096, 1840), BarSlot.Place(BarPosition.BesideTray, Centred, W, H, Gap, 0));
-
-    [Fact]
-    public void Beside_the_tray_doesnt_fit_over_the_icons()
-        => Assert.False(BarSlot.Place(BarPosition.BesideTray, Centred with { IconsRight = 2300 }, W, H, Gap, 0).Fits);
-
-    [Fact]
     public void Manual_is_the_offset_from_the_left_end_kept_on_the_taskbar()
     {
         Assert.Equal(new BarSpot(true, 500, 1840), BarSlot.Place(BarPosition.Manual, Centred, W, H, Gap, 500));
@@ -75,7 +67,6 @@ public sealed class BarSlotTests
     [Theory]
     [InlineData("left", BarPosition.Left)]
     [InlineData("center", BarPosition.Center)]
-    [InlineData("tray", BarPosition.BesideTray)]
     [InlineData("manual", BarPosition.Manual)]
     [InlineData(null, BarPosition.Left)]
     [InlineData("nonsense", BarPosition.Left)]

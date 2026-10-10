@@ -185,7 +185,6 @@ internal sealed class SettingsWindow : Window
             [
                 (BarSlot.Key(BarPosition.Left), _text.PositionLeft),
                 (BarSlot.Key(BarPosition.Center), _text.PositionCenter),
-                (BarSlot.Key(BarPosition.BesideTray), _text.PositionTray),
                 (BarSlot.Key(BarPosition.Manual), _text.PositionManual),
             ],
             () => _settings.Position, v => _settings.Position = v);
