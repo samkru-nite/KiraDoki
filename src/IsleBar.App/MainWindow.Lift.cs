@@ -100,7 +100,8 @@ public sealed partial class MainWindow
             _lift.KeepsPress = OnTaskCell;
             _lift.Act = OnSheetAction;
             _lift.RemoveFile = p => _feed.Watchers?.Transit?.Remove([p]);
-            _lift.FileDragged = p => _feed.Watchers?.Transit?.Dragged([p]);   // moved away → out of the list
+            // copied / moved → said on the card, moved away → out of the list (the drag began moments ago: a copy is made after that)
+            _lift.FileDragged = p => _ = AfterDragOut([p], DateTimeOffset.UtcNow - TimeSpan.FromSeconds(30));
             _lift.Landed = () =>
             {
                 // the card lands back in the pill: after a click on the pill, the pill (kept down since) springs up now; after a

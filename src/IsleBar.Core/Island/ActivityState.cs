@@ -127,6 +127,13 @@ public sealed class ActivityState
     public int MoreCount { get; set; }
 
     /// <summary>
+    /// The state put in words, shown first in the main colour with <see cref="Name"/> grey after it — Explorer's copies (10-10:
+    /// "已复制 5 个 跳过 149 个"). Null = the card's usual prefix. Not serialized to JSON.
+    /// </summary>
+    [JsonIgnore]
+    public string? Words { get; set; }
+
+    /// <summary>
     /// A temporary card's time on the big pill, counted from when it goes up (null = <see cref="SystemWatch.NoticeLengths.Read"/>;
     /// <see cref="SystemWatch.NoticeBoard.Flash"/> sets it). Not serialized to JSON.
     /// </summary>

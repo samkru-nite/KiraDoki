@@ -23,8 +23,9 @@ public sealed partial class MainWindow
     /// <summary>The transit station's card key.</summary>
     private static readonly string TransitKey = SystemNotice.SourcePrefix + TransitShelf.Key;
 
-    /// <summary>After a drop the hint holds the big pill this long at most, until the stack shows the station.</summary>
-    private static readonly TimeSpan LandingLength = TimeSpan.FromSeconds(1.5);
+    /// <summary>After a drop the hint holds the big pill this long at most, until the stack shows the station; nothing could go in →
+    /// "无法放入" this long (user 10-10: 2 s, so nothing flickers).</summary>
+    private static readonly TimeSpan LandingLength = TimeSpan.FromSeconds(2);
 
     /// <summary>After a drag out the station stays off the pills this long: the first look for moved files (0.5 s) decides whether its
     /// icon comes back at all (it popped up, then vanished).</summary>
@@ -35,9 +36,11 @@ public sealed partial class MainWindow
     private bool _dragBack;    // our own drag is over the pills again
     private bool _dragLeft;    // … and had left them since it began (it begins over them)
     private string? _swappedFor;   // files over the pills: the card that took the station's cell (it gives it back if they leave)
+    private string? _cannotDrop;   // let go, but nothing had a file behind it: its name, for "无法放入"
     private string? _lastShownKey;
     private string? _beforeTransit;   // the card on the big pill before the station came up
     private string[] _draggedPaths = [];
+    private DateTimeOffset _dragSince;
     private DateTime? _upSince;   // dragging out: the button came up (no DropCompleted yet)
 
     /// <summary>The card lifted off by the drag that's out now (or just put down).</summary>
@@ -57,9 +60,15 @@ public sealed partial class MainWindow
             _lastShownKey = shown?.Key;
         }
 
-        if (_dropHover || (now < _landingUntil && shown?.Key != TransitKey))
+        if (_dropHover || (now < _landingUntil && (shown?.Key != TransitKey || _cannotDrop is not null)))
         {
             return new Card(TransitKey, CardType.Status, false, DropHint());
+        }
+
+        if (_cannotDrop is not null)
+        {
+            _cannotDrop = null;   // "无法放入" shown its time: everything back as it was
+            GiveCellBack();
         }
 
         return PickedUp && shown?.Key == TransitKey ? null : shown;
@@ -68,12 +77,12 @@ public sealed partial class MainWindow
     /// <summary>The cards the small pill's cells come from: all but a lifted station.</summary>
     private IReadOnlyList<Card> CellSource => PickedUp ? _cards.Cards.Where(c => c.Key != TransitKey).ToList() : _cards.Cards;
 
-    /// <summary>"放入中转站", then the files' names in grey.</summary>
+    /// <summary>"放入中转站" (or "无法放入"), then the files' names in grey.</summary>
     private ActivityState DropHint() => new()
     {
         RawKind = ActivityState.KindNotice,
-        Title = _text.NoticeTransitDrop,
-        Msg = _dropNames,
+        Title = _cannotDrop is null ? _text.NoticeTransitDrop : _text.NoticeTransitCannot,
+        Msg = _cannotDrop ?? _dropNames,
         Glyph = NoticeGlyphs.Transit,
     };
 
@@ -91,6 +100,8 @@ public sealed partial class MainWindow
     private void BeginDropHover()
     {
         _swappedFor = null;
+        _cannotDrop = null;
+        _landingUntil = DateTimeOffset.MinValue;
         if (_cards.Shown is { } shown && shown.Key != TransitKey && _cellCards.Any(c => c.Key == TransitKey))
         {
             _slots.Swap(TransitKey, shown.Key, shown.Type == CardType.Temporary);
@@ -103,20 +114,36 @@ public sealed partial class MainWindow
     /// <summary>The files went away without being let go: everything back as it was.</summary>
     private void EndDropHover()
     {
+        GiveCellBack();
+        Restage();
+    }
+
+    private void GiveCellBack()
+    {
         if (_swappedFor is { } key && _cards.Shown?.Key == key)
         {
             _slots.Swap(key, TransitKey, false);
         }
 
         _swappedFor = null;
-        Restage();
     }
 
     /// <summary>Files let go on the pills: the hint keeps the big pill until the station (now with them) takes it.</summary>
-    private void Landing()
+    private void Landing() => _landingUntil = DateTimeOffset.UtcNow + LandingLength;
+
+    /// <summary>The station has them: it took the hint's place (its debut follows).</summary>
+    private void Landed()
     {
-        _landingUntil = DateTimeOffset.UtcNow + LandingLength;
         _swappedFor = null;
+        Restack();
+    }
+
+    /// <summary>Let go, but none of it had a file behind it (inside a zip, on a phone): "无法放入 name" for the landing's 2 s.</summary>
+    private void CannotDrop(string name)
+    {
+        _cannotDrop = name;
+        Landing();
+        Restage();
     }
 
     /// <summary>The card the big pill would show without the station: a pinned one first, then the one up before it.</summary>
@@ -131,6 +158,7 @@ public sealed partial class MainWindow
     {
         _draggingOut = true;
         _draggedPaths = paths;
+        _dragSince = DateTimeOffset.UtcNow;
         _dragBack = _dragLeft = false;
         _upSince = null;
         _vanishBig = true;
@@ -191,9 +219,38 @@ public sealed partial class MainWindow
             _heldOutUntil = DateTimeOffset.UtcNow + PutDownLength;
         }
 
+        _ = AfterDragOut(_draggedPaths, _dragSince, back: _dragBack);
         _dragBack = _dragLeft = false;
-        _feed.Watchers?.Transit?.Dragged(_draggedPaths);   // goes by which files are still there, not by the result
         _draggedPaths = [];
+    }
+
+    /// <summary>
+    /// Files dragged out of the station (the whole pill or one row of the lifted card) were let go: which folder they landed in (the
+    /// one under the mouse, or the subfolder whose icon it was on) goes to <see cref="SystemWatch.TransitWatcher.Dragged"/>, which says
+    /// "已复制 / 已移动" once the files show it (user 10-10). Let go back on the pills: nothing can have happened, only moves are looked for.
+    /// </summary>
+    private async Task AfterDragOut(string[] paths, DateTimeOffset since, bool back = false)
+    {
+        string? target = null;
+        try
+        {
+            if (!back)
+            {
+                NativeMethods.GetCursorPos(out var at);
+                var spot = await DropSpot.FindAsync(at.X, at.Y);
+                target = spot?.Folder is { } folder && spot.Item is { Length: > 0 } item && Directory.Exists(Path.Combine(folder, item))
+                    ? Path.Combine(folder, item)   // on a subfolder's icon: it went in there
+                    : spot?.Folder;
+                TaskbarHost.Log($"dropspot: let go on {spot?.WindowClass ?? "?"} — {(target is null ? "not a folder" : "a folder")}"
+                                + (spot?.ItemType is { } type ? $" (under the mouse: {type})" : string.Empty));
+            }
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)   // fire and forget: never let it take the bar down
+        {
+            TaskbarHost.Log("dropspot: " + ex.Message);
+        }
+
+        _feed.Watchers?.Transit?.Dragged(paths, target, since);
     }
 
     /// <summary>A drag out whose DropCompleted never came (the source changed under it): ended a second after the button came up.</summary>

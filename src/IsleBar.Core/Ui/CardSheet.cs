@@ -257,12 +257,13 @@ public static class CardSheets
     {
         var s = card.State;
         var copy = s.Stage == "copy";
+        // Explorer's copies say their state in words ("复制中", "已复制", 10-10)
         var (state, tone) = s.RunState switch
         {
-            ActivityRunState.Done => (text.Done, SheetTone.Ok),
+            ActivityRunState.Done => (s.Words ?? text.Done, SheetTone.Ok),
             ActivityRunState.Error => (text.Fail, SheetTone.Bad),
             _ when s.IsPausedTransfer => (text.Paused, SheetTone.Plain),
-            _ => (copy ? text.CardRunning : text.Downloading, SheetTone.Plain),
+            _ => (s.Words ?? (copy ? text.CardRunning : text.Downloading), SheetTone.Plain),
         };
 
         var running = s.RunState == ActivityRunState.Running;

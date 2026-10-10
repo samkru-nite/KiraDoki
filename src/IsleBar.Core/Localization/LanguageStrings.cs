@@ -109,6 +109,16 @@ public sealed class LanguageStrings
     public required string NoticeTransitOne { get; init; }
     public required string NoticeTransitFiles { get; init; }
     public required string NoticeTransitDrop { get; init; }
+    public required string NoticeTransitCannot { get; init; }
+    public required string FileCopy { get; init; }
+    public required string FileMove { get; init; }
+    public required string FileUnzip { get; init; }
+    public required string FileZip { get; init; }
+    public required string FileCopied { get; init; }
+    public required string FileMoved { get; init; }
+    public required string FileUnzipped { get; init; }
+    public required string FileZipped { get; init; }
+    public required string FileItems { get; init; }
 
     /// <summary>The lifted transit card: its button that empties it, and a file no longer where it was.</summary>
     public required string CardClear { get; init; }

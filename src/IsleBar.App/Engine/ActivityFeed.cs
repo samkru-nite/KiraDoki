@@ -25,7 +25,7 @@ internal sealed class ActivityFeed : IDisposable
         _settings = settings;
         _text = text;
         Media = new MediaWatcher(() => _settings().BrowserMedia);
-        Downloads = new DownloadWatcher(() => _settings().DownloadFolders);
+        Downloads = new DownloadWatcher(() => _settings().DownloadFolders, text);
     }
 
     /// <summary>The state files (<c>%LOCALAPPDATA%\IsleBar\state</c>) — written by the CLI, the hooks and the bar itself.</summary>

@@ -160,6 +160,13 @@ public sealed partial class PillView : UserControl
             _join = Gap;
             ShowIslandText(state, (state.Title ?? string.Empty) + (string.IsNullOrWhiteSpace(state.Msg) ? string.Empty : Gap), state.Msg ?? string.Empty);
         }
+        else if (state is { Kind: ActivityKind.Transfer, Words: { } words })
+        {
+            // Explorer's copies (10-10): "复制 DSC02580.ARW +271", "已复制 5 个 跳过 149 个" — the state first, the rest grey after a gap
+            _join = Gap;
+            ShowIslandText(state, words + (string.IsNullOrEmpty(name) ? string.Empty : Gap), name ?? string.Empty,
+                state.MoreCount > 0 ? $" +{state.MoreCount}" : string.Empty);
+        }
         else if (state.Kind == ActivityKind.Notice)
         {
             // brief notice: "Charging · 78%" — title is the key part (bold), description dimmed

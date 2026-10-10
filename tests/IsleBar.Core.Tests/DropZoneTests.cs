@@ -5,31 +5,37 @@ namespace IsleBar.Core.Tests;
 
 public class DropZoneTests
 {
-    private const double Scale = 2;
-    private static readonly int Ball = PillGeometry.Px(PillGeometry.BallBox, Scale);   // 64
-    private static readonly int Wide = PillGeometry.Px(DropZone.Wide, Scale);
+    private const int Gap = 16;
 
     [Fact]
-    public void With_the_big_pill_out_it_is_the_pills()
-        => Assert.Equal((100, 700), DropZone.Span(BarPosition.Center, 100, 700, big: true, Scale));
-
-    [Fact]
-    public void On_the_left_it_reaches_where_the_big_pill_comes_out()
-        => Assert.Equal((100, 100 + Wide), DropZone.Span(BarPosition.Left, 100, 100 + Ball, big: false, Scale));
-
-    [Fact]
-    public void In_the_middle_it_is_centred_on_the_circle()
+    public void On_the_left_it_runs_from_the_taskbars_end_to_the_icons()
     {
-        var (left, right) = DropZone.Span(BarPosition.Center, 1000, 1000 + Ball, big: false, Scale);
-        Assert.Equal(Wide, right - left);
-        Assert.Equal(1000 + (Ball / 2), (left + right) / 2);
+        var bar = new TaskbarLayout(0, 1824, 3840, 1920, IconsLeft: 1500, IconsRight: 2300, TrayLeft: 3300, WidgetsRight: null);
+        Assert.Equal((0, 1500 - Gap), DropZone.Span(bar, 48, 600, Gap));
     }
 
     [Fact]
-    public void Set_by_hand_it_is_three_circles_round_the_circle()
-        => Assert.Equal((1000 - Ball, 1000 + (2 * Ball)), DropZone.Span(BarPosition.Manual, 1000, 1000 + Ball, big: false, Scale));
+    public void Between_the_icons_and_the_tray_it_fills_the_gap()
+    {
+        var bar = new TaskbarLayout(0, 1824, 3840, 1920, IconsLeft: 100, IconsRight: 900, TrayLeft: 3300, WidgetsRight: null);
+        Assert.Equal((900 + Gap, 3300 - Gap), DropZone.Span(bar, 1700, 2200, Gap));
+    }
+
+    [Fact]
+    public void The_widgets_button_bounds_it_on_the_left()
+    {
+        var bar = new TaskbarLayout(0, 1824, 3840, 1920, IconsLeft: 1500, IconsRight: 2300, TrayLeft: 3300, WidgetsRight: 300);
+        Assert.Equal((300 + Gap, 1500 - Gap), DropZone.Span(bar, 316, 900, Gap));
+    }
 
     [Fact]
     public void Never_narrower_than_the_pills()
-        => Assert.Equal((100 - Ball, 2000), DropZone.Span(BarPosition.Manual, 100, 2000, big: false, Scale));   // many cells: to their end
+    {
+        var bar = new TaskbarLayout(0, 1824, 3840, 1920, IconsLeft: 1500, IconsRight: 2300, TrayLeft: 3300, WidgetsRight: null);
+        Assert.Equal((0, 1495), DropZone.Span(bar, 48, 1495, Gap));   // a hand-set spot right up to the icons
+    }
+
+    [Fact]
+    public void Without_the_taskbars_layout_it_is_the_pills()
+        => Assert.Equal((100, 700), DropZone.Span(null, 100, 700, Gap));
 }

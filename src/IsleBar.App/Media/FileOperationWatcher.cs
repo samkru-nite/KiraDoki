@@ -3,6 +3,8 @@ using System.Text.RegularExpressions;
 using Interop.UIAutomationClient;
 using IsleBar.App.Interop;
 using IsleBar.Core.Island;
+using IsleBar.Core.SystemWatch;
+using IsleBar.Core.Ui;
 
 namespace IsleBar.App.Media;
 
@@ -30,6 +32,7 @@ internal sealed partial class FileOperationWatcher : IDisposable
 
     // icons on the pill's left (Segoe Fluent Icons)
     internal const string CopyGlyph = "\uE8C8";
+    internal const string MoveGlyph = "\uE8C6";       // cut (user 10-10: moving = the cut icon)
     internal const string UnzipGlyph = "\uE838";      // open folder
     internal const string CompressGlyph = "\uE8A5";   // document; MainWindow lays zipper teeth over it (ZipTeeth) \u2014 the font has no zip file, and its zip folder F012 looked crude (user 10-04)
 
@@ -47,6 +50,16 @@ internal sealed partial class FileOperationWatcher : IDisposable
     private DateTimeOffset _archiveSince, _archiveGrew;
     private ActivityState? _finished;
 
+    private readonly Func<Core.Localization.LanguageStrings> _text;
+    private FileOpTally? _tally;   // the operation in the window now
+    private bool _unzip;
+    private long? _percent;
+
+    public FileOperationWatcher(Func<Core.Localization.LanguageStrings> text) => _text = text;
+
+    /// <summary>Explorer's progress window is up (it's then looked at 4 times a second, <see cref="Glance"/>).</summary>
+    public bool Busy => _opSince is not null;
+
     public List<ActivityState> Scan(DateTimeOffset now)
     {
         var result = new List<ActivityState>();
@@ -57,18 +70,21 @@ internal sealed partial class FileOperationWatcher : IDisposable
         {
             _opSince ??= now;
             _archive = null;
-            var percent = Percent(window.Title);
-            var (name, unzip) = ReadWindow(window.Handle);
-            (_lastName, _lastGlyph) = (name, unzip ? UnzipGlyph : CopyGlyph);
+            Look(window, now);
+            var tally = _tally!;
+            var job = FileOpText.JobOf(tally.Verb, _unzip);
+            var words = FileOpText.Running(job, tally.Count, tally.Name, _text());
             result.Add(new ActivityState
             {
                 RawKind = ActivityState.KindTransfer,
                 Title = "Files",
-                Name = name,
-                Glyph = unzip ? UnzipGlyph : CopyGlyph,
+                Name = words.Detail,
+                Words = words.Words,
+                MoreCount = words.More,
+                Glyph = job switch { FileJob.Unzip => UnzipGlyph, FileJob.Move => MoveGlyph, _ => CopyGlyph },
                 Stage = "copy",
-                Done = percent,
-                Total = percent is null ? null : 100,
+                Done = _percent,
+                Total = _percent is null ? null : 100,
                 Speed = _rate.Speed(now),
                 State = "run",
                 SourcePath = "fileop:window",
@@ -79,8 +95,7 @@ internal sealed partial class FileOperationWatcher : IDisposable
         {
             if (_opSince is not null)
             {
-                _finished = Done(_lastName, null, now, _lastGlyph);   // the window closed: done (or cancelled — the window doesn't say)
-                _opSince = null;
+                Closed(now);
             }
 
             if (FollowArchive(now, written) is { } archive)
@@ -95,6 +110,75 @@ internal sealed partial class FileOperationWatcher : IDisposable
         }
 
         return result;
+    }
+
+    /// <summary>A look between the once-a-second scans while the window is up (nothing is shown from it; the ending needs it).</summary>
+    public void Glance(DateTimeOffset now)
+    {
+        if (_tally is not null && ProgressWindow() is { } window)
+        {
+            Look(window, now);
+        }
+    }
+
+    private void Look((IntPtr Handle, string Title) window, DateTimeOffset now)
+    {
+        _tally ??= new FileOpTally();
+        var texts = ReadTexts(window.Handle);
+        if (texts is null)
+        {
+            return;
+        }
+
+        var look = FileOpReader.Read(window.Title, texts);
+        _tally.See(look, now);
+        // unpacking an archive: an element other than the file being handled ends in an archive's extension — the source, "X.zip"
+        // (the sentence around it ends in the percentage, so it doesn't count)
+        if (!look.Asking)
+        {
+            _unzip |= texts.Any(n => n != look.Name && IsArchive(n));   // (a question may name an archive of the person's own)
+        }
+
+        _percent = Percent(window.Title) ?? _percent;
+        Diagnose(window.Title, _percent, texts);
+    }
+
+    /// <summary>
+    /// The window closed (TODO ④, user 10-10): "已复制 …" only when it surely went through (<see cref="FileOpTally.Finished"/>);
+    /// otherwise — a question was answered, it was cancelled, it closed too early — the card just goes: the window never says how a
+    /// question was answered, and guessing it was wrong twice.
+    /// </summary>
+    private void Closed(DateTimeOffset now)
+    {
+        var tally = _tally ?? new FileOpTally();
+        var job = FileOpText.JobOf(tally.Verb, _unzip);
+        if (tally.Finished(now))
+        {
+            var words = FileOpText.Done(job, tally.Count, tally.Name, _text());
+            _finished = new ActivityState
+            {
+                RawKind = ActivityState.KindTransfer,
+                Title = "Files",
+                Name = words.Detail,
+                Words = words.Words,
+                MoreCount = words.More,
+                Stage = "copy",
+                State = "done",
+                SourcePath = "fileop:window",   // the same card as the one in progress: it rises from its cell (user 10-07)
+                UpdatedAt = now,
+            };
+            AppLog.Write($"fileop: done — {words.Words} {words.Detail}{(words.More > 0 ? " +" + words.More : string.Empty)}");
+        }
+        else
+        {
+            AppLog.Write($"fileop: ended, no card ({(tally.Cancelled ? "cancelled" : tally.Asked ? "a question was answered" : "closed before it could finish")})");
+        }
+
+        DiagnoseClosed(now);
+        _opSince = null;
+        _tally = null;
+        _unzip = false;
+        _percent = null;
     }
 
     /// <summary>An archive Windows is writing (compress has no progress window). Null when none.</summary>
@@ -127,7 +211,18 @@ internal sealed partial class FileOperationWatcher : IDisposable
         {
             if (current is > 0)
             {
-                _finished = Done(Path.GetFileName(_archive), _archive, now);
+                _finished = new ActivityState
+                {
+                    RawKind = ActivityState.KindTransfer,
+                    Title = "Files",
+                    Name = Path.GetFileName(_archive),
+                    Words = _text().FileZipped,
+                    Stage = "copy",
+                    State = "done",
+                    Open = _archive,
+                    SourcePath = "fileop:" + _archive,   // the same card as the one in progress: it rises from its cell (user 10-07)
+                    UpdatedAt = now,
+                };
             }
 
             _archive = null;
@@ -139,6 +234,7 @@ internal sealed partial class FileOperationWatcher : IDisposable
             RawKind = ActivityState.KindTransfer,
             Title = "Files",
             Name = Path.GetFileName(_archive),
+            Words = _text().FileZip,
             Glyph = CompressGlyph,
             Stage = "copy",
             Done = _archiveSize,   // size so far; the total isn't known, so the bar flows
@@ -149,25 +245,65 @@ internal sealed partial class FileOperationWatcher : IDisposable
         };
     }
 
-    /// <summary>
-    /// Finished: the same card as the one in progress (same key), so it rises from its cell and shows a few seconds (user 10-07 —
-    /// a separate "done" card dropped in while the icon vanished).
-    /// </summary>
-    private static ActivityState Done(string? name, string? open, DateTimeOffset now, string? glyph = null) => new()
-    {
-        RawKind = ActivityState.KindTransfer,
-        Title = "Files",
-        Name = name,
-        Glyph = glyph,
-        Stage = "copy",
-        State = "done",
-        Open = open,
-        SourcePath = "fileop:" + (open ?? "window"),
-        UpdatedAt = now,
-    };
+    // ---- diagnostics (TODO ④ file transfer card, 10-10): what the progress window says, logged as it changes (the rules in
+    // FileOpTally were made from these). Log "fileop: …". Kept for the trial: a case the rules get wrong shows here.
+    private string? _logged;
+    private int _lines;
+    private long? _lastPercent;
+    private readonly List<string> _titles = [];
+    private DateTimeOffset _diagSince;
 
-    private string? _lastName;
-    private string? _lastGlyph;
+    /// <summary>The window's whole text, logged whenever it changes (the same text isn't logged twice).</summary>
+    private void Diagnose(string title, long? percent, IReadOnlyList<string> texts)
+    {
+        if (_titles.Count == 0)
+        {
+            _diagSince = DateTimeOffset.UtcNow;
+        }
+
+        if (percent is not null)
+        {
+            _lastPercent = percent;
+        }
+
+        // the percentage and the time left change all the time: compared without digits, logged with them
+        var all = $"[{title}] {string.Join(" ¦ ", texts.Take(40))}";   // the "keep which files" list names every clash
+        var shape = Regex.Replace(all, @"\d", string.Empty);
+        if (!_titles.Contains(Regex.Replace(title, @"\d", string.Empty)))
+        {
+            _titles.Add(Regex.Replace(title, @"\d", string.Empty));
+        }
+
+        if (shape != _logged && _lines++ < 60)   // a thousand files would log a thousand names
+        {
+            _logged = shape;
+            AppLog.Write($"fileop: {ProgressWindowCount()} window(s) — {all}");
+        }
+    }
+
+    private void DiagnoseClosed(DateTimeOffset now)
+    {
+        AppLog.Write($"fileop: closed after {(now - _diagSince).TotalSeconds:0.0} s — last {(_lastPercent is { } p ? p + "%" : "no %")}, titles seen: {string.Join(" / ", _titles)}");
+        _logged = null;
+        _lines = 0;
+        _lastPercent = null;
+        _titles.Clear();
+    }
+
+    private static int ProgressWindowCount()
+    {
+        var count = 0;
+        var handle = IntPtr.Zero;
+        while ((handle = FindWindowExW(IntPtr.Zero, handle, WindowClass, null)) != IntPtr.Zero)
+        {
+            if (IsWindowVisible(handle))
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
 
     private EverythingSdk? Everything()
     {
@@ -194,12 +330,10 @@ internal sealed partial class FileOperationWatcher : IDisposable
     }
 
     /// <summary>
-    /// From the progress window's text: the file being handled (the element after the first "label:" — "Name:" / "名称:"), and
-    /// whether it unpacks an archive (an element other than that file ends in an archive's extension — the source, "X.zip";
-    /// the sentence around it ends in the percentage, so it doesn't count).
+    /// Every text in the progress window, in order (what they say: <see cref="FileOpReader"/>). Null when it can't be read.
     /// Every element read is released at once: COM references left behind make Explorer sluggish (see SearchBoxTracker).
     /// </summary>
-    private (string? Name, bool Unzip) ReadWindow(IntPtr handle)
+    private List<string>? ReadTexts(IntPtr handle)
     {
         var names = new List<string>();
         try
@@ -209,7 +343,7 @@ internal sealed partial class FileOperationWatcher : IDisposable
             var window = _automation.ElementFromHandle(handle);
             if (window is null)
             {
-                return (null, false);
+                return null;
             }
 
             var found = window.FindAll(TreeScope.TreeScope_Descendants, _all);
@@ -233,13 +367,10 @@ internal sealed partial class FileOperationWatcher : IDisposable
         }
         catch (COMException)
         {
-            return (null, false);
+            return null;
         }
 
-        var label = names.FindIndex(n => n.EndsWith(':') || n.EndsWith('：'));
-        var name = label >= 0 && label + 1 < names.Count ? names[label + 1] : null;
-        var unzip = names.Any(n => n != name && IsArchive(n));
-        return (name, unzip);
+        return names;
     }
 
     private static bool IsArchive(string name) => ArchiveExtensions.Any(ext => name.EndsWith(ext, StringComparison.OrdinalIgnoreCase));

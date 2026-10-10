@@ -1,39 +1,61 @@
 namespace IsleBar.Core.Ui;
 
 /// <summary>
-/// Where on the taskbar files can be dropped for the transit station (TODO ④ 乙, user 10-10): the whole taskbar height, so a file
-/// dragged in from above never crosses a "no drop" taskbar on its way to the pill (the 🚫 and the flicker). Only while something is
-/// being dragged — the rest of the time that stretch of taskbar is Windows'. This part: how wide it is, in screen pixels.
-/// <list type="bullet">
-/// <item>The big pill out: the circle's left to the big pill's right.</item>
-/// <item>Only the circle (and maybe some cells): on the left, from the circle rightwards as wide as circle + a one-icon small pill +
-/// the big pill (where the "drop here" pill will come out); in the middle, the same width centred on the circle; set by hand,
-/// three circles wide centred on it (a fallback, kept simple — user). Never narrower than the pills themselves.</item>
-/// </list>
+/// Where on the taskbar a drag is caught (TODO ④ 乙 / 丙, user 10-10): files coming in for the transit station, and the station
+/// itself dragged out and brought back. The whole taskbar height, so nothing dragged ever crosses a "no drop" taskbar near the pills
+/// (the 🚫 and the flicker). Only while something is being dragged — the rest of the time that stretch of taskbar is Windows'.
+/// This part: how wide it is, in screen pixels.
+/// <para>
+/// The empty stretch the pills sit in, the wider the better (user, option B): left and right up to the nearest of Windows' own
+/// things — the app icons, the Widgets button, the tray — keeping <c>gap</c> from them, so a file can still be held over an app's
+/// icon to bring its window up. Never narrower than the pills themselves. The same for every position (left / centre / by hand).
+/// </para>
 /// </summary>
 public static class DropZone
 {
-    /// <summary>Circle + a one-icon small pill + the gap + the big pill (dip).</summary>
-    public static double Wide => PillGeometry.SmallWidth(1) + PillGeometry.Gap + PillGeometry.BigWidth;
-
-    /// <param name="pillsLeft">The small pill's left end on screen (the circle is its left end).</param>
-    /// <param name="pillsRight">The right end of what is out: the big pill's, or the small pill's when there's no big pill.</param>
-    public static (int Left, int Right) Span(BarPosition position, int pillsLeft, int pillsRight, bool big, double scale)
+    /// <param name="pillsLeft">The pills' left end on screen (the circle's).</param>
+    /// <param name="pillsRight">The pills' right end: the big pill's, or the small pill's when there's no big pill.</param>
+    /// <param name="gap">Room kept from Windows' buttons (8 dip, in pixels).</param>
+    public static (int Left, int Right) Span(TaskbarLayout? bar, int pillsLeft, int pillsRight, int gap)
     {
-        if (big)
+        if (bar is null)
         {
-            return (pillsLeft, pillsRight);
+            return (pillsLeft, pillsRight);   // the taskbar isn't read yet: the pills only
         }
 
-        var ball = PillGeometry.Px(PillGeometry.BallBox, scale);
-        var centre = pillsLeft + (ball / 2);
-        var wide = PillGeometry.Px(Wide, scale);
-        var (left, right) = position switch
+        var left = bar.Left;
+        var right = bar.Right;
+        foreach (var (from, to) in Taken(bar))
         {
-            BarPosition.Center => (centre - (wide / 2), centre - (wide / 2) + wide),
-            BarPosition.Manual => (centre - (3 * ball / 2), centre - (3 * ball / 2) + (3 * ball)),
-            _ => (pillsLeft, pillsLeft + wide),
-        };
+            if (to <= pillsLeft)
+            {
+                left = Math.Max(left, to + gap);   // left of the pills
+            }
+            else if (from >= pillsRight)
+            {
+                right = Math.Min(right, from - gap);   // right of them
+            }
+        }
+
         return (Math.Min(left, pillsLeft), Math.Max(right, pillsRight));
+    }
+
+    /// <summary>The stretches Windows' own buttons take.</summary>
+    private static IEnumerable<(int From, int To)> Taken(TaskbarLayout bar)
+    {
+        if (bar.IconsLeft is { } iconsLeft && bar.IconsRight is { } iconsRight)
+        {
+            yield return (iconsLeft, iconsRight);
+        }
+
+        if (bar.WidgetsRight is { } widgets)
+        {
+            yield return (bar.Left, widgets);
+        }
+
+        if (bar.TrayLeft is { } tray)
+        {
+            yield return (tray, bar.Right);
+        }
     }
 }

@@ -1674,7 +1674,13 @@ public sealed partial class MainWindow : Window
         e.DragUIOverride.IsGlyphVisible = false;
         if (_draggingOut)
         {
+            if (from != "zone")
+            {
+                return;   // only the drop zone counts: the pill's own window changes shape as the cards move (false "left"s)
+            }
+
             DragOverPills();   // our own drag brought back: the station goes back up (let go here, nothing happens)
+            e.DragUIOverride.IsContentVisible = !_dragBack;   // … and the picture in the hand goes: it was put back, not copied
             return;
         }
 
@@ -1692,7 +1698,11 @@ public sealed partial class MainWindow : Window
     {
         if (_draggingOut)
         {
-            DragLeftPills();
+            if (from == "zone")
+            {
+                DragLeftPills();
+            }
+
             return;
         }
 
@@ -1723,16 +1733,19 @@ public sealed partial class MainWindow : Window
             if (_feed.Watchers?.Transit is { } transit && paths.Length > 0)
             {
                 transit.Add(paths);
-                Restack();   // the station takes the hint's place now, not on the next tick
+                Landed();   // the station takes the hint's place now, not on the next tick
             }
             else
             {
                 TaskbarHost.Log($"drop: {items.Count} item(s), none with a path");   // e.g. from a zip's insides or a phone
+                CannotDrop(items.Count == 0 ? _dropNames ?? string.Empty
+                    : items[0].Name + (items.Count > 1 ? $" +{items.Count - 1}" : string.Empty));
             }
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)   // async void: anything escaping ends the app (review 10-03)
         {
             TaskbarHost.Log("drop failed: " + ex.Message);
+            CannotDrop(_dropNames ?? string.Empty);
         }
         finally
         {
@@ -1762,7 +1775,7 @@ public sealed partial class MainWindow : Window
     /// Every 50 ms: is something being dragged that began off the taskbar? Then an invisible window (<see cref="IslandUi.DropCatcher"/>)
     /// covers the drop zone — the whole taskbar height, the pills and where the big pill comes out (<see cref="DropZone"/>) — so files
     /// brought in show "放入中转站" instead of the taskbar's 🚫; it goes when the button comes up. A press on the taskbar (moving its
-    /// icons, dragging our own pill out) never brings it. Log "dropzone: …".
+    /// icons) never brings it; the transit station dragged out of the pill does (brought back over it, it is put back). Log "dropzone: …".
     /// </summary>
     private void WatchDrags()
     {
@@ -1797,9 +1810,10 @@ public sealed partial class MainWindow : Window
 
         _buttonWasDown = down;
         WatchDragOutEnd(down);
-        var dragging = down && _pressCounts && !_draggingOut && _placement.Visible
+        // files coming in (the press began off the taskbar), or the transit station dragged out of the pill (TODO ④ 丙)
+        var dragging = down && _placement.Visible && (_draggingOut || (_pressCounts
             && DateTime.UtcNow - _pressSince >= DragHold
-            && (Math.Abs(at.X - _pressAt.X) >= DragMove || Math.Abs(at.Y - _pressAt.Y) >= DragMove);
+            && (Math.Abs(at.X - _pressAt.X) >= DragMove || Math.Abs(at.Y - _pressAt.Y) >= DragMove)));
         if (!dragging || bar is not { } rect || !NativeMethods.GetWindowRect(_hwnd, out var window))
         {
             if (_catcher?.IsUp == true && !down)
@@ -1817,14 +1831,14 @@ public sealed partial class MainWindow : Window
             _catcher.OnTop();   // the taskbar lifts itself over every topmost window as things pass over it (the lifted card's lesson)
         }
 
-        if (_catcher?.IsUp == true && _zone is not null && _dropHover)
+        if (_catcher?.IsUp == true && _zone is not null && (_dropHover || _draggingOut || _flying))
         {
-            return;   // files over it: leave it be (the big pill coming out mustn't move it under the hand)
+            return;   // in use, or the pills moving: leave it be (it mustn't move under the hand)
         }
 
-        var big = BigVisible && !_dropHover && _layout.Big is not null;
+        var big = BigVisible && _layout.Big is not null;
         var right = window.Left + (big ? _layout.Big!.Value.Right : _layout.Small.Right);
-        var span = DropZone.Span(BarSlot.Parse(_settings.Position), window.Left + _layout.Small.Left, right, big, DpiSetup.Scale);
+        var span = DropZone.Span(_tracker.Layout, window.Left + _layout.Small.Left, right, DpiSetup.Px(PillGeometry.Gap));
         if (_zone is { } was)
         {
             span = (Math.Min(span.Left, was.Left), Math.Max(span.Right, was.Right));   // never shrinks under a drag

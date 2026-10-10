@@ -18,12 +18,13 @@ internal sealed partial class DownloadWatcher : IDisposable
     private const string BaiduExtension = ".baiduyun.p.downloading";
     private static readonly string[] PartialExtensions = [BaiduExtension, ".crdownload", ".part", ".opdownload", ".download"];
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan Glance = TimeSpan.FromMilliseconds(250);
     private const long BaiduQuiet = 64 * 1024;   // Baidu's helper writes logs and settings too; less than this a second isn't the download
 
     private readonly Func<IReadOnlyList<string>> _settingFolders;
     private readonly CancellationTokenSource _stop = new();
     private readonly DownloadTracker _tracker = new();
-    private readonly FileOperationWatcher _fileOps = new();
+    private readonly FileOperationWatcher _fileOps;
     private readonly List<ActivityState> _finished = [];
     /// <summary>Files finished since the merged card started; told together when the last one is through.</summary>
     private readonly List<string> _batch = [];
@@ -36,9 +37,10 @@ internal sealed partial class DownloadWatcher : IDisposable
     private readonly Dictionary<string, double> _baiduReceived = new(StringComparer.OrdinalIgnoreCase);
 
     /// <param name="folders">Folders set in settings; empty = the system Downloads folder.</param>
-    public DownloadWatcher(Func<IReadOnlyList<string>> folders)
+    public DownloadWatcher(Func<IReadOnlyList<string>> folders, Func<Core.Localization.LanguageStrings> text)
     {
         _settingFolders = folders;
+        _fileOps = new FileOperationWatcher(text);
     }
 
     /// <summary>Downloads and file operations to show now (in progress + just finished). Safe to read from any thread.</summary>
@@ -100,7 +102,23 @@ internal sealed partial class DownloadWatcher : IDisposable
             Current = items;
             try
             {
-                await Task.Delay(PollInterval, _stop.Token);
+                // while Explorer's progress window is up it's looked at 4 times a second: its last words before closing
+                // ("cancelling", how many are left) come and go within a second (user's tests 10-10)
+                var waited = TimeSpan.Zero;
+                while (_fileOps.Busy && waited + Glance < PollInterval)
+                {
+                    await Task.Delay(Glance, _stop.Token);
+                    waited += Glance;
+                    try
+                    {
+                        _fileOps.Glance(DateTimeOffset.UtcNow);
+                    }
+                    catch (Exception ex) when (ex is InvalidOperationException or System.Runtime.InteropServices.COMException)
+                    {
+                    }
+                }
+
+                await Task.Delay(PollInterval - waited, _stop.Token);
             }
             catch (TaskCanceledException)
             {

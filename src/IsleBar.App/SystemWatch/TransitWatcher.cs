@@ -82,7 +82,8 @@ internal sealed class TransitWatcher : NoticeWatcher
         }
     }
 
-    /// <summary>Files dropped on the pill (or the copy card's button): in they go; anything new → the card debuts.</summary>
+    /// <summary>Files dropped on the pill (or the copy card's button): in they go, and the card debuts — even when they all were
+    /// in it already (user 10-10: "got it, it's here").</summary>
     public void Add(IReadOnlyList<string> paths) => Guard(() =>
     {
         lock (_gate)
@@ -93,6 +94,10 @@ internal sealed class TransitWatcher : NoticeWatcher
             {
                 _gone = Missing();
                 Save();
+            }
+
+            if (_shelf.Count > 0)
+            {
                 Show(debut: true);
             }
         }
@@ -120,11 +125,13 @@ internal sealed class TransitWatcher : NoticeWatcher
     });
 
     /// <summary>
-    /// Dragged out and dropped somewhere: whatever is no longer where it was got moved — out of the station; copied ones stay.
-    /// Explorer may report "none" for a move it did itself (an optimised move), so this goes by whether the files are still there,
-    /// not by the drop's result; and it looks a few times, as a big move across folders takes a moment.
+    /// Dragged out and let go somewhere (<paramref name="target"/> = the folder, null = not a folder): what is no longer where it was
+    /// got moved — out of the station, the card says "已移动 …" for 2 s; what was copied into the folder stays — "已复制 …" for 2 s
+    /// (user 10-10). Only facts (<see cref="TransitOut"/>): Explorer reports "none" for moves it did itself and the result says nothing
+    /// of a copy it then skipped, so this looks at the files, a few times (a big copy to a USB stick takes a while). Nothing sure by
+    /// the last look (an app took them, it was cancelled): nothing is said.
     /// </summary>
-    public void Dragged(IReadOnlyList<string> paths)
+    public void Dragged(IReadOnlyList<string> paths, string? target, DateTimeOffset since)
     {
         _ = Task.Run(async () =>
         {
@@ -133,25 +140,85 @@ internal sealed class TransitWatcher : NoticeWatcher
             {
                 await Task.Delay(at - waited).ConfigureAwait(false);
                 waited = at;
-                var gone = paths.Where(p => !File.Exists(p) && !Directory.Exists(p)).ToArray();
-                if (gone.Length > 0)
+                var (moved, copied) = TransitOut.Check(paths, target, since, p => File.Exists(p) || Directory.Exists(p), Made);
+                if (moved.Count > 0)
                 {
-                    AppLog.Write($"transit: {gone.Length} moved away");
-                    Remove(gone);
-                    paths = [.. paths.Except(gone)];
+                    AppLog.Write($"transit: {moved.Count} moved away");
+                    Tell(Text.FileMoved, moved, takeOut: true);
                 }
 
+                if (copied.Count > 0)
+                {
+                    AppLog.Write($"transit: {copied.Count} copied");
+                    Tell(Text.FileCopied, copied, takeOut: false);
+                }
+
+                paths = [.. paths.Except(moved).Except(copied)];
                 if (paths.Count == 0)
                 {
                     return;
                 }
             }
+
+            AppLog.Write($"transit: {paths.Count} neither moved nor copied into a folder (nothing said)");
         });
     }
+
+    private static DateTimeOffset? Made(string path)
+        => File.Exists(path) ? File.GetCreationTimeUtc(path) : Directory.Exists(path) ? Directory.GetCreationTimeUtc(path) : null;
+
+    /// <summary>How long "已复制 / 已移动" shows (user 10-10: 2 s).</summary>
+    private static readonly TimeSpan SaidLength = TimeSpan.FromSeconds(2);
+
+    private (string Words, string Names)? _said;
+    private int _saids;
+
+    /// <summary>The card says what happened for <see cref="SaidLength"/> (a debut), then is itself again — or goes, when it's empty.</summary>
+    private void Tell(string words, IReadOnlyList<string> paths, bool takeOut) => Guard(() =>
+    {
+        int said;
+        lock (_gate)
+        {
+            if (takeOut && _shelf.Remove(paths) > 0)
+            {
+                _gone = Missing();
+                Save();
+            }
+
+            _said = (words, TransitOut.Names(paths));
+            said = ++_saids;
+            Show(debut: false);
+        }
+
+        _ = Task.Delay(SaidLength).ContinueWith(_ => Guard(() =>
+        {
+            lock (_gate)
+            {
+                if (_saids == said)
+                {
+                    _said = null;
+                    Show(debut: false);
+                }
+            }
+        }), TaskScheduler.Default);
+    });
 
     /// <summary>Call under the lock.</summary>
     private void Show(bool debut)
     {
+        if (_said is { } said)
+        {
+            // "已复制 DSC02580.ARW +1": its own look, so it debuts (2 s); kept up for that even when everything was moved out
+            var told = SystemNotice.Make(said.Words, NoticeGlyphs.Transit, _since, msg: said.Names);
+            told.Files = [.. _shelf.Paths];
+            told.Gone = _gone;
+            told.Look = "out" + _saids;
+            told.DebutFor = SaidLength;
+            told.ByHand = true;
+            Board.Hold(Key, told);
+            return;
+        }
+
         if (_shelf.Count == 0)
         {
             Board.Clear(Key);

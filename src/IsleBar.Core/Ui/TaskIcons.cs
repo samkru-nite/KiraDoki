@@ -68,8 +68,7 @@ public static class TaskIcons
             ActivityKind.Transfer => s.RunState switch
             {
                 ActivityRunState.Error => new(ErrorBadge, IconTone.Error, false, false),
-                ActivityRunState.Done => new(Completed, IconTone.Done, false, false),
-                _ => new(
+                ActivityRunState.Done => new(Completed, IconTone.Done, false, false),                _ => new(
                     s.Stage == "copy" ? s.Glyph ?? Copy : s.Direction == TransferDirection.Incoming ? Download : Upload,
                     IconTone.Plain,
                     s.IsPausedTransfer,
