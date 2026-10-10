@@ -14,12 +14,16 @@ namespace IsleBar.App.IslandUi;
 /// <param name="Prepare">Readies a new list pill (its colours as at rest).</param>
 /// <param name="Render">Draws a card on its list pill — at opening and on every tick while the list is up.</param>
 /// <param name="Glow">A card's border colour (null = none).</param>
+/// <param name="Present">Whether a card is still there: one that went (closed, ended) leaves the list, the rest close the gap.</param>
+/// <param name="ButtonTip">The hint over a card's button (null = none).</param>
 internal sealed record ListRequest(
     IReadOnlyList<string> Keys,
     IPillHost Host,
     Action<PillView> Prepare,
     Action<string, PillView> Render,
     Func<string, Color?> Glow,
+    Func<string, bool> Present,
+    Func<string, string?> ButtonTip,
     ScreenRect Pill,
     ScreenRect Ball,
     double PillRadius,
@@ -35,6 +39,8 @@ internal sealed record ListRequest(
 /// drawing, live: timers tick, bars flow — plan B, 10-10), stacked over the big pill, each flying out of
 /// the circle and growing into its pill on the way (nearest first, a stagger apart, bowing up). A tap on one hands it to the bar,
 /// which lifts its card out of that very pill (<see cref="LiftWindow"/>, with <see cref="LiftRequest.From"/>); the others fade.
+/// A tap on a pill's button ("Close", ↗) does what the big pill's does (user 10-10); a card that goes while the list is up — closed
+/// there, or ended by itself — shrinks away and the pills above come down (<see cref="ListMotion.Leave"/>).
 /// Anything else closes it: they fly back into the circle. See-through, never focused, topmost, like the lifted card. Numbers: <see cref="ListMotion"/>.
 /// </summary>
 internal sealed class ListWindow : Window
@@ -49,6 +55,8 @@ internal sealed class ListWindow : Window
     private ListRequest? _request;
     private ScreenRect _window;
     private MotionBox _ball;
+    private MotionBox _pill;
+    private double _taskbarTop;
     private Phase _phase = Phase.Shut;
     private string? _taken;
     private bool _animating;
@@ -60,12 +68,16 @@ internal sealed class ListWindow : Window
         Shut,
         Opening,
         Open,
+        Shifting,   // open; pills of cards that went shrink away, the rest come down
         Closing,
         Taking,
     }
 
     /// <summary>A pill was tapped: its card and where the pill is on screen now.</summary>
     public Action<string, ScreenRect>? Tapped { get; set; }
+
+    /// <summary>A pill's button was tapped: its card.</summary>
+    public Action<string>? ButtonTapped { get; set; }
 
     /// <summary>The list starts going back into the circle (however it was closed): the bar brightens its pills again.</summary>
     public Action? Closing { get; set; }
@@ -74,12 +86,12 @@ internal sealed class ListWindow : Window
     public Func<int, int, bool>? KeepsPress { get; set; }
 
     /// <summary>Up and not on its way out.</summary>
-    public bool IsOpen => _phase is Phase.Opening or Phase.Open;
+    public bool IsOpen => _phase is Phase.Opening or Phase.Open or Phase.Shifting;
 
     /// <summary>The mouse came onto a list pill (its card, its pill): a click nearly always follows.</summary>
     public Action<string, PillView>? Hovered { get; set; }
 
-    /// <summary>Each tick while up: every pill draws its card as it is now, and its border.</summary>
+    /// <summary>Each tick while up: every pill draws its card as it is now, its border and its button; cards that went leave.</summary>
     public void Redraw()
     {
         if (_request is not { } r)
@@ -87,11 +99,41 @@ internal sealed class ListWindow : Window
             return;
         }
 
-        foreach (var item in _items)
+        foreach (var item in _items.Where(i => !i.Leaving))
         {
             r.Render(item.Key, item.Pill);
             item.SetGlow(r.Glow(item.Key));
+            item.ShowButton(r.ButtonTip(item.Key));
         }
+
+        if (_phase == Phase.Open && _items.Where(i => !r.Present(i.Key)).ToList() is { Count: > 0 } gone)
+        {
+            Shift(gone);   // while it opens or shifts already: on a later tick
+        }
+    }
+
+    /// <summary>The pills of cards that went shrink away, the rest come down into their new places (lowest first, as opened).</summary>
+    private void Shift(List<Item> gone)
+    {
+        var index = 0;
+        foreach (var item in _items)
+        {
+            item.From = item.Slot;
+            if (gone.Contains(item))
+            {
+                item.Leaving = true;
+                item.ShowButton(null);
+            }
+            else
+            {
+                item.Slot = ListMotion.Slot(index++, _pill, _taskbarTop);
+            }
+        }
+
+        // the window's click region stays as it was meanwhile: the old places cover the new ones (they only come down)
+        _phase = Phase.Shifting;
+        TaskbarHost.Log($"list: {string.Join(", ", gone.Select(i => i.Key))} went, {index} left");
+        Start();
     }
 
     public ListWindow()
@@ -124,6 +166,7 @@ internal sealed class ListWindow : Window
         var pill = Local(request.Pill, request.PillRadius);
         _ball = Local(request.Ball, request.Ball.Width / s / 2);
         var taskbarTop = (request.TaskbarTop - _window.Top) / s;
+        (_pill, _taskbarTop) = (pill, taskbarTop);
 
         _root.Children.Clear();
         _items.Clear();
@@ -134,6 +177,13 @@ internal sealed class ListWindow : Window
             request.Prepare(item.Pill);
             item.Box.Tapped += (_, _) => OnTapped(item);
             item.Box.PointerEntered += (_, _) => Hovered?.Invoke(item.Key, item.Pill);
+            item.Button.Tapped += (_, e) =>
+            {
+                e.Handled = true;   // the button's, not the pill's (no lift)
+                OnButton(item);
+            };
+            item.Button.PointerEntered += (_, _) => item.Pill.LightButton(_phase == Phase.Open);
+            item.Button.PointerExited += (_, _) => item.Pill.LightButton(false);
             _items.Add(item);
             _root.Children.Add(item.Box);
         }
@@ -164,6 +214,12 @@ internal sealed class ListWindow : Window
         if (!IsOpen)
         {
             return;
+        }
+
+        foreach (var leaving in _items.Where(i => i.Leaving).ToList())
+        {
+            _root.Children.Remove(leaving.Box);   // shrinking away: just gone
+            _items.Remove(leaving);
         }
 
         _phase = Phase.Closing;
@@ -197,9 +253,22 @@ internal sealed class ListWindow : Window
         Tapped?.Invoke(item.Key, rect);
     }
 
+    private void OnButton(Item item)
+    {
+        if (_phase != Phase.Open)
+        {
+            return;
+        }
+
+        TaskbarHost.Log($"list: button of {item.Key}");
+        item.Pill.LightButton(false);
+        ButtonTapped?.Invoke(item.Key);
+        Redraw();   // a closed card leaves now, not on the next tick
+    }
+
     private void OnPress(int x, int y)
     {
-        if (_phase != Phase.Open && _phase != Phase.Opening)
+        if (!IsOpen)
         {
             return;
         }
@@ -248,6 +317,7 @@ internal sealed class ListWindow : Window
     {
         Phase.Opening => ListMotion.Total(_items.Count, _request?.Bounce == true, ListMotion.StaggerMs),
         Phase.Taking => LiftMotion.OpenLength(_request?.Bounce == true),
+        Phase.Shifting => ListMotion.Length(_request?.Bounce == true),
         _ => ListMotion.Close,
     };
 
@@ -281,18 +351,27 @@ internal sealed class ListWindow : Window
         {
             _phase = Phase.Open;
             Draw(Length());
-            // settled: only the pills take clicks — the bar under the window is the bar's again
-            var s = DpiSetup.Scale;
-            var region = CreateRectRgn(0, 0, 0, 0);
-            foreach (var item in _items)
+            ClickOnlyPills();
+            return;
+        }
+
+        if (_phase == Phase.Shifting)
+        {
+            foreach (var leaving in _items.Where(i => i.Leaving).ToList())
             {
-                var b = item.Slot;
-                var one = CreateRectRgn((int)Math.Round(b.X * s), (int)Math.Round(b.Y * s), (int)Math.Round((b.X + b.Width) * s), (int)Math.Round((b.Y + b.Height) * s));
-                CombineRgn(region, region, one, RGN_OR);
-                DeleteObject(one);
+                _root.Children.Remove(leaving.Box);
+                _items.Remove(leaving);
             }
 
-            SetWindowRgn(_hwnd, region, redraw: true);   // the system owns the region now
+            _phase = Phase.Open;
+            Draw(Length());
+            if (_items.Count == 0)
+            {
+                PutAway();   // the last one went
+                return;
+            }
+
+            ClickOnlyPills();
             return;
         }
 
@@ -305,6 +384,22 @@ internal sealed class ListWindow : Window
             _items.Clear();
             _request = null;
         }
+    }
+
+    /// <summary>Settled: only the pills take clicks — the bar under the window is the bar's again.</summary>
+    private void ClickOnlyPills()
+    {
+        var s = DpiSetup.Scale;
+        var region = CreateRectRgn(0, 0, 0, 0);
+        foreach (var item in _items)
+        {
+            var b = item.Slot;
+            var one = CreateRectRgn((int)Math.Round(b.X * s), (int)Math.Round(b.Y * s), (int)Math.Round((b.X + b.Width) * s), (int)Math.Round((b.Y + b.Height) * s));
+            CombineRgn(region, region, one, RGN_OR);
+            DeleteObject(one);
+        }
+
+        SetWindowRgn(_hwnd, region, redraw: true);   // the system owns the region now
     }
 
     private void Draw(TimeSpan elapsed)
@@ -329,6 +424,19 @@ internal sealed class ListWindow : Window
                     var back = ListMotion.Back(t);
                     var (backBox, backScale) = ListMotion.Box(_ball, item.Slot, back);
                     item.Place(backBox, back, backScale);
+                    break;
+                case Phase.Shifting:
+                    if (item.Leaving)
+                    {
+                        var (leaveBox, leaveScale, shown) = ListMotion.Leave(item.From, t);
+                        item.Place(leaveBox, 1, leaveScale);
+                        item.Box.Opacity = shown;
+                    }
+                    else
+                    {
+                        item.Place(SwapMotion.Between(item.From, item.Slot, SwapMotion.Move(t, r.Bounce)), 1);
+                    }
+
                     break;
                 case Phase.Taking:
                     // the tapped one stays until the lifted card is surely drawn over it (a frame or two), then the card is it
@@ -367,7 +475,49 @@ internal sealed class ListWindow : Window
             Box.Children.Add(_back);
             Box.Children.Add(_inside);
             Box.Children.Add(_ring);
+            Box.Children.Add(Button);
         }
+
+        /// <summary>
+        /// Over the card's button zone (the pill draws the button but takes no input): from the text's right edge to the pill's end,
+        /// its whole height, as on the big pill. <paramref name="tip"/> = its hint.
+        /// </summary>
+        public void ShowButton(string? tip)
+        {
+            var zone = Pill.CloseZone;
+            var shown = !Leaving && zone.Visibility == Visibility.Visible;
+            Button.Visibility = shown ? Visibility.Visible : Visibility.Collapsed;
+            if (shown)
+            {
+                Button.Width = zone.Width;
+            }
+            else
+            {
+                Pill.LightButton(false);
+            }
+
+            if (tip != _tip)
+            {
+                _tip = tip;
+                ToolTipService.SetToolTip(Button, tip);
+            }
+        }
+
+        private string? _tip;
+
+        /// <summary>Takes the taps on the card's button.</summary>
+        public Border Button { get; } = new()
+        {
+            Background = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0)),
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Visibility = Visibility.Collapsed,
+        };
+
+        /// <summary>Its card went: it shrinks away (<see cref="ListMotion.Leave"/>).</summary>
+        public bool Leaving { get; set; }
+
+        /// <summary>Where it was when the list began to shift.</summary>
+        public MotionBox From { get; set; }
 
         public string Key { get; }
 
@@ -381,7 +531,7 @@ internal sealed class ListWindow : Window
             _ringBrush.Color = glow ?? Color.FromArgb(0, 0, 0, 0);
         }
 
-        public MotionBox Slot { get; }
+        public MotionBox Slot { get; set; }
 
         /// <summary>Takes the taps (a transparent background so the whole pill does).</summary>
         public Grid Box { get; } = new() { Background = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0)) };

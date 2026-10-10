@@ -354,6 +354,9 @@ public sealed partial class PillView : UserControl
         OpenIcon.Foreground = CloseLabel.Foreground;
     }
 
+    /// <summary>A list pill's button under the pointer: its chip lights up as the big pill's does (user 10-10).</summary>
+    internal void LightButton(bool on) => CloseChip.Fill = BrushOf(ColourOf(on ? Colours.ChipHover : Colours.Chip));
+
     /// <summary>The icon slot as a card has it: the font icon, the logos hidden until the card asks.</summary>
     internal void ShowCardLead()
     {

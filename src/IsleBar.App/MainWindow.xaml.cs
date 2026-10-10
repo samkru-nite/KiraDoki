@@ -1423,7 +1423,7 @@ public sealed partial class MainWindow : Window
     {
         var button = _dropHover ? PillButton.None : ButtonFor(_shownCard);
         Big.ShowClose(button);
-        var tip = button == PillButton.Open ? _text.OpenWith.Replace("{a}", _shownCard!.State.AgentLabel, StringComparison.Ordinal) : null;
+        var tip = button == PillButton.Open ? OpenTip(_shownCard!) : null;
         if (tip != _openTip)
         {
             _openTip = tip;
@@ -1437,6 +1437,9 @@ public sealed partial class MainWindow : Window
     }
 
     private string? _openTip;
+
+    /// <summary>The hint over a ↗: "Open in Claude".</summary>
+    private string OpenTip(Card card) => _text.OpenWith.Replace("{a}", card.State.AgentLabel, StringComparison.Ordinal);
 
     /// <summary>The button a card has on the right (<see cref="ShowCloseZone"/>; the list's pills too).</summary>
     private PillButton ButtonFor(Card? card)

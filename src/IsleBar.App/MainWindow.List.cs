@@ -120,6 +120,7 @@ public sealed partial class MainWindow
         {
             _list = new ListWindow();
             _list.Tapped = OnListTapped;
+            _list.ButtonTapped = OnListButton;
             _list.Hovered = TakeListPillShot;
             _list.Closing = () => _ = Dim(1, ListMotion.Close);
             _list.KeepsPress = OnBar;
@@ -132,6 +133,8 @@ public sealed partial class MainWindow
             PrepareListPill,
             RenderListPill,
             key => GlowOf(_cards.Cards.FirstOrDefault(c => c.Key == key)),
+            key => _cards.Cards.Any(c => c.Key == key),
+            key => _cards.Cards.FirstOrDefault(c => c.Key == key) is { } c && ButtonFor(c) == PillButton.Open ? OpenTip(c) : null,
             pill,
             ball,
             CornerRadiusNow(),
@@ -180,6 +183,29 @@ public sealed partial class MainWindow
         if (_shownCard?.Key == key)
         {
             OpenLift(card, _listPillShot.Key == key ? _listPillShot.Shot : null, from, GlowOf(card));
+        }
+    }
+
+    /// <summary>
+    /// A list pill's button (user 10-10), as the big pill's: ↗ = to the chat (the card goes 6 s later) and the list goes back into
+    /// the circle; "Close" = the card closes, its pill shrinks away and the list stays (<see cref="ListWindow"/>).
+    /// </summary>
+    private void OnListButton(string key)
+    {
+        if (_cards.Cards.FirstOrDefault(c => c.Key == key) is not { } card)
+        {
+            return;
+        }
+
+        switch (ButtonFor(card))
+        {
+            case PillButton.Open:
+                OpenChat(card);
+                CloseList();
+                break;
+            case PillButton.Close:
+                CloseCard(card);
+                break;
         }
     }
 

@@ -18,6 +18,23 @@ public sealed class ListMotionTests
     }
 
     [Fact]
+    public void A_leaving_pill_shrinks_about_its_centre_and_fades_before_the_end()
+    {
+        var slot = ListMotion.Slot(0, Pill, 592);
+        var (start, startScale, startShown) = ListMotion.Leave(slot, 0);
+        Assert.Equal(slot, start);
+        Assert.Equal(1, startScale);
+        Assert.Equal(1, startShown);
+
+        var (end, endScale, endShown) = ListMotion.Leave(slot, 1);
+        Assert.Equal(ListMotion.LeaveScale, endScale, 6);
+        Assert.Equal(slot.X + (slot.Width / 2), end.X + (end.Width / 2), 6);
+        Assert.Equal(slot.Y + (slot.Height / 2), end.Y + (end.Height / 2), 6);
+        Assert.Equal(0, endShown);
+        Assert.Equal(0, ListMotion.Leave(slot, ListMotion.LeaveFade).Opacity, 6);
+    }
+
+    [Fact]
     public void Only_what_fits_under_the_screen_top_is_listed()
     {
         Assert.Equal(5, ListMotion.Fits(5, 32, 592, 0));

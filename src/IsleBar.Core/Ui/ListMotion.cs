@@ -74,4 +74,23 @@ public static class ListMotion
     /// <summary>How much of the pill shows at share <paramref name="p"/>, and how much of its content.</summary>
     public static (double Pill, double Content) Shows(double p)
         => (Math.Clamp(p / Appear, 0, 1), LiftMotion.Window(p, ContentIn, 1));
+
+    /// <summary>
+    /// A pill leaving the open list (its card closed by its button, or ended by itself — user 10-10): it shrinks in place to this
+    /// share of its size as it fades, and the pills above come down into the gap, in one pill's way (<see cref="Length"/>).
+    /// </summary>
+    public const double LeaveScale = 0.85;
+
+    /// <summary>It is gone by this share of the way (the gap closes after it).</summary>
+    public const double LeaveFade = 0.6;
+
+    /// <summary>The leaving pill at time share <paramref name="t"/>: its box shrunk about its centre, the scale of its content, its opacity.</summary>
+    public static (MotionBox Box, double Scale, double Opacity) Leave(MotionBox slot, double t)
+    {
+        var scale = SwapMotion.Lerp(1, LeaveScale, SwapMotion.Ease(t));
+        var w = slot.Width * scale;
+        var h = slot.Height * scale;
+        var box = new MotionBox(slot.X + ((slot.Width - w) / 2), slot.Y + ((slot.Height - h) / 2), w, h, slot.Radius * scale);
+        return (box, scale, 1 - SwapMotion.Ease(Math.Clamp(t / LeaveFade, 0, 1)));
+    }
 }
