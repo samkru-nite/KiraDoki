@@ -1415,7 +1415,7 @@ public sealed partial class MainWindow : Window
     {
         var button = _dropHover ? PillButton.None : ButtonFor(_shownCard);
         Big.ShowClose(button);
-        var tip = button == PillButton.Open ? OpenTip(_shownCard!) : null;
+        var tip = button is PillButton.Open or PillButton.Keep ? OpenTip(_shownCard!) : null;
         if (tip != _openTip)
         {
             _openTip = tip;
@@ -1436,13 +1436,15 @@ public sealed partial class MainWindow : Window
         NextStep.Link => _text.OpenWith.Replace("{a}", Interop.DefaultBrowser.Name() ?? _text.CardBrowser, StringComparison.Ordinal),
         NextStep.Reveal => _text.CardOpenFolder,
         NextStep.Drive => _text.MenuOpen,
+        NextStep.Keep => _text.CardAddToTransit,
         _ => _text.OpenWith.Replace("{a}", card.State.AgentLabel, StringComparison.Ordinal),
     };
 
     /// <summary>The button a card has on the right (<see cref="ShowCloseZone"/>; the list's pills too).</summary>
     private PillButton ButtonFor(Card? card)
         => card is null ? PillButton.None
-            : StepFor(card) != NextStep.None ? PillButton.Open
+            : StepFor(card) is var step && step == NextStep.Keep ? PillButton.Keep
+            : step != NextStep.None ? PillButton.Open
             : card.Type == CardType.Inform ? PillButton.Close
             : PillButton.None;
 
@@ -1461,9 +1463,12 @@ public sealed partial class MainWindow : Window
             return NextStep.Chat;
         }
 
-        if (card.Key == IsleBar.Core.SystemWatch.SystemNotice.SourcePrefix + "clipboard" && s.Open is not null)
+        if (card.Key == IsleBar.Core.SystemWatch.SystemNotice.SourcePrefix + "clipboard")
         {
-            return NextStep.Link;
+            // a copied address opens; copied files or an image go into the transit station (TODO ④, user 10-10)
+            return s.Open is not null ? NextStep.Link
+                : _feed.Watchers?.Clipboard is { } copied && (copied.CopiedFiles.Count > 0 || copied.HoldsImage) ? NextStep.Keep
+                : NextStep.None;
         }
 
         if (SystemWatch.DriveWatcher.Owns(s) && card.Type == CardType.Status && s.Open is { } root && Directory.Exists(root))
@@ -1494,6 +1499,44 @@ public sealed partial class MainWindow : Window
             case NextStep.Drive when card.State.Open is { } root:
                 Engine.FileActions.Open(root, revealInFolder: false);
                 break;
+            case NextStep.Keep:
+                _ = KeepCopied(card);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// The copy card's "+" (TODO ④, user 10-10): the copied files go into the transit station — an image (a screenshot has no file)
+    /// is saved first, as "图片 2026-10-11 030512.png" in IsleBar's own folder. The copy card goes; the station debuts.
+    /// </summary>
+    private async Task KeepCopied(Card card)
+    {
+        if (_feed.Watchers is not { Clipboard: { } copied, Transit: { } transit })
+        {
+            return;
+        }
+
+        try
+        {
+            IReadOnlyList<string> paths = copied.CopiedFiles;
+            if (paths.Count == 0)
+            {
+                var saved = await copied.SaveImageAsync(Path.Combine(AppPaths.DataDirectory, "transit-images"), _text.TransitPicture);
+                paths = saved is null ? [] : [saved];
+            }
+
+            TaskbarHost.Log($"transit: from the copy card, {paths.Count} item(s)");
+            if (paths.Count == 0)
+            {
+                return;
+            }
+
+            transit.Add(paths);
+            CloseCard(card);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)   // fire and forget: never let it take the bar down
+        {
+            TaskbarHost.Log("transit: from the copy card failed — " + ex.Message);
         }
     }
 
@@ -1504,6 +1547,7 @@ public sealed partial class MainWindow : Window
         Link,
         Reveal,
         Drive,
+        Keep,
     }
 
     /// <summary>

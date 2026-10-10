@@ -1267,7 +1267,8 @@ public sealed partial class PillView : UserControl
     internal void ShowClose(PillButton button)
     {
         CloseZone.Visibility = button == PillButton.None ? Visibility.Collapsed : Visibility.Visible;
-        var open = button == PillButton.Open;
+        var open = button is PillButton.Open or PillButton.Keep;
+        OpenIcon.Glyph = button == PillButton.Keep ? KeepGlyph : OpenGlyph;
         CloseZone.Width = ButtonGap + (open ? OpenChip : CloseChipWidth) + ButtonInset;
         CloseLabel.Visibility = open ? Visibility.Collapsed : Visibility.Visible;
         OpenIcon.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
@@ -1288,6 +1289,8 @@ public sealed partial class PillView : UserControl
     private const double ButtonInset = 5;
     private const double CloseChipWidth = 66;
     private const double OpenChip = 22;
+    private const string OpenGlyph = "";
+    private const string KeepGlyph = "";   // + : into the transit station (a stand-in, user 10-11: all icons get redrawn together later)
     /// <summary>
     /// "Close" centred by its glyphs, not its line box (user 10-07: it sat off-centre up and down): its own inked rows are found in
     /// a snapshot and the label is moved so their middle is the zone's middle, rounded to 0.5. Again when the text changes.
@@ -1502,4 +1505,6 @@ internal enum PillButton
     None,
     Close,
     Open,
+    /// <summary>Round "+": a copied file or image goes into the transit station.</summary>
+    Keep,
 }

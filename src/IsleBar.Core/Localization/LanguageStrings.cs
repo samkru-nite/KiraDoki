@@ -110,6 +110,8 @@ public sealed class LanguageStrings
     public required string NoticeTransitFiles { get; init; }
     public required string NoticeTransitDrop { get; init; }
     public required string NoticeTransitCannot { get; init; }
+    public required string CardAddToTransit { get; init; }
+    public required string TransitPicture { get; init; }
     public required string FileCopy { get; init; }
     public required string FileMove { get; init; }
     public required string FileUnzip { get; init; }

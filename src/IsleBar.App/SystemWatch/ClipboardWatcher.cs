@@ -180,6 +180,8 @@ internal sealed class ClipboardWatcher : NoticeWatcher
         try
         {
             var s = Text;
+            _files = [];
+            _imageSequence = 0;
             if (IsFlaggedSecret() || ClipboardRules.IsPasswordManager(owner))
             {
                 return (NoticeText.Copied(s, NoticeText.Masked), NoticeGlyphs.Copy, null, false);
@@ -188,6 +190,7 @@ internal sealed class ClipboardWatcher : NoticeWatcher
             if (IsClipboardFormatAvailable(CfHdrop) && GetClipboardData(CfHdrop) is var drop && drop != IntPtr.Zero)
             {
                 var count = (int)DragQueryFile(drop, 0xFFFF_FFFF, null, 0);
+                _files = FilesOf(drop, count);
                 return count > 0 ? (NoticeText.CopiedFiles(s, count), NoticeGlyphs.Files, null, true) : null;
             }
 
@@ -201,6 +204,7 @@ internal sealed class ClipboardWatcher : NoticeWatcher
             if (IsClipboardFormatAvailable(CfDib) || IsClipboardFormatAvailable(CfDibV5)
                 || IsClipboardFormatAvailable(CfBitmap) || (_formatPng != 0 && IsClipboardFormatAvailable(_formatPng)))
             {
+                _imageSequence = GetClipboardSequenceNumber();
                 return (s.NoticeCopiedImage, NoticeGlyphs.Image, null, true);
             }
 
@@ -209,6 +213,144 @@ internal sealed class ClipboardWatcher : NoticeWatcher
         finally
         {
             CloseClipboard();
+        }
+    }
+
+    // ---- the copy card's "加入中转站" (TODO ④, user 10-10) ----
+
+    private volatile string[] _files = [];
+    private volatile uint _imageSequence;
+
+    /// <summary>The files of the last copy announced (none when it was text or an image).</summary>
+    public IReadOnlyList<string> CopiedFiles => _files;
+
+    /// <summary>The last copy announced was an image, and it's still what the clipboard holds.</summary>
+    public bool HoldsImage => _imageSequence != 0 && _imageSequence == GetClipboardSequenceNumber();
+
+    private static string[] FilesOf(IntPtr drop, int count)
+    {
+        var files = new List<string>();
+        var name = new char[32768];
+        for (var i = 0; i < count; i++)
+        {
+            var length = (int)DragQueryFile(drop, (uint)i, name, (uint)name.Length);
+            if (length > 0)
+            {
+                files.Add(new string(name, 0, length));
+            }
+        }
+
+        return [.. files];
+    }
+
+    /// <summary>
+    /// The copied image saved as a PNG in <paramref name="folder"/> (a screenshot has no file to point at — TODO ④: saved first),
+    /// named "<paramref name="name"/> 2026-10-11 030512.png". Null when the clipboard no longer holds it or it can't be read.
+    /// </summary>
+    public async Task<string?> SaveImageAsync(string folder, string name)
+    {
+        var bytes = await Task.Run(ReadImage);
+        if (bytes is null)
+        {
+            return null;
+        }
+
+        using var source = new Windows.Storage.Streams.InMemoryRandomAccessStream();
+        await source.WriteAsync(System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBufferExtensions.AsBuffer(bytes.Value.Data));
+        source.Seek(0);
+        var decoder = await Windows.Graphics.Imaging.BitmapDecoder.CreateAsync(source);
+        using var bitmap = await decoder.GetSoftwareBitmapAsync(
+            Windows.Graphics.Imaging.BitmapPixelFormat.Bgra8,
+            bytes.Value.Png ? Windows.Graphics.Imaging.BitmapAlphaMode.Premultiplied : Windows.Graphics.Imaging.BitmapAlphaMode.Ignore);
+        using var png = new Windows.Storage.Streams.InMemoryRandomAccessStream();
+        var encoder = await Windows.Graphics.Imaging.BitmapEncoder.CreateAsync(Windows.Graphics.Imaging.BitmapEncoder.PngEncoderId, png);
+        encoder.SetSoftwareBitmap(bitmap);
+        await encoder.FlushAsync();
+
+        Directory.CreateDirectory(folder);
+        var path = Path.Combine(folder, $"{name} {DateTime.Now:yyyy-MM-dd HHmmss}.png");
+        await using (var file = File.Create(path))
+        {
+            png.Seek(0);
+            await png.AsStreamForRead().CopyToAsync(file);
+        }
+
+        return path;
+    }
+
+    /// <summary>The clipboard's image as a file's bytes: its PNG when it has one, else its DIB with a bitmap file header in front.</summary>
+    private (byte[] Data, bool Png)? ReadImage()
+    {
+        if (!HoldsImage)
+        {
+            return null;
+        }
+
+        var opened = false;
+        for (var i = 0; i < 5 && !opened; i++)
+        {
+            opened = OpenClipboard(IntPtr.Zero);
+            if (!opened)
+            {
+                Thread.Sleep(30);
+            }
+        }
+
+        if (!opened)
+        {
+            return null;
+        }
+
+        try
+        {
+            if (_formatPng != 0 && IsClipboardFormatAvailable(_formatPng) && Bytes(GetClipboardData(_formatPng)) is { Length: > 0 } png)
+            {
+                return (png, true);
+            }
+
+            if (!IsClipboardFormatAvailable(CfDib) || Bytes(GetClipboardData(CfDib)) is not { Length: >= 40 } dib)
+            {
+                return null;
+            }
+
+            // a .bmp file = 14-byte file header + the DIB; the pixels start after the info header, its colour masks and its palette
+            var header = BitConverter.ToInt32(dib, 0);
+            var bits = BitConverter.ToUInt16(dib, 14);
+            var compression = BitConverter.ToUInt32(dib, 16);
+            var used = BitConverter.ToUInt32(dib, 32);
+            var masks = header == 40 && compression == 3 ? 12 : 0;   // BI_BITFIELDS after a plain BITMAPINFOHEADER
+            var palette = used > 0 ? (int)used * 4 : bits <= 8 ? (1 << bits) * 4 : 0;
+            var file = new byte[14 + dib.Length];
+            file[0] = (byte)'B';
+            file[1] = (byte)'M';
+            BitConverter.GetBytes(file.Length).CopyTo(file, 2);
+            BitConverter.GetBytes(14 + header + masks + palette).CopyTo(file, 10);
+            dib.CopyTo(file, 14);
+            return (file, false);
+        }
+        finally
+        {
+            CloseClipboard();
+        }
+    }
+
+    private static byte[]? Bytes(IntPtr handle)
+    {
+        var ptr = handle == IntPtr.Zero ? IntPtr.Zero : GlobalLock(handle);
+        if (ptr == IntPtr.Zero)
+        {
+            return null;
+        }
+
+        try
+        {
+            var data = new byte[(int)GlobalSize(handle)];
+            Marshal.Copy(ptr, data, 0, data.Length);
+            return data;
+        }
+        finally
+        {
+            GlobalUnlock(handle);
         }
     }
 

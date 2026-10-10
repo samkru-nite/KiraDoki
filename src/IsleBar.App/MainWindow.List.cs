@@ -134,7 +134,7 @@ public sealed partial class MainWindow
             RenderListPill,
             key => GlowOf(_cards.Cards.FirstOrDefault(c => c.Key == key)),
             key => _cards.Cards.Any(c => c.Key == key),
-            key => _cards.Cards.FirstOrDefault(c => c.Key == key) is { } c && ButtonFor(c) == PillButton.Open ? OpenTip(c) : null,
+            key => _cards.Cards.FirstOrDefault(c => c.Key == key) is { } c && ButtonFor(c) is PillButton.Open or PillButton.Keep ? OpenTip(c) : null,
             pill,
             ball,
             CornerRadiusNow(),
@@ -202,6 +202,9 @@ public sealed partial class MainWindow
             case PillButton.Open:
                 TakeStep(card);   // the chat, the copied address, the downloaded file — you go there, so the list goes back
                 CloseList();
+                break;
+            case PillButton.Keep:
+                TakeStep(card);   // into the transit station: the copy card goes, the list stays
                 break;
             case PillButton.Close:
                 CloseCard(card);

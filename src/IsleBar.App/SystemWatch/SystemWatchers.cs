@@ -108,6 +108,18 @@ internal sealed class SystemWatchers : IDisposable
         return calendar?.Close(card) == true;
     }
 
+    /// <summary>The copy watcher (the copy card's "加入中转站" reads what was copied). Null when copy cards are off.</summary>
+    public ClipboardWatcher? Clipboard
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _clipboard;
+            }
+        }
+    }
+
     /// <summary>The transit station (TODO ④, 10-10): files dropped on the pill, dragged out again. Null only after quitting.</summary>
     public TransitWatcher? Transit
     {
