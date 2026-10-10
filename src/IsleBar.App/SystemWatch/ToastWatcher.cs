@@ -26,6 +26,25 @@ internal sealed class ToastWatcher(Func<LanguageStrings> strings) : NoticeWatche
     /// <summary>Option "only on the bar": each time a notification lands, also silence the banners of apps that appeared since (set by <see cref="SystemWatchers"/>).</summary>
     public volatile bool HideBanners;
 
+    /// <summary>Reads that failed in a row (the database changed but couldn't be read, or reading threw).</summary>
+    private int _failures;
+
+    /// <summary>Test switch (like the <c>slow</c> file): while <c>%LOCALAPPDATA%\IsleBar\toastfail</c> exists, every read fails.</summary>
+    private static readonly string FailTestFile = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "IsleBar", "toastfail");
+
+    /// <summary>After this many failed reads in a row the bar can't show notifications: Windows' banners come back (TODO ② 10-10).</summary>
+    private const int FailuresToGiveUp = 3;
+
+    /// <summary>The notifications can be read (false after <see cref="FailuresToGiveUp"/> failures, true again on the next good read).</summary>
+    public bool Healthy { get; private set; } = true;
+
+    /// <summary>
+    /// <see cref="Healthy"/> changed (on the watcher's thread): the bar gives Windows its banners back while it can't read the
+    /// notifications — with "only on the bar" on, they'd be seen nowhere — and takes them again once it can.
+    /// </summary>
+    public Action<bool>? HealthChanged { get; set; }
+
     internal static string DatabasePath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Microsoft", "Windows", "Notifications", "wpndatabase.db");
 
@@ -46,8 +65,10 @@ internal sealed class ToastWatcher(Func<LanguageStrings> strings) : NoticeWatche
         {
             if (DatabaseChanged())   // a cheap stat gate — only open the SQLite file when a notification actually landed
             {
-                Guard(Check);
-                if (HideBanners)
+                var read = false;
+                Guard(() => read = Check());
+                Track(read);
+                if (HideBanners && Healthy)
                 {
                     ToastBanners.Hide();   // a new app's first notice pops up once; from then on it's silenced too
                 }
@@ -83,20 +104,52 @@ internal sealed class ToastWatcher(Func<LanguageStrings> strings) : NoticeWatche
         return true;
     }
 
-    private void Check()
+    /// <summary>Counts failed reads; a few in a row → <see cref="Healthy"/> false, a good one → true again. Logged when it changes.</summary>
+    private void Track(bool read)
     {
+        if (read)
+        {
+            _failures = 0;
+            if (!Healthy)
+            {
+                Healthy = true;
+                Interop.TaskbarHost.Log("toasts: reading again" + (HideBanners ? " → Windows' banners hidden again" : string.Empty));
+                HealthChanged?.Invoke(true);
+            }
+
+            return;
+        }
+
+        _failures++;
+        Interop.TaskbarHost.Log($"toasts: couldn't read the notification database ({_failures} in a row)");
+        if (Healthy && _failures >= FailuresToGiveUp)
+        {
+            Healthy = false;
+            Interop.TaskbarHost.Log("toasts: giving up for now" + (HideBanners ? " → Windows' banners back" : string.Empty));
+            HealthChanged?.Invoke(false);
+        }
+    }
+
+    /// <summary>Reads what landed since last time onto the board. False = the database couldn't be read.</summary>
+    private bool Check()
+    {
+        if (File.Exists(FailTestFile))
+        {
+            return false;   // test switch: reading "fails" while the file is there (to see the banners come back)
+        }
+
         // null = the database couldn't be read just now (busy, mid-checkpoint): try again on the next change. Taking it as
         // "no notifications" on the first read set the start to 0, and the 20 oldest stored toasts then flashed by (review 10-03).
         if (Read(_lastId < 0 ? long.MaxValue : _lastId) is not { } rows)
         {
-            return;
+            return false;
         }
 
         if (_lastId < 0)
         {
             // At first, only remember the latest ID so far (so old notifications don't flood in right after enabling)
             _lastId = rows.Count > 0 ? rows.Max(r => r.Id) : 0;
-            return;
+            return true;
         }
 
         // Do Not Disturb (also on by itself while presenting or duplicating the screen) or presentation mode: Windows shows no
@@ -129,6 +182,8 @@ internal sealed class ToastWatcher(Func<LanguageStrings> strings) : NoticeWatche
                 Show,
                 now);
         }
+
+        return true;
     }
 
     private readonly record struct Row(long Id, string AppId, string Payload);

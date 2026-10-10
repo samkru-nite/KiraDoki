@@ -29,6 +29,7 @@ internal sealed class SystemWatchers : IDisposable
     private ToastWatcher? _toasts;
     private AgentRecordWatcher? _codex;   // always on: a Codex turn that fails and a Claude turn interrupted with Esc fire no hook (10-03)
     private bool? _hidingBanners;   // null until the first Apply (which also cleans up after a crash with the option off)
+    private bool _wantBannersHidden;   // the option "only on the bar", as last applied
     private bool _disposed;
 
     /// <param name="strings">Function that returns strings for the current language (changing the language in settings applies from the next notice).</param>
@@ -58,16 +59,15 @@ internal sealed class SystemWatchers : IDisposable
             Toggle(ref _clipboard, options.Clipboard, () => new ClipboardWatcher(_strings));
             Toggle(ref _load, options.Load, () => new LoadWatcher(_strings));
             Toggle(ref _privacy, options.Privacy, () => new PrivacyWatcher(_strings));
-            Toggle(ref _toasts, options.Toasts, () => new ToastWatcher(_strings));
+            Toggle(ref _toasts, options.Toasts, () => new ToastWatcher(_strings) { HealthChanged = OnToastHealth });
             Toggle(ref _codex, true, () => new AgentRecordWatcher(_strings));
             if (_toasts is not null)
             {
                 _toasts.HideBanners = options.HideBanners;
             }
 
-            // Only hide Windows' pop-ups when the bar can actually read the notifications — without the database the person would
-            // see no notifications at all (code review 10-01)
-            ApplyBanners(options.HideBanners && _toasts is not null && File.Exists(ToastWatcher.DatabasePath), wait: false);
+            _wantBannersHidden = options.HideBanners;
+            ApplyBanners(BannersHidden(), wait: false);
 
             // The calendar must refetch when its URL changes, so stop and restart it
             if (_calendar is not null && (!options.Calendar || _calendar.Url != CalendarWatcher.NormalizeUrl(options.CalendarIcs)))
@@ -78,6 +78,29 @@ internal sealed class SystemWatchers : IDisposable
 
             Toggle(ref _calendar, options.Calendar, () => new CalendarWatcher(_strings, options.CalendarIcs));
         }
+    }
+
+    /// <summary>
+    /// Only hide Windows' pop-ups when the bar can actually read the notifications — without the database (code review 10-01), or
+    /// while reading it keeps failing (TODO ② 10-10), the person would see no notifications at all. Call under the lock.
+    /// </summary>
+    private bool BannersHidden()
+        => _wantBannersHidden && _toasts is { Healthy: true } && File.Exists(ToastWatcher.DatabasePath);
+
+    /// <summary>The toast watcher can't read the notifications any more, or can again: banners back / hidden again.</summary>
+    private void OnToastHealth(bool healthy)
+    {
+        // off the watcher's thread: Dispose holds the lock while it stops that watcher
+        ThreadPool.QueueUserWorkItem(_ =>
+        {
+            lock (_gate)
+            {
+                if (!_disposed)
+                {
+                    ApplyBanners(BannersHidden(), wait: false);
+                }
+            }
+        });
     }
 
     /// <summary>All notices from enabled watchers concatenated. Safe to read from any thread.</summary>

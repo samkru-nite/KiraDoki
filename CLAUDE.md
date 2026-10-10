@@ -84,7 +84,7 @@ Start-Process "src\IsleBar.App\bin\Debug\net8.0-windows10.0.26100.0\IsleBar.App.
 | Claude/Codex 图标 | **AI 所有阶段都用厂商 logo（10-07 用户定）**。Claude：`App/Interop/ClaudeGlyph.cs` 从命令行 claude.exe 或 Claude 应用（MSIX，`Interop/AgentApps.cs` 读注册表找安装位置）的图标抠火花（`Core/Ui/GlyphMask.cs`，橙色铺满=底板时取浅色火花），涂 Claude 橙；Codex：`Core/Ui/CodexMark.cs`（VS Code 扩展 SVG）或 Codex 应用自带 logo。都找不到才退回字体图标。MW `LoadAgentMarks`，日志 "agent marks: claude ok, codex ok"。**大胶囊用官方原色，小胶囊单色 + 橙/绿/红**（`AgentLogo(agent, ToneColor)`，10-07） |
 | 文件搜索 | 10-10 删了。只剩 `App/Media/EverythingSdk.cs`（精简版）给"压缩进度"找正在变大的压缩包（`FileOperationWatcher`） |
 | 计时/番茄钟 | `Core/Island/TimerParser.cs`；界面 `ShowTimerText/ShowClockDigits/RollIn/DrawTimerArc`；图标指针实时转 `Core/Ui/TimerDial.cs` + MW `DialContent`（小胶囊 `CellContent`、大胶囊 `ShowLeadDial`） |
-| 系统通知 | `App/SystemWatch/ToastWatcher.cs`（读 Windows 通知数据库）→ 普通临时卡片（`Stage = "expand"`，掀起后有"打开"按钮；旧弹出卡片 F4 删了） |
+| 系统通知 | `App/SystemWatch/ToastWatcher.cs`（读 Windows 通知数据库）→ 普通临时卡片（`Stage = "expand"`，掀起后有"打开"按钮；旧弹出卡片 F4 删了）；"只在任务栏显示"= 关掉 Windows 横幅 `ToastBanners`；**通知保险**：连续 3 次读不到 → `Healthy` false → `SystemWatchers.OnToastHealth` 还回横幅（测试文件 `toastfail`） |
 | 复制提示 | `App/SystemWatch/ClipboardWatcher.cs` + `Core/SystemWatch/ClipboardRules.cs` |
 
 ### 脆弱点
