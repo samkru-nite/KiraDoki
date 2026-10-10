@@ -471,8 +471,8 @@ public sealed partial class PillView : UserControl
     /// in the middle — centring the line box left the text looking low (user 10-06, TODO 7.9 D).
     /// <para>Left and right (user 10-07, fixed 10-10 — the "left" and "icon and text together" choices went): the icon stays at 8.
     /// Nothing on the right: the text's middle on the pill's (110) — centring inside the text area alone (first try) put the text 10
-    /// right of it and left the icon stranded. Something on both sides (an inform card's button): the text's middle halfway between
-    /// the icon's right edge and the button's chip (user 10-10, measured: "middle of what the button leaves" ignored the icon and
+    /// right of it and left the icon stranded. Something on both sides (an inform card's button, a song's bars): the text's middle
+    /// halfway between them — the text area's middle, 8 to each (user 10-10, measured: "middle of what the button leaves" ignored the icon and
     /// left the text 26 nearer the icon). Text too long to fit stays left-aligned and scrolls.</para>
     /// </summary>
     internal void PlaceText()
@@ -484,17 +484,24 @@ public sealed partial class PillView : UserControl
             MarqueePanel.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
             var width = MarqueePanel.DesiredSize.Width;
             var area = AvailableTextWidth();
-            var areaLeft = TextStart;
-            // between the icon (ends at 24) and the chip: 108.5 beside the ↗, 86.5 beside "Close"; else the pill's middle
-            var middle = CloseZone.Visibility == Visibility.Visible
-                ? ((TextStart - ButtonGap) + (BaseWidth - CloseZone.Width + ButtonGap)) / 2
-                : BaseWidth / 2;
+            // where the text area really starts: 32, or 35 after a cover (it was taken as 32 — short song titles sat 3 right, 10-10)
+            var areaLeft = LeadSlot.Margin.Left + LeadSlot.Width + LeadSlot.Margin.Right;
+            // something on the right too (the button, the now-playing bars): the text area's middle — 8 to each side, so halfway
+            // between them (108.5 beside the ↗, 86.5 beside "Close", 111 between cover and bars); else the pill's middle
+            // (from the known sizes, not the area's ActualWidth — that lags a layout pass behind a change)
+            double? areaRight = CloseZone.Visibility == Visibility.Visible ? BaseWidth - CloseZone.Width
+                : Equalizer.Visibility == Visibility.Visible ? BaseWidth - Equalizer.Margin.Right - EqualizerWidth - 8
+                : null;
+            var middle = areaRight is { } right ? (areaLeft + right) / 2 : BaseWidth / 2;
             var start = middle - (width / 2);
             text = Math.Clamp(Math.Round((start - areaLeft) * 2) / 2, 0, Math.Max(0, area - width));   // half DIPs; never past the text area
         }
 
         Canvas.SetLeft(MarqueePanel, text);
     }
+
+    /// <summary>The now-playing bars: four 3 wide, 2 apart (PillView.xaml).</summary>
+    private const double EqualizerWidth = (4 * 3) + (3 * 2);
 
     /// <summary>How far to move the text so its glyphs are centred (DIP, measured by MainWindow.MeasureInkAsync; the same for every pill).</summary>
     internal static double InkOffset { get; set; }
