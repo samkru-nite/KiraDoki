@@ -138,7 +138,7 @@ internal sealed class VideoExportWatcher : IDisposable
         if (found.FirstOrDefault(p => !p.Contains("$Recycle.Bin", StringComparison.OrdinalIgnoreCase)) is { } path)
         {
             _ended = null;
-            _finished.Add(Done(ended.Draft, path, "export:jianying", now));
+            _finished.Add(Done(ended.Draft, path, "export:jianying", now, now - ended.Since));
             Interop.TaskbarHost.Log($"export: 剪映 done — \"{ended.Draft}\" in {Path.GetDirectoryName(path)}");
         }
         else if (found.Count > 0)
@@ -182,7 +182,7 @@ internal sealed class VideoExportWatcher : IDisposable
         _other = null;
         if (File.Exists(o.Path))
         {
-            _finished.Add(Done(Path.GetFileNameWithoutExtension(o.Path), o.Path, "export:" + o.Editor, now));
+            _finished.Add(Done(Path.GetFileNameWithoutExtension(o.Path), o.Path, "export:" + o.Editor, now, o.Grew - o.Since));
             Interop.TaskbarHost.Log($"export: {o.Editor} (experimental) done — {Path.GetFileName(o.Path)}");
         }
 
@@ -219,12 +219,14 @@ internal sealed class VideoExportWatcher : IDisposable
         UpdatedAt = since,
     };
 
-    private ActivityState Done(string name, string path, string key, DateTimeOffset now) => new()
+    private ActivityState Done(string name, string path, string key, DateTimeOffset now, TimeSpan took) => new()
     {
         AppId = AppOf(key),
         RawKind = ActivityState.KindTransfer,
         Title = "Files",
         Name = name,
+        Note = Size(path) is { } size ? Core.Ui.CardSheets.Bytes(size) : null,   // the video's size (user 10-11)
+        Took = took,
         Words = _text().FileExported,
         Stage = "copy",
         State = "done",

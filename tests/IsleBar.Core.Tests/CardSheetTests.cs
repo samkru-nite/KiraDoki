@@ -117,18 +117,102 @@ public sealed class CardSheetTests
     }
 
     [Fact]
-    public void A_browser_download_has_no_bar_and_says_how_much_came()
+    public void A_browser_download_flows_and_says_how_much_came_how_fast_and_how_long()
     {
         var sheet = CardSheets.Build(Card(CardType.Status, new ActivityState
         {
             RawKind = ActivityState.KindTransfer, Title = "Download → PC", Name = "report.pdf", Stage = "download",
-            Done = 13 * 1024 * 1024, Speed = 3 * 1024 * 1024, State = "run",
+            Done = 13 * 1024 * 1024, Speed = 3 * 1024 * 1024, State = "run", AppName = "Microsoft Edge", UpdatedAt = Now.AddMinutes(-2),
         }), Now, Zh);
 
-        Assert.Null(sheet.Progress);
-        Assert.Equal("下载", sheet.Source);
-        Assert.Equal(["已下载 13.0 MB\u001F3.0 MB/s"], sheet.Body);
+        Assert.Equal("Microsoft Edge", sheet.Source);   // the program doing it (user 10-11)
+        Assert.Equal("下载中", sheet.State);
+        Assert.Null(sheet.Time);   // no "2分钟前" on the right any more
+        Assert.Equal("report.pdf", sheet.Title);
+        Assert.Empty(sheet.Body);
+        Assert.True(sheet.Progress!.Flowing);
+        Assert.Equal("已下载 13.0 MB\u001F3.0 MB/s", sheet.Progress.Left);
+        Assert.Equal("用时2分钟", sheet.Progress.Right);
         Assert.Equal([SheetAction.OpenFolder, SheetAction.Hide], sheet.Buttons.Select(b => b.Action));
+    }
+
+    [Fact]
+    public void A_packer_with_a_percentage_says_its_file_time_left_and_speed()
+    {
+        var sheet = CardSheets.Build(Card(CardType.Status, new ActivityState
+        {
+            RawKind = ActivityState.KindTransfer, Title = "Files", Name = "照片.rar", Stage = "copy", Words = "压缩中", State = "run",
+            Done = 40, Total = 100, Speed = 48.2 * 1024 * 1024, Eta = TimeSpan.FromSeconds(130), Note = "DSC02582.ARW", AppName = "WinRAR",
+        }), Now, Zh);
+
+        Assert.Equal("WinRAR", sheet.Source);
+        Assert.Equal("压缩中", sheet.State);
+        Assert.Equal(["DSC02582.ARW"], sheet.Body);
+        Assert.False(sheet.Progress!.Flowing);
+        Assert.Equal("剩余2分钟\u001F48.2 MB/s", sheet.Progress.Left);
+        Assert.Equal("40%", sheet.Progress.Right);
+    }
+
+    [Fact]
+    public void Time_left_waits_till_it_has_settled()
+    {
+        var eta = new SteadyEta();
+        Assert.Null(eta.See(TimeSpan.FromMinutes(9), Now));
+        Assert.Null(eta.See(TimeSpan.FromMinutes(2), Now.AddSeconds(2)));
+        Assert.Equal(TimeSpan.FromMinutes(2), eta.See(TimeSpan.FromMinutes(2), Now.AddSeconds(3)));
+        Assert.Null(eta.See(null, Now.AddSeconds(4)));   // gone a moment: settles anew
+        Assert.Null(eta.See(TimeSpan.FromMinutes(1), Now.AddSeconds(5)));
+        Assert.Equal(TimeSpan.FromSeconds(50), SteadyEta.From(500, 10));
+    }
+
+    [Fact]
+    public void Lengths_read_in_seconds_minutes_or_hours()
+    {
+        Assert.Equal("45秒", CardSheets.Span(TimeSpan.FromSeconds(45), Zh));
+        Assert.Equal("2分钟", CardSheets.Span(TimeSpan.FromSeconds(150), Zh));
+        Assert.Equal("1小时5分钟", CardSheets.Span(TimeSpan.FromMinutes(65), Zh));
+    }
+
+    [Fact]
+    public void A_finished_transfer_says_its_size_and_time_and_shows_the_file()
+    {
+        var sheet = CardSheets.Build(Card(CardType.Temporary, new ActivityState
+        {
+            RawKind = ActivityState.KindTransfer, Title = "Files", Name = "照片.rar", Stage = "copy", Words = "已压缩", State = "done",
+            Note = "2.40 GB", Took = TimeSpan.FromMinutes(4), Open = @"C:\a\照片.rar",
+        }), Now, Zh);
+
+        Assert.Equal(SheetTone.Ok, sheet.Tone);
+        Assert.Equal(["2.40 GB\u001F用时4分钟"], sheet.Body);
+        Assert.Null(sheet.Progress);
+        Assert.Equal([(SheetAction.OpenFolder, "在文件夹中显示")], sheet.Buttons.Select(b => (b.Action, b.Label)));
+    }
+
+    [Fact]
+    public void A_game_steam_installed_can_be_played()
+    {
+        var done = new ActivityState { RawKind = ActivityState.KindTransfer, Title = "Files", Name = "Portal 2", Stage = "copy", Words = "已安装", State = "done" };
+        var sheet = CardSheets.Build(new Card("steam:620", CardType.Temporary, true, done), Now, Zh);
+        Assert.Equal([(SheetAction.Play, "开始游戏")], sheet.Buttons.Select(b => (b.Action, b.Label)));
+        Assert.Equal(620, CardSheets.SteamGame("steam:620"));
+        Assert.Null(CardSheets.SteamGame("steam:busy"));   // Steam's fallback names no game
+    }
+
+    [Fact]
+    public void A_stuck_printer_names_itself_and_its_problem_and_stands_where_it_stopped()
+    {
+        var notice = SystemWatch.SystemNotice.Make("缺纸", SystemWatch.NoticeGlyphs.Printer, Now, msg: "报告.pdf", urgent: true);
+        notice.AppName = "HP LaserJet";
+        notice.Note = "已打印3页，共12页";
+        notice.Done = 3;
+        notice.Total = 12;
+        var sheet = CardSheets.Build(Card(CardType.Pending, notice), Now, Zh);
+
+        Assert.Equal("HP LaserJet", sheet.Source);
+        Assert.Equal(("缺纸", SheetTone.Waiting), (sheet.State, sheet.Tone));
+        Assert.Equal("报告.pdf", sheet.Title);
+        Assert.Equal(["已打印3页，共12页"], sheet.Body);
+        Assert.Equal((0.25, "25%", SheetTone.Waiting), (sheet.Progress!.Fraction, sheet.Progress.Right, sheet.Progress.Tone));
     }
 
     [Fact]
@@ -231,7 +315,7 @@ public sealed class CardSheetTests
     }
 
     [Fact]
-    public void Several_downloads_are_listed_by_source()
+    public void One_program_s_several_downloads_are_a_list()
     {
         var sheet = CardSheets.Build(Card(CardType.Status, new ActivityState
         {
@@ -241,17 +325,19 @@ public sealed class CardSheetTests
             [
                 new DownloadLine("Edge", "report.pdf", 13 * 1024 * 1024, 2 * 1024 * 1024, false),
                 new DownloadLine("Edge", null, 1024 * 1024, 1024 * 1024, false),
-                new DownloadLine("百度网盘", "my_*draft*.zip", 5 * 1024 * 1024, null, true),
+                new DownloadLine("Edge", "my_*draft*.zip", 5 * 1024 * 1024, null, true),
             ],
+            Speed = 3 * 1024 * 1024, UpdatedAt = Now.AddMinutes(-2),
         }), Now, Zh);
 
         Assert.True(sheet.Markdown);
         Assert.Null(sheet.Title);
         var blocks = CardMarkdown.Parse(sheet.Body[0]);
         Assert.Equal(
-            [(MdKind.Heading, "Edge\u001F3.0 MB/s"), (MdKind.Bullet, "report.pdf\u001F已下载 13.0 MB"), (MdKind.Bullet, "已下载 1.0 MB"),
-             (MdKind.Heading, "百度网盘\u001F已暂停"), (MdKind.Bullet, "my_*draft*.zip\u001F已下载 5.0 MB")],
+            [(MdKind.Bullet, "report.pdf\u001F13.0 MB"), (MdKind.Bullet, "已下载 1.0 MB"), (MdKind.Bullet, "my_*draft*.zip\u001F5.0 MB\u001F已暂停")],
             blocks.Select(b => (b.Kind, b.Text)));
+        Assert.Equal("3个\u001F3.0 MB/s", sheet.Progress!.Left);   // one speed for them all (user 10-11)
+        Assert.Equal("用时2分钟", sheet.Progress.Right);
     }
 
     [Fact]

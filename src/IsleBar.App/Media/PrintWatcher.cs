@@ -20,7 +20,7 @@ namespace IsleBar.App.Media;
 internal sealed class PrintWatcher
 {
     private const string Key = "print";
-    private const string PrinterGlyph = "";   // print
+    private const string PrinterGlyph = NoticeGlyphs.Printer;
     private static readonly TimeSpan Every = TimeSpan.FromSeconds(2);
     private static readonly string VirtualSwitch = Path.Combine(AppPaths.DataDirectory, "print-virtual");
 
@@ -80,6 +80,8 @@ internal sealed class PrintWatcher
                 RawKind = ActivityState.KindTransfer,
                 Title = "Files",
                 Name = printed.Document,
+                AppName = printed.Printer,   // the lifted card is headed by the printer (user 10-11)
+                Took = now - _since,
                 Words = _text().Printed,
                 Stage = "copy",
                 State = "done",
@@ -117,6 +119,14 @@ internal sealed class PrintWatcher
             var notice = SystemNotice.Make(Words(stuck.Problem, text), PrinterGlyph, _since, msg: job.Document, urgent: true);
             notice.Stage = SystemNotice.CriticalStage;
             notice.SourcePath = Key;
+            notice.AppName = job.Printer;
+            if (PrintRules.Pages(job) is { } stopped)
+            {
+                notice.Note = PagesOf(stopped, text);
+                notice.Done = stopped.Done;   // the lifted card's bar stands where it stopped
+                notice.Total = stopped.Total;
+            }
+
             return notice;
         }
 
@@ -126,6 +136,8 @@ internal sealed class PrintWatcher
             RawKind = ActivityState.KindTransfer,
             Title = "Files",
             Name = first.Document,
+            AppName = first.Printer,
+            Note = pages is { } shown ? PagesOf(shown, text) : null,
             MoreCount = _jobs.Count - 1,
             Words = PrintRules.Paused(first.Status, first.PrinterStatus) ? text.Paused : text.Printing,
             Glyph = PrinterGlyph,
@@ -137,6 +149,11 @@ internal sealed class PrintWatcher
             UpdatedAt = _since,
         };
     }
+
+    /// <summary>"已打印3页，共12页" — only pages Windows can be believed on (<see cref="PrintRules.Pages"/>).</summary>
+    private static string PagesOf((int Done, int Total) pages, Core.Localization.LanguageStrings text)
+        => text.CardPagesOf.Replace("{a}", pages.Done.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal)
+            .Replace("{b}", pages.Total.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal);
 
     private static string Words(PrintProblem problem, Core.Localization.LanguageStrings text) => problem switch
     {

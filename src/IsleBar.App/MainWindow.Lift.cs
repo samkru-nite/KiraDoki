@@ -137,7 +137,7 @@ public sealed partial class MainWindow
             SheetColors(),
             LiftIcon(card),   // as on the big pill: an agent's logo in its makers' colours, a timer's turning dial (user 10-08)
             new LiftRider(LiftIcon(card), HasBigLook(look) ? CellContent(card, look, DateTimeOffset.UtcNow) : null),
-            CardSheets.Build(card, DateTimeOffset.UtcNow, _text, _feed.Tails.For(card.State)),
+            SheetFor(card),
             CoverOf(card)?.Large,
             _language,
             from,
@@ -202,11 +202,22 @@ public sealed partial class MainWindow
                 {
                     Engine.FileActions.Open(done, revealInFolder: true);
                 }
+                else if (state.Open is { } folder && Directory.Exists(folder))
+                {
+                    Engine.FileActions.Open(folder, revealInFolder: false);   // several finished at once: the folder they're in
+                }
                 else
                 {
                     Engine.FileActions.Open(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads"), revealInFolder: false);
                 }
 
+                break;
+            case SheetAction.Play when CardSheets.SteamGame(card.Key) is { } game:
+                _lift?.Collapse();
+                // Steam's own link (its desktop shortcuts use it): Steam starts the game, starting itself first if need be (user 10-11)
+                TaskbarHost.Log($"lift: play steam game {game}");
+                Engine.FileActions.Open("steam://rungameid/" + game.ToString(System.Globalization.CultureInfo.InvariantCulture), revealInFolder: false);
+                CloseCard(card);
                 break;
             case SheetAction.Clear:
                 _lift?.Collapse();
@@ -256,7 +267,7 @@ public sealed partial class MainWindow
         var iconKey = LiftIconKey(_shownCard);
         var icon = iconKey == _liftIconKey ? null : LiftIcon(_shownCard);
         _liftIconKey = iconKey;
-        _lift.Refresh(CardSheets.Build(_shownCard, DateTimeOffset.UtcNow, _text, _feed.Tails.For(_shownCard.State)), icon, CoverOf(_shownCard)?.Large);
+        _lift.Refresh(SheetFor(_shownCard), icon, CoverOf(_shownCard)?.Large);
     }
 
     private void CloseLift() => _lift?.Collapse();
@@ -308,6 +319,11 @@ public sealed partial class MainWindow
         // music and notifications name their app in the source row, so its own icon goes beside it, as in Windows' notifications
         // (F2b, 10-09); the usual icon stays until it has loaded, and for good if the app has none to give
         var s = card.State;
+        if (s.Tool is { Length: > 0 } tool)
+        {
+            return AppIconOver(plain, tool);   // a transfer: the program doing it, beside its name (TODO ⑤, user 10-11)
+        }
+
         if (s.AppId is not { Length: > 0 } app
             || !(s.Kind == IsleBar.Core.Island.ActivityKind.Music || NoticeApp(card) is not null))
         {
@@ -315,6 +331,22 @@ public sealed partial class MainWindow
         }
 
         return AppIconOver(plain, app);
+    }
+
+    /// <summary>
+    /// The lifted card's inside. A transfer is headed by the program doing it (TODO ⑤ 掀起卡片适配, user 10-11): its name looked up
+    /// here from <see cref="ActivityState.Tool"/> (or the app whose icon the pill shows), unless its watcher named it (a printer).
+    /// </summary>
+    private CardSheet SheetFor(Card card)
+    {
+        var s = card.State;
+        if ((s.Kind == IsleBar.Core.Island.ActivityKind.Transfer || s.Glyph == IsleBar.Core.SystemWatch.NoticeGlyphs.Printer)
+            && s.AppName is null && (s.Tool ?? s.AppId) is { Length: > 0 } program)
+        {
+            s.AppName = AppNames.For(program);
+        }
+
+        return CardSheets.Build(card, DateTimeOffset.UtcNow, _text, _feed.Tails.For(s));
     }
 
     /// <summary>
@@ -342,7 +374,7 @@ public sealed partial class MainWindow
     {
         var s = card.State;
         var look = TaskIcons.For(card, CoverOf(card) is not null, DateTimeOffset.UtcNow);
-        return $"{card.Key}|{card.Type}|{look}|{s.Due}|{s.Left}|{s.Total}|{s.T0}|{s.Stage}|{_theme.Icon}|{CoverOf(card)?.Image.GetHashCode()}|{s.AppId}";
+        return $"{card.Key}|{card.Type}|{look}|{s.Due}|{s.Left}|{s.Total}|{s.T0}|{s.Stage}|{_theme.Icon}|{CoverOf(card)?.Image.GetHashCode()}|{s.AppId}|{s.Tool}";
     }
 
     private string? _liftIconKey;

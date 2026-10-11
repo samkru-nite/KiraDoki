@@ -204,6 +204,9 @@ public static class NoticeGlyphs
 
     /// <summary>Package (E7B8, a box) \u2014 the transit station (TODO \u2463, 10-10); a placeholder until the user picks one.</summary>
     public const string Transit = "\uE7B8";
+
+    /// <summary>Print (E749) \u2014 the printer's card, and what stops it ("\u7F3A\u7EB8", TODO \u56DB, 10-11).</summary>
+    public const string Printer = "\uE749";
     public const string Microphone = "";
     public const string Camera = "";
 

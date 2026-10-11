@@ -1491,7 +1491,7 @@ public sealed partial class MainWindow : Window
         }
 
         // a finished browser download, or a video editor's export (TODO 四, 10-11): shown in its folder
-        return (card.Key == "download" || card.Key.StartsWith("export:", StringComparison.Ordinal))
+        return (card.Key == "download" || card.Key.StartsWith("download:", StringComparison.Ordinal) || card.Key.StartsWith("export:", StringComparison.Ordinal))
                && s is { Kind: ActivityKind.Transfer, RunState: ActivityRunState.Done, Open: { } open }
                && (File.Exists(open) || Directory.Exists(open))
             ? NextStep.Reveal

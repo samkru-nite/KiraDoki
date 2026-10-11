@@ -37,12 +37,13 @@ internal sealed partial class DownloadWatcher : IDisposable
     private readonly SteamWatcher _steam;
     private readonly PrintWatcher _print;
     private readonly List<ActivityState> _finished = [];
-    /// <summary>Files finished since the merged card started; told together when the last one is through.</summary>
-    private readonly List<string> _batch = [];
-    private string? _batchApp;
+    /// <summary>Per program: files finished since its card started; told together when its last one is through.</summary>
+    private readonly Dictionary<string, List<string>> _batch = [];
+    /// <summary>Per program: when its card started (a finished card says how long it took).</summary>
+    private readonly Dictionary<string, DateTimeOffset> _since = [];
     private HashSet<string> _lastPartials = [];
     private readonly Dictionary<string, HashSet<string>> _lastListing = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, string?> _lastApps = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, PartialDownload> _lastSeen = new(StringComparer.OrdinalIgnoreCase);
 
     private EverythingSdk? _everything;
     private bool _everythingTried;
@@ -263,72 +264,88 @@ internal sealed partial class DownloadWatcher : IDisposable
             var written = new DateTimeOffset(info.LastWriteTimeUtc, TimeSpan.Zero);
             var source = DownloadSources.Of(path, chromium);
             var app = AppOf(path);
+            var tool = app ?? ToolOf(source);
             if (IsThunder(path))
             {
                 // its write time moves only when it's closed: held open = being downloaded now; no total shown (only what came
                 // since it was first seen is known, not what came before — a resumed download)
                 return new PartialDownload(path, FinalName(path), (long)_thunder.Received(path), open.Contains(path) ? now : written,
-                    Source: source, App: app, Moving: open.Contains(path));
+                    Source: source, App: app, Moving: open.Contains(path), Tool: tool);
             }
 
             return IsBaidu(path)
-                ? new PartialDownload(path, FinalName(path), (long)_baidu.Received(path), written, Total: info.Length, Source: source, App: app)
-                : new PartialDownload(path, FinalName(path), info.Length, written, Source: source, App: app);
+                ? new PartialDownload(path, FinalName(path), (long)_baidu.Received(path), written, Total: info.Length, Source: source, App: app, Tool: tool)
+                : new PartialDownload(path, FinalName(path), info.Length, written, Source: source, App: app, Tool: tool);
         }).ToList();
 
-        // all downloads under way become one item: summed speed · earliest name · "+N"
-        var summary = _tracker.Update(now, partials);
-        if (summary is not null)
+        // each program's downloads under way become one item: summed speed · earliest name · "+N" (user 10-11: a card each)
+        var summaries = _tracker.Update(now, partials);
+        result.AddRange(summaries);
+        var under = summaries.Select(ProgramOf).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var program in under)
         {
-            result.Add(summary);
+            _since.TryAdd(program, now);
         }
 
         var tracked = new HashSet<string>(_tracker.Tracked, StringComparer.OrdinalIgnoreCase);
 
-        // The partial file from last time is gone and the finished file is there → finished. One finishing while others go on says
-        // nothing; when the last one is through, the batch is told once, on the same card (it rises from its cell) — user 10-07.
+        // The partial file from last time is gone and the finished file is there → finished. One finishing while others of its
+        // program go on says nothing; when its last one is through, the batch is told once, on the same card (it rises from its
+        // cell) — user 10-07.
         foreach (var gone in _lastPartials.Where(p => !tracked.Contains(p)))
         {
-            if (!File.Exists(gone) && Finished(gone, listings) is { } final)
+            if (!File.Exists(gone) && Finished(gone, listings) is { } final && _lastSeen.GetValueOrDefault(gone) is { } was)
             {
-                _batch.Add(final);
-                _batchApp ??= _lastApps.GetValueOrDefault(gone);
+                if (!_batch.TryGetValue(was.Program, out var list))
+                {
+                    list = _batch[was.Program] = [];
+                }
+
+                list.Add(final);
             }
         }
 
-        if (summary is null && _batch.Count > 0)
+        _finished.RemoveAll(f => under.Contains(ProgramOf(f)));   // a new download took its program's card
+        foreach (var (program, done) in _batch.Where(b => !under.Contains(b.Key)).ToList())
         {
-            _finished.Clear();
+            var was = _lastSeen.Values.FirstOrDefault(p => p.Program == program);
             _finished.Add(new ActivityState
             {
-                AppId = _batchApp,
+                AppId = was?.App,
+                Tool = was?.Tool,
                 RawKind = ActivityState.KindTransfer,
                 Title = "Download → PC",
-                Name = Path.GetFileName(_batch[0]),
-                MoreCount = _batch.Count - 1,
+                Name = Path.GetFileName(done[0]),
+                MoreCount = done.Count - 1,
+                Note = done.Count == 1 && new FileInfo(done[0]) is { Exists: true } info ? Core.Ui.CardSheets.Bytes(info.Length) : null,
+                Took = _since.TryGetValue(program, out var since) ? now - since : null,
                 State = "done",
-                Open = _batch.Count == 1 ? _batch[0] : Path.GetDirectoryName(_batch[0]),
-                SourcePath = "download:" + _batch[0],   // the merged card's key ("download")
+                Open = done.Count == 1 ? done[0] : Path.GetDirectoryName(done[0]),
+                SourcePath = "download:" + program + "|" + done[0],   // the same card as its downloads under way
                 UpdatedAt = now,
             });
-            _batch.Clear();
-            _batchApp = null;
+            _batch.Remove(program);
         }
-        else if (summary is not null)
+
+        foreach (var program in _since.Keys.Where(p => !under.Contains(p)).ToList())
         {
-            _finished.Clear();   // a new download took the card
+            _since.Remove(program);
         }
 
         _lastPartials = tracked;
-        _lastApps.Clear();
         foreach (var p in partials.Where(p => tracked.Contains(p.Path)))
         {
-            _lastApps[p.Path] = p.App;
+            _lastSeen[p.Path] = p;
         }
 
         foreach (var gone in _thunderSizes.Keys.Where(k => !files.ContainsKey(k) && !_lastPartials.Contains(k)).ToList())
         {
             _thunderSizes.Remove(gone);
+        }
+
+        foreach (var gone in _lastSeen.Keys.Where(k => !tracked.Contains(k)).ToList())
+        {
+            _lastSeen.Remove(gone);
         }
 
         _lastListing.Clear();
@@ -396,12 +413,13 @@ internal sealed partial class DownloadWatcher : IDisposable
         return new ActivityState
         {
             AppId = "thunder.exe",
+            Tool = "thunder.exe",
             RawKind = ActivityState.KindTransfer,
             Title = "Download → PC",
             Name = "迅雷",
             Stage = "download",
             State = "run",   // no size, no speed: the bar flows
-            SourcePath = "download:busy:thunder",
+            SourcePath = "download:thunder.exe|busy",   // 迅雷's own card
             UpdatedAt = _thunderBusySince.Value,
         };
     }
@@ -514,6 +532,21 @@ internal sealed partial class DownloadWatcher : IDisposable
     private static bool IsThunder(string path) => path.EndsWith(Downloaders.Thunder, StringComparison.OrdinalIgnoreCase);
 
     private static bool IsQuark(string path) => path.EndsWith(Downloaders.Quark, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The program of a download item ("download:{program}|{file}").</summary>
+    private static string ProgramOf(ActivityState s)
+        => s.SourcePath is { } p && p.StartsWith("download:", StringComparison.Ordinal) && p.IndexOf('|', StringComparison.Ordinal) is var bar and > 0
+            ? p[9..bar]
+            : string.Empty;
+
+    /// <summary>A browser's exe, for its icon and name on the lifted card ("Edge" → "msedge.exe"); null when not known which.</summary>
+    private static string? ToolOf(string? source) => source switch
+    {
+        null => null,
+        "Firefox" => "firefox.exe",
+        "Opera" => "opera.exe",
+        _ => DownloadSources.Chromium.FirstOrDefault(c => c.Name == source).Process is { } process ? process + ".exe" : null,
+    };
 
     /// <summary>The download program whose icon its card shows; null = a browser's (the arrow, as before).</summary>
     private static string? AppOf(string path) => path switch

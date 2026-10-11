@@ -41,6 +41,8 @@ internal sealed partial class FileOperationWatcher : IDisposable
 
     private readonly ProcessWriteMeter _explorer = new("explorer");
     private readonly RateMeter _rate = new();
+    private readonly SteadyEta _eta = new();
+    private const string Explorer = "explorer.exe";   // the lifted card's head: File Explorer's icon and name (user 10-11)
     private EverythingSdk? _everything;
     private bool _everythingTried;
 
@@ -97,6 +99,7 @@ internal sealed partial class FileOperationWatcher : IDisposable
             if (_opSince is null)
             {
                 _opSince = now;
+                _eta.See(null, now);   // a new window: its time left settles anew
                 var dropped = Volatile.Read(ref _transitDropped);
                 var ago = now.UtcTicks - dropped;
                 var owned = dropped > 0 && ago >= -TimeSpan.TicksPerSecond && ago <= TransitClaim.Ticks;
@@ -120,10 +123,12 @@ internal sealed partial class FileOperationWatcher : IDisposable
                 Words = words.Words,
                 MoreCount = words.More,
                 Glyph = job switch { FileJob.Unzip => UnzipGlyph, FileJob.Move => MoveGlyph, _ => CopyGlyph },
+                Tool = Explorer,
                 Stage = "copy",
                 Done = _percent,
                 Total = _percent is null ? null : 100,
                 Speed = _rate.Speed(now),
+                Eta = _eta.See(tally.Left, now),
                 State = "run",
                 SourcePath = "fileop:window",
                 UpdatedAt = _opSince.Value,
@@ -220,6 +225,8 @@ internal sealed partial class FileOperationWatcher : IDisposable
             {
                 RawKind = ActivityState.KindTransfer,
                 Title = "Files",
+                Tool = Explorer,
+                Took = _opSince is { } since ? now - since : null,
                 Name = words.Detail,
                 Words = words.Words,
                 MoreCount = words.More,
@@ -276,6 +283,9 @@ internal sealed partial class FileOperationWatcher : IDisposable
                 {
                     RawKind = ActivityState.KindTransfer,
                     Title = "Files",
+                    Tool = Explorer,
+                    Note = Core.Ui.CardSheets.Bytes(current.Value),   // the archive's size
+                    Took = _archiveGrew - _archiveSince,
                     Name = Path.GetFileName(_archive),
                     Words = _text().FileZipped,
                     Stage = "copy",
@@ -295,6 +305,7 @@ internal sealed partial class FileOperationWatcher : IDisposable
             RawKind = ActivityState.KindTransfer,
             Title = "Files",
             Name = Path.GetFileName(_archive),
+            Tool = Explorer,
             Words = _text().FileZip,
             Glyph = CompressGlyph,
             Stage = "copy",

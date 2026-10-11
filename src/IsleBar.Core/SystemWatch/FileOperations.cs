@@ -201,6 +201,9 @@ public sealed class FileOpTally
         }
     }
 
+    /// <summary>Time left at the window's speed for the bytes it says are left (its own "剩余时间" is words only); null when not known.</summary>
+    public TimeSpan? Left => Asking ? null : Island.SteadyEta.From(_leftBytes, _speed);
+
     /// <summary>The window closed: true only when it surely went through.</summary>
     public bool Finished(DateTimeOffset now)
     {

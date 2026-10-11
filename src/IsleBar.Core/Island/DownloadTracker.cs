@@ -9,14 +9,19 @@ namespace IsleBar.Core.Island;
 /// <param name="Source">Which program downloads it ("Edge", "Firefox", "百度网盘"); null = a browser, not known which.</param>
 /// <param name="App">The download program's exe ("thunder.exe"), whose icon the card shows; null = a browser's (the arrow).</param>
 /// <param name="Moving">Known to be under way however little it grew (迅雷 holds its file open exactly while downloading, 10-11).</param>
-public sealed record PartialDownload(string Path, string? Name, long Size, DateTimeOffset LastWrite, long? Total = null, string? Source = null, string? App = null, bool Moving = false);
+/// <param name="Tool">The program downloading it as an exe ("msedge.exe", "thunder.exe"): its card, its icon and name on the lifted card.</param>
+public sealed record PartialDownload(string Path, string? Name, long Size, DateTimeOffset LastWrite, long? Total = null, string? Source = null, string? App = null, bool Moving = false, string? Tool = null)
+{
+    /// <summary>Which card it goes on: one per program (user 10-11); "" = a browser not known which.</summary>
+    public string Program => Tool ?? App ?? Source ?? string.Empty;
+}
 
 /// <summary>One download under way, for the lifted card's list (F2b): from where, its name if known, how much came, how fast.</summary>
 public sealed record DownloadLine(string? Source, string? Name, long Size, double? Speed, bool Paused);
 
 /// <summary>
-/// Turns the partial files of browser downloads into <b>one</b> island item: the summed speed, the name of the earliest download
-/// still moving, and how many others there are ("2.4 MB/s  report.pdf  +2"). Speed comes from how much each file grew in the last
+/// Turns the partial files of downloads into <b>one</b> island item per program (user 10-11: Edge and 迅雷 at once = two cards): the
+/// summed speed, the name of the earliest download still moving, and how many others there are ("2.4 MB/s  report.pdf  +2"). Speed comes from how much each file grew in the last
 /// few seconds. Browsers don't say how big the file will be; when every total is known the item also carries one fraction for all.
 /// A file that stops growing for <see cref="PauseAfter"/> reads as paused (a paused download and a stalled network look the same
 /// from the file). Paused downloads stay until their file goes away; only a file already untouched for
@@ -35,8 +40,8 @@ public sealed class DownloadTracker
     /// <summary>Partial files being followed (the rest are leftovers and ignored).</summary>
     public IReadOnlyCollection<string> Tracked => _entries.Keys;
 
-    /// <summary>Takes one scan; returns the item to show, or null when no download is under way.</summary>
-    public ActivityState? Update(DateTimeOffset now, IReadOnlyList<PartialDownload> files)
+    /// <summary>Takes one scan; returns an item per program with a download under way.</summary>
+    public IReadOnlyList<ActivityState> Update(DateTimeOffset now, IReadOnlyList<PartialDownload> files)
     {
         ArgumentNullException.ThrowIfNull(files);
         var present = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -57,6 +62,8 @@ public sealed class DownloadTracker
             entry.Name = file.Name;
             entry.Source = file.Source;
             entry.App = file.App;
+            entry.Tool = file.Tool;
+            entry.Program = file.Program;
             entry.Total = file.Total is > 0 ? file.Total : null;
             entry.Observe(now, file.Size, file.Moving);
         }
@@ -66,12 +73,13 @@ public sealed class DownloadTracker
             _entries.Remove(gone);
         }
 
-        if (_entries.Count == 0)
-        {
-            return null;
-        }
+        return [.. _entries.GroupBy(e => e.Value.Program).Select(g => Item(now, g.Key, [.. g]))];
+    }
 
-        var all = _entries.OrderBy(e => e.Value.FirstSeen).ToList();
+    /// <summary>One program's downloads as one item; its key "download:{program}|{file}" (<see cref="CardStack.KeyOf"/>).</summary>
+    private static ActivityState Item(DateTimeOffset now, string program, List<KeyValuePair<string, Entry>> entries)
+    {
+        var all = entries.OrderBy(e => e.Value.FirstSeen).ToList();
         var moving = all.Where(e => !e.Value.IsPaused(now)).ToList();
         var shown = moving.Count > 0 ? moving[0] : all[0];
         var speeds = moving.Select(e => e.Value.Speed(now)).Where(s => s is > 0).ToList();   // none: no "0 KB/s", just the name
@@ -80,6 +88,7 @@ public sealed class DownloadTracker
         return new ActivityState
         {
             AppId = app,
+            Tool = all[0].Value.Tool,
             RawKind = ActivityState.KindTransfer,
             Title = "Download → PC",   // ending with "PC" means receiving (↓)
             Name = shown.Value.Name,
@@ -91,7 +100,7 @@ public sealed class DownloadTracker
             Downloads = [.. all.Select(e => new DownloadLine(e.Value.Source, e.Value.Name, e.Value.Size,
                 e.Value.IsPaused(now) ? null : e.Value.Speed(now), e.Value.IsPaused(now)))],
             State = "run",
-            SourcePath = "download:" + shown.Key,
+            SourcePath = "download:" + program + "|" + shown.Key,
             UpdatedAt = shown.Value.FirstSeen,
         };
     }
@@ -106,6 +115,10 @@ public sealed class DownloadTracker
         public string? Source { get; set; }
 
         public string? App { get; set; }
+
+        public string? Tool { get; set; }
+
+        public string Program { get; set; } = string.Empty;
 
         public long? Total { get; set; }
 

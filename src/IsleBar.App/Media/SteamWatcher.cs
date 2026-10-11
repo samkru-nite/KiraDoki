@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using IsleBar.Core.Island;
 using IsleBar.Core.SystemWatch;
+using IsleBar.Core.Ui;
 using Microsoft.Win32;
 
 namespace IsleBar.App.Media;
@@ -41,6 +42,7 @@ internal sealed class SteamWatcher
         public DateTimeOffset Since { get; set; } = since;
         public SteamTally Tally { get; } = new();
         public string? Path { get; set; }
+        public SteadyEta Eta { get; } = new();
         public string Said { get; set; } = string.Empty;   // last logged, to log changes only
         public DateTimeOffset SaidAt { get; set; }
     }
@@ -86,11 +88,11 @@ internal sealed class SteamWatcher
                 {
                     case SteamPhase.Downloading or SteamPhase.Paused:
                         downloading |= phase == SteamPhase.Downloading;
-                        result.Add(Card(id, manifest!, phase, now, game.Since));
+                        result.Add(Card(id, manifest!, phase, now, game));
                         break;
                     case SteamPhase.Installed or SteamPhase.Updated:
                         _finished.RemoveAll(f => f.SourcePath == Key(id));
-                        _finished.Add(Done(id, manifest!.Name, phase, now));
+                        _finished.Add(Done(id, manifest!.Name, phase, now, game.Since));
                         _games.Remove(id);
                         break;
                     default:
@@ -112,34 +114,44 @@ internal sealed class SteamWatcher
 
     private static string Key(int id) => "steam:" + id.ToString(CultureInfo.InvariantCulture);
 
-    private ActivityState Card(int id, SteamManifest manifest, SteamPhase phase, DateTimeOffset now, DateTimeOffset since)
+    private ActivityState Card(int id, SteamManifest manifest, SteamPhase phase, DateTimeOffset now, Game game)
     {
         var text = _text();
         var progress = manifest.Progress;
+        var speed = phase == SteamPhase.Downloading ? _rate.Speed(now) : null;   // what Steam writes to disk
         return new ActivityState
         {
             AppId = App,
+            Tool = App,
+            AppName = "Steam",
             RawKind = ActivityState.KindTransfer,
             Title = "Files",
             Name = manifest.Name,
+            // "已下载 4.1 GB，共 11.2 GB" (user 10-11)
+            Note = progress is { } p ? text.CardBytesOf.Replace("{a}", CardSheets.Bytes(p.Done), StringComparison.Ordinal)
+                .Replace("{b}", CardSheets.Bytes(p.Total), StringComparison.Ordinal) : null,
+            Eta = game.Eta.See(progress is { } q ? SteadyEta.From(q.Total - q.Done, speed) : null, now),
             Words = phase == SteamPhase.Paused ? text.Paused : text.Downloading,
             Glyph = DownloadGlyph,
             Stage = "copy",   // paused: the bar just stands, like WinRAR's
             Done = progress?.Done,
             Total = progress?.Total,
-            Speed = phase == SteamPhase.Downloading ? _rate.Speed(now) : null,   // what Steam writes to disk
+            Speed = speed,
             State = "run",
             SourcePath = Key(id),
-            UpdatedAt = since,
+            UpdatedAt = game.Since,
         };
     }
 
-    private ActivityState Done(int id, string name, SteamPhase phase, DateTimeOffset now)
+    private ActivityState Done(int id, string name, SteamPhase phase, DateTimeOffset now, DateTimeOffset since)
     {
         var text = _text();
         return new ActivityState
         {
             AppId = App,
+            Tool = App,
+            AppName = "Steam",
+            Took = now - since,
             RawKind = ActivityState.KindTransfer,
             Title = "Files",
             Name = name,
@@ -182,6 +194,9 @@ internal sealed class SteamWatcher
         return new ActivityState
         {
             AppId = App,
+            Tool = App,
+            AppName = "Steam",
+            Speed = written > 0 ? written : null,
             RawKind = ActivityState.KindTransfer,
             Title = "Files",
             Name = "Steam",

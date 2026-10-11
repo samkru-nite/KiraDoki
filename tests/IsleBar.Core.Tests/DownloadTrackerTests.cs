@@ -13,21 +13,21 @@ public sealed class DownloadTrackerTests
     [Fact]
     public void Nothing_under_way_shows_nothing()
     {
-        Assert.Null(new DownloadTracker().Update(T0, []));
+        Assert.Null(new DownloadTracker().One(T0, []));
     }
 
     [Fact]
     public void Speed_is_the_growth_over_the_last_seconds()
     {
         var tracker = new DownloadTracker();
-        var first = tracker.Update(T0, [File("a.zip", 0, T0)])!;
+        var first = tracker.One(T0, [File("a.zip", 0, T0)])!;
         Assert.Null(first.Speed);   // nothing to compare with yet
         Assert.Equal("download", first.Stage);
 
         ActivityState? item = null;
         for (var s = 1; s <= 6; s++)
         {
-            item = tracker.Update(T0.AddSeconds(s), [File("a.zip", s * 1_000_000L, T0.AddSeconds(s))]);
+            item = tracker.One(T0.AddSeconds(s), [File("a.zip", s * 1_000_000L, T0.AddSeconds(s))]);
         }
 
         Assert.Equal(1_000_000, item!.Speed!.Value, 1);
@@ -39,9 +39,9 @@ public sealed class DownloadTrackerTests
     public void Several_downloads_become_one_item_with_summed_speed_and_the_earliest_name()
     {
         var tracker = new DownloadTracker();
-        tracker.Update(T0, [File("first.zip", 0, T0)]);
-        tracker.Update(T0.AddSeconds(1), [File("first.zip", 100, T0), File("second.iso", 0, T0)]);
-        var item = tracker.Update(T0.AddSeconds(2), [File("first.zip", 200, T0), File("second.iso", 300, T0)])!;
+        tracker.One(T0, [File("first.zip", 0, T0)]);
+        tracker.One(T0.AddSeconds(1), [File("first.zip", 100, T0), File("second.iso", 0, T0)]);
+        var item = tracker.One(T0.AddSeconds(2), [File("first.zip", 200, T0), File("second.iso", 300, T0)])!;
         Assert.Equal("first.zip", item.Name);
         Assert.Equal(1, item.MoreCount);
         Assert.Equal(100 + 300, item.Speed!.Value, 1);
@@ -51,14 +51,14 @@ public sealed class DownloadTrackerTests
     public void A_file_that_stops_growing_reads_as_paused_and_stays()
     {
         var tracker = new DownloadTracker();
-        tracker.Update(T0, [File("a.zip", 100, T0)]);
-        Assert.Equal("download", tracker.Update(T0.AddSeconds(4), [File("a.zip", 100, T0)])!.Stage);
+        tracker.One(T0, [File("a.zip", 100, T0)]);
+        Assert.Equal("download", tracker.One(T0.AddSeconds(4), [File("a.zip", 100, T0)])!.Stage);
 
-        var paused = tracker.Update(T0.AddSeconds(6), [File("a.zip", 100, T0)])!;
+        var paused = tracker.One(T0.AddSeconds(6), [File("a.zip", 100, T0)])!;
         Assert.True(paused.IsPausedTransfer);
-        Assert.NotNull(tracker.Update(T0.AddHours(3), [File("a.zip", 100, T0)]));   // stays until its file goes away
+        Assert.NotNull(tracker.One(T0.AddHours(3), [File("a.zip", 100, T0)]));   // stays until its file goes away
 
-        var resumed = tracker.Update(T0.AddHours(3).AddSeconds(1), [File("a.zip", 200, T0.AddHours(3))])!;
+        var resumed = tracker.One(T0.AddHours(3).AddSeconds(1), [File("a.zip", 200, T0.AddHours(3))])!;
         Assert.Equal("download", resumed.Stage);
     }
 
@@ -66,8 +66,8 @@ public sealed class DownloadTrackerTests
     public void A_paused_download_gives_its_name_to_one_still_moving()
     {
         var tracker = new DownloadTracker();
-        tracker.Update(T0, [File("old.zip", 100, T0), File("new.zip", 0, T0)]);
-        var item = tracker.Update(T0.AddSeconds(10), [File("old.zip", 100, T0), File("new.zip", 5000, T0.AddSeconds(10))])!;
+        tracker.One(T0, [File("old.zip", 100, T0), File("new.zip", 0, T0)]);
+        var item = tracker.One(T0.AddSeconds(10), [File("old.zip", 100, T0), File("new.zip", 5000, T0.AddSeconds(10))])!;
         Assert.Equal("new.zip", item.Name);
         Assert.Equal(1, item.MoreCount);
         Assert.Equal("download", item.Stage);
@@ -77,11 +77,11 @@ public sealed class DownloadTrackerTests
     public void A_leftover_partial_file_from_earlier_is_ignored_and_gone_files_are_dropped()
     {
         var tracker = new DownloadTracker();
-        Assert.Null(tracker.Update(T0, [File("leftover.zip", 100, T0.AddDays(-2))]));
+        Assert.Null(tracker.One(T0, [File("leftover.zip", 100, T0.AddDays(-2))]));
 
-        tracker.Update(T0, [File("a.zip", 100, T0)]);
+        tracker.One(T0, [File("a.zip", 100, T0)]);
         Assert.Single(tracker.Tracked);
-        Assert.Null(tracker.Update(T0.AddSeconds(1), []));
+        Assert.Null(tracker.One(T0.AddSeconds(1), []));
         Assert.Empty(tracker.Tracked);
     }
 
@@ -91,18 +91,18 @@ public sealed class DownloadTrackerTests
         var tracker = new DownloadTracker();
         var baidu = File("a.mp4", 250, T0) with { Total = 1000 };   // reserved at full size; received counted elsewhere
         var other = File("b.mp4", 250, T0) with { Total = 1000 };
-        var item = tracker.Update(T0, [baidu, other])!;
+        var item = tracker.One(T0, [baidu, other])!;
         Assert.Equal(0.25, item.Fraction!.Value, 3);
         Assert.Equal("download", item.Stage);   // the text still shows the speed
 
         var edge = File("c.zip", 10, T0);
-        Assert.Null(tracker.Update(T0.AddSeconds(1), [baidu, other, edge])!.Fraction);
+        Assert.Null(tracker.One(T0.AddSeconds(1), [baidu, other, edge])!.Fraction);
     }
 
     [Fact]
     public void A_download_without_a_name_yet_keeps_none()
     {
-        var item = new DownloadTracker().Update(T0, [new PartialDownload(@"C:\Downloads\Unconfirmed 1.crdownload", null, 5, T0)])!;
+        var item = new DownloadTracker().One(T0, [new PartialDownload(@"C:\Downloads\Unconfirmed 1.crdownload", null, 5, T0)])!;
         Assert.Null(item.Name);   // the pill says "Downloading" instead of "Unconfirmed 1"
     }
 

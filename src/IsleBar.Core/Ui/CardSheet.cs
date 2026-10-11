@@ -43,6 +43,9 @@ public enum SheetAction
     PrivacySettings,
     Eject,
     Clear,
+
+    /// <summary>A game Steam has just installed: start it (<c>steam://rungameid/{id}</c>, user 10-11).</summary>
+    Play,
 }
 
 /// <summary>A button: words, or (media) an icon from Segoe Fluent Icons.</summary>
@@ -55,7 +58,11 @@ public sealed record SheetGroup(string Name, IReadOnlyList<string> Lines);
 public sealed record SheetFile(string Path, string Name, bool Gone);
 
 /// <summary>The progress zone: share done, the words left and right above the bar (either may be empty), its colour.</summary>
-public sealed record SheetProgress(double Fraction, string? Left, string? Right, SheetTone Tone = SheetTone.Plain);
+public sealed record SheetProgress(double Fraction, string? Left, string? Right, SheetTone Tone = SheetTone.Plain)
+{
+    /// <summary>How far isn't known: a piece flows along the track, as on the pill (TODO ⑤ 掀起卡片适配, 10-11).</summary>
+    public bool Flowing { get; init; }
+}
 
 /// <summary>
 /// <b>The inside of a lifted card</b> (TODO 7.9 F2, preview https://claude.ai/artifact/G4DcS2xPmx8jmgtMscdiMT): four zones top to
@@ -207,6 +214,7 @@ public static class CardSheets
                 s.Name ?? text.CardSystem, null, SheetTone.Plain, Ago(Start(s), now, text), null, [],
                 s.Open is null ? close : [new(SheetAction.Open, text.MenuOpen), .. close]) with { Groups = BySender(s) },
             ActivityKind.Notice when s.Glyph == NoticeGlyphs.Drive => Drive(card, text),
+            ActivityKind.Notice when s.Glyph == NoticeGlyphs.Printer => Printer(s, text, close),
             ActivityKind.Notice when s.Glyph == NoticeGlyphs.Transit => Transit(s, text),
             // the calendar (10-10): the event's name, its state in the card's colour, its time "8:00 – 9:35"
             ActivityKind.Notice when s.Look is not null => Sheet(
@@ -297,12 +305,18 @@ public static class CardSheets
             Adaptive: false);
     }
 
-    /// <summary>Downloads and Explorer's copies: no bar for a browser download — its total size is never known (10-04).</summary>
+    /// <summary>
+    /// Every transfer alike (TODO ⑤ 掀起卡片适配, user 10-11): downloads, Explorer's copies, WinRAR / 7-Zip / Bandizip, exports,
+    /// Steam, the printer. The source row names the program doing it (its icon beside, from <see cref="ActivityState.Tool"/>), the
+    /// state word alone on the right; the file's name, a grey line under it (<see cref="ActivityState.Note"/>: the file being packed,
+    /// a game's bytes, a print's pages). With a percentage the bar says "time left · speed … 40%"; without, it flows and says
+    /// "how much · speed … time taken". Done: size and time taken, "Show in folder" (Steam: "Play").
+    /// </summary>
     private static CardSheet Transfer(Card card, DateTimeOffset now, LanguageStrings text, IReadOnlyList<SheetButton> close)
     {
         var s = card.State;
         var copy = s.Stage == "copy";
-        // Explorer's copies say their state in words ("复制中", "已复制", 10-10)
+        // the state in words ("复制中", "已复制", 10-10)
         var (state, tone) = s.RunState switch
         {
             ActivityRunState.Done => (s.Words ?? text.Done, SheetTone.Ok),
@@ -312,49 +326,86 @@ public static class CardSheets
         };
 
         var running = s.RunState == ActivityRunState.Running;
-        var several = !copy && running && s.Downloads is { Count: > 1 };
+        var several = running && s.Downloads is { Count: > 1 };
+        var paused = s.IsPausedTransfer || (s.Words is { } w && w == text.Paused);
+        var speed = s.Speed is { } bytes && !paused ? $"{Bytes((long)bytes)}/s" : null;
         var lines = new List<string?>();
-        if (!copy && s.Done is { } bytes && s.Fraction is null && running && !several)
+        SheetProgress? bar = null;
+        if (running && s.Fraction is { } f)
         {
-            // one download: where from, how much came, how fast (F2b: the source, 10-09)
-            var source = s.Downloads is [{ } only] ? only.Source ?? text.CardBrowser : null;
-            lines.Add(TextGap.Join(source, Fill(text.CardDownloaded, Bytes(bytes)), s.Speed is { } speed ? $"{Bytes((long)speed)}/s" : null));
+            lines.Add(s.Note);
+            bar = new SheetProgress(f, TextGap.Join(s.Eta is { } eta ? Fill(text.CardLeft, Span(eta, text)) : null, speed), $"{f * 100:0}%");
+        }
+        else if (running)
+        {
+            lines.Add(s.Note);
+            var amount = several ? text.FileItems.Replace("{0}", s.Downloads!.Count.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)
+                : s.Done is { } done ? Fill(copy ? text.CardWritten : text.CardDownloaded, Bytes(done))
+                : null;
+            bar = new SheetProgress(0, TextGap.Join(amount, speed), Fill(text.CardTook, Span(now - Start(s), text))) { Flowing = !paused };
+        }
+        else
+        {
+            lines.Add(TextGap.Join(s.Note, s.Took is { } took ? Fill(text.CardTook, Span(took, text)) : null));
         }
 
-        SheetProgress? bar = s.Fraction is { } f && running ? new SheetProgress(f, null, $"{f * 100:0}%") : null;
         var name = s.Name ?? (copy ? text.FileTransfer : text.Downloading);
         IReadOnlyList<SheetButton> buttons = card.Type == CardType.Status
             ? copy ? [new(SheetAction.Hide, text.CardHide)] : [new(SheetAction.OpenFolder, text.CardOpenFolder), new(SheetAction.Hide, text.CardHide)]
-            : s.Open is not null ? [new(SheetAction.Open, text.MenuOpen), .. close] : close;
-        var sheet = Sheet(copy ? text.FileTransfer : text.CardDownloads, state, tone, Ago(Start(s), now, text),
+            : s.RunState == ActivityRunState.Done && SteamGame(card.Key) is not null ? [new(SheetAction.Play, text.CardPlay), .. close]
+            : s.Open is { } open ? [new(SheetAction.OpenFolder, s.MoreCount > 0 || !HasExtension(open) ? text.CardOpenFolder : text.CardReveal), .. close]
+            : close;
+        var sheet = Sheet(s.AppName ?? (copy ? text.FileTransfer : text.CardDownloads), state, tone, null,
             several ? null : s.MoreCount > 0 ? $"{name} +{s.MoreCount}" : name,
             several ? [DownloadList(s.Downloads!, text)] : [.. lines], buttons) with { Progress = bar };
         return several ? sheet with { Markdown = true } : sheet;
     }
 
+    /// <summary>The game of a Steam card ("steam:620" → 620), for its "Play"; null for any other card (and Steam's fallback).</summary>
+    public static int? SteamGame(string key)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        return key.StartsWith("steam:", StringComparison.Ordinal)
+               && int.TryParse(key.AsSpan(6), NumberStyles.None, CultureInfo.InvariantCulture, out var id) ? id : null;
+    }
+
+    private static bool HasExtension(string path) => Path.HasExtension(path);
+
     /// <summary>
-    /// Several downloads (F2b, 10-08 "每个来源一行"): per source a grey line with its summed speed ("Edge · 3.2 MB/s", or paused),
-    /// then each of its files — its name when the browser has given it (Chrome/Edge's "Unconfirmed 123" has none) and how much came.
-    /// Written as Markdown so the card lays it out like an answer: section names and a list.
+    /// One program's downloads (F2b; user 10-11: a card per program, so no section names): each file — its name when the browser has
+    /// given it (Chrome/Edge's "Unconfirmed 123" has none) and how much came, "paused" after it. As Markdown: a list.
     /// </summary>
     private static string DownloadList(IReadOnlyList<DownloadLine> downloads, LanguageStrings text)
     {
         var md = new System.Text.StringBuilder();
-        foreach (var group in downloads.GroupBy(d => d.Source ?? text.CardBrowser))
+        foreach (var d in downloads)
         {
-            var speeds = group.Where(d => d.Speed is not null).Select(d => d.Speed!.Value).ToList();
-            var how = group.All(d => d.Paused) ? text.Paused : speeds.Count > 0 ? $"{Bytes((long)speeds.Sum())}/s" : null;
-            md.Append("## ").Append(TextGap.Join(Escape(group.Key), how)).Append('\n');
-            foreach (var d in group)
-            {
-                md.Append("- ").Append(TextGap.Join(d.Name is { } n ? Escape(n) : null, Fill(text.CardDownloaded, Bytes(d.Size)),
-                    d.Paused && !group.All(x => x.Paused) ? text.Paused : null)).Append('\n');
-            }
-
-            md.Append('\n');
+            md.Append("- ").Append(TextGap.Join(d.Name is { } n ? Escape(n) : Fill(text.CardDownloaded, Bytes(d.Size)),
+                d.Name is null ? null : Bytes(d.Size), d.Paused ? text.Paused : null)).Append('\n');
         }
 
         return md.ToString().TrimEnd();
+    }
+
+    /// <summary>
+    /// A printer that needs someone (TODO 四, 10-11): as its transfer card — the printer's name, the problem orange on the right, the
+    /// document and its pages, the bar standing where it stopped.
+    /// </summary>
+    private static CardSheet Printer(ActivityState s, LanguageStrings text, IReadOnlyList<SheetButton> close)
+    {
+        SheetProgress? bar = s.Fraction is { } f ? new SheetProgress(f, null, $"{f * 100:0}%", SheetTone.Waiting) : null;
+        return Sheet(s.AppName ?? text.CardSystem, s.Title, SheetTone.Waiting, null, s.Msg, [s.Note], close) with { Progress = bar };
+    }
+
+    /// <summary>"45秒", "2分钟", "1小时5分钟".</summary>
+    public static string Span(TimeSpan t, LanguageStrings text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        var seconds = (int)Math.Max(0, t.TotalSeconds);
+        return seconds < 60 ? Fill(text.CardSeconds, seconds.ToString(CultureInfo.InvariantCulture))
+            : seconds < 3600 ? text.Minutes.Replace("{0}", (seconds / 60).ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)
+            : text.CardHours.Replace("{a}", (seconds / 3600).ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)
+                .Replace("{b}", (seconds / 60 % 60).ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal);
     }
 
     /// <summary>A file name as Markdown text: its marks escaped, so "my_*draft*.zip" stays as it is.</summary>
@@ -484,7 +535,8 @@ public static class CardSheets
             : $"{total / 60}:{total % 60:00}";
     }
 
-    private static string Bytes(long bytes) => bytes switch
+    /// <summary>"812 KB", "12.3 MB", "1.20 GB".</summary>
+    public static string Bytes(long bytes) => bytes switch
     {
         < 1024 * 1024 => $"{bytes / 1024.0:0} KB",
         < 1024L * 1024 * 1024 => $"{bytes / 1024.0 / 1024:0.0} MB",

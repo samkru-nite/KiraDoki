@@ -61,12 +61,12 @@ public class DownloadersTests
         var tracker = new DownloadTracker();
         var t0 = DateTimeOffset.UtcNow;
         PartialDownload Seen(bool open) => new(@"C:\d\a.zip.xltd", "a.zip", 0, t0, App: "thunder.exe", Moving: open);
-        tracker.Update(t0, [Seen(true)]);
-        var card = tracker.Update(t0 + TimeSpan.FromSeconds(30), [Seen(true)]);
+        tracker.One(t0, [Seen(true)]);
+        var card = tracker.One(t0 + TimeSpan.FromSeconds(30), [Seen(true)]);
         Assert.Equal("download", card?.Stage);   // nothing counted (too slow to tell from its writes), still under way
         Assert.Null(card?.Speed);   // no "0 KB/s"
 
-        card = tracker.Update(t0 + TimeSpan.FromSeconds(40), [Seen(false)]);
+        card = tracker.One(t0 + TimeSpan.FromSeconds(40), [Seen(false)]);
         Assert.Equal("paused", card?.Stage);   // closed: paused
     }
 
@@ -75,11 +75,16 @@ public class DownloadersTests
     {
         var tracker = new DownloadTracker();
         var now = DateTimeOffset.UtcNow;
-        var card = tracker.Update(now, [new PartialDownload(@"C:\d\a.zip.xltd", "a.zip", 0, now, App: "thunder.exe")]);
+        var card = tracker.One(now, [new PartialDownload(@"C:\d\a.zip.xltd", "a.zip", 0, now, App: "thunder.exe")]);
         Assert.Equal("thunder.exe", card?.AppId);
 
-        card = tracker.Update(now, [new PartialDownload(@"C:\d\a.zip.xltd", "a.zip", 0, now, App: "thunder.exe"),
-            new PartialDownload(@"C:\d\b.zip.crdownload", "b.zip", 10, now)]);
-        Assert.Null(card?.AppId);   // mixed: the plain arrow
+        // two programs at once: a card each (user 10-11), each with its own icon and key
+        var cards = tracker.Update(now, [new PartialDownload(@"C:\d\a.zip.xltd", "a.zip", 0, now, App: "thunder.exe", Tool: "thunder.exe"),
+            new PartialDownload(@"C:\d\b.zip.crdownload", "b.zip", 10, now, Source: "Edge", Tool: "msedge.exe")]);
+        Assert.Equal(2, cards.Count);
+        Assert.Equal(["download:thunder.exe", "download:msedge.exe"], cards.Select(CardStack.KeyOf).OrderByDescending(k => k));
+        Assert.Equal("thunder.exe", cards.Single(c => c.Name == "a.zip").AppId);
+        Assert.Null(cards.Single(c => c.Name == "b.zip").AppId);   // a browser's: the plain arrow on the pill
+        Assert.Equal("msedge.exe", cards.Single(c => c.Name == "b.zip").Tool);   // its icon and name on the lifted card
     }
 }

@@ -99,6 +99,25 @@ public sealed class ActivityState
     [JsonIgnore]
     public string? AppName { get; set; }
 
+    /// <summary>
+    /// The program doing a transfer ("WinRAR.exe", "msedge.exe"): its icon and name head the lifted card (TODO ⑤ 掀起卡片适配, user
+    /// 10-11), while the pills keep their own icon. Null = the card's usual icon. Not serialized to JSON.
+    /// </summary>
+    [JsonIgnore]
+    public string? Tool { get; set; }
+
+    /// <summary>A transfer's grey line on the lifted card: the file being packed now, a game's bytes, a print's pages. Not serialized.</summary>
+    [JsonIgnore]
+    public string? Note { get; set; }
+
+    /// <summary>Time left, once its estimate has settled (<see cref="SteadyEta"/>). Not serialized to JSON.</summary>
+    [JsonIgnore]
+    public TimeSpan? Eta { get; set; }
+
+    /// <summary>A finished transfer: how long it took. Not serialized to JSON.</summary>
+    [JsonIgnore]
+    public TimeSpan? Took { get; set; }
+
     /// <summary>Each download under way (the merged download card, F2b), first come first. Not serialized to JSON.</summary>
     [JsonIgnore]
     public IReadOnlyList<DownloadLine>? Downloads { get; set; }

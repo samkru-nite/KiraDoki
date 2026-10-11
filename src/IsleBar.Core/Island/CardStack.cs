@@ -250,7 +250,14 @@ public sealed class CardStack
     {
         if (state.SourcePath is { } source)
         {
-            return source.StartsWith("download:", StringComparison.Ordinal) ? "download" : source;
+            // a program's downloads are one card, whatever file it names (user 10-11: a card per program): "download:{program}|{file}"
+            if (source.StartsWith("download:", StringComparison.Ordinal))
+            {
+                var program = source.IndexOf('|', StringComparison.Ordinal) is var bar and > 0 ? source[9..bar] : string.Empty;
+                return program.Length == 0 ? "download" : "download:" + program;
+            }
+
+            return source;
         }
 
         return $"{state.Kind}|{state.Title}|{state.Name}";

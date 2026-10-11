@@ -21,20 +21,38 @@ internal sealed class ArchiverWatcher
     private readonly Dictionary<IntPtr, Job> _jobs = [];
     private readonly List<ActivityState> _finished = [];
 
-    private sealed class Job(DateTimeOffset since)
+    private sealed class Job(DateTimeOffset since, string process)
     {
         public DateTimeOffset Since { get; } = since;
         public ArchiveTally Tally { get; } = new();
         public bool Asking { get; set; }
+
+        /// <summary>The program's process name ("WinRAR", "7zG"): its icon and name head the lifted card, its writes are the speed.</summary>
+        public string Process { get; } = process;
+
+        /// <summary>Time left from the window, shown once it has settled (user 10-11: 3 s).</summary>
+        public SteadyEta Eta { get; } = new();
+
+        /// <summary>Bytes a second the program writes, smoothed (WinRAR's window says no speed).</summary>
+        public double? Rate { get; set; }
     }
+
+    /// <summary>The name a program goes by on the lifted card.</summary>
+    private static string NameOf(string process) => process switch
+    {
+        "WinRAR" => "WinRAR",
+        "Bandizip" or "bz" => "Bandizip",
+        _ => "7-Zip",
+    };
 
     // The fallback (user 10-11: a new WinRAR whose window we no longer read must not vanish): WinRAR writing a lot with no progress
     // window we know → "进行中 WinRAR", a flowing bar, no percentage, no "done" (it isn't known how it ended)
     private const long BusyBytes = 1024 * 1024;   // a second
     private static readonly TimeSpan BusyLinger = TimeSpan.FromSeconds(3);
-    private readonly (string Name, Interop.ProcessWriteMeter Meter)[] _written =
-        [("WinRAR", new("WinRAR")), ("7-Zip", new("7zG")), ("7-Zip", new("7zFM")), ("Bandizip", new("Bandizip")), ("Bandizip", new("bz"))];
+    private readonly (string Name, string Process, Interop.ProcessWriteMeter Meter)[] _written =
+        [("WinRAR", "WinRAR", new("WinRAR")), ("7-Zip", "7zG", new("7zG")), ("7-Zip", "7zFM", new("7zFM")), ("Bandizip", "Bandizip", new("Bandizip")), ("Bandizip", "bz", new("bz"))];
     private string _busyName = string.Empty;
+    private string _busyProcess = "WinRAR";
     private DateTimeOffset? _busySince, _busyLast;
 
     // a job's last writes come in the second its window closes (10-11: the fallback showed for 3 s after every 7-Zip job), so none
@@ -54,7 +72,8 @@ internal sealed class ArchiverWatcher
         Look(now);
         var result = new List<ActivityState>();
         var text = _text();
-        if (Fallback(now) is { } busy)
+        var written = _written.Select(w => (w.Name, w.Process, Bytes: w.Meter.Delta(now))).ToList();
+        if (Fallback(now, written) is { } busy)
         {
             result.Add(busy);
         }
@@ -66,11 +85,20 @@ internal sealed class ArchiverWatcher
                 continue;   // a question is up: nothing moves till it's answered, and it is right there
             }
 
+            // the speed: 7-Zip's window says it; otherwise what the program writes, smoothed over a few seconds
+            var bytes = written.Where(w => w.Process == job.Process).Sum(w => w.Bytes);
+            job.Rate = job.Rate is { } rate ? (rate * 0.6) + (bytes * 0.4) : bytes;
+            var speed = last.Paused ? null : last.Speed ?? (job.Rate > 0 ? job.Rate : null);
             result.Add(new ActivityState
             {
                 RawKind = ActivityState.KindTransfer,
                 Title = "Files",
                 Name = Path.GetFileName(last.Archive),
+                Tool = job.Process + ".exe",
+                AppName = NameOf(job.Process),
+                Note = last.Current,   // the file being packed now: replaced as it changes, no animation (user 10-11)
+                Eta = last.Paused ? null : job.Eta.See(last.Left, now),
+                Speed = speed,
                 Words = last.Job == ArchiveJob.Zip ? text.FileZip : text.FileUnzip,
                 Glyph = last.Job == ArchiveJob.Zip ? FileOperationWatcher.CompressGlyph : FileOperationWatcher.UnzipGlyph,
                 Stage = "copy",
@@ -88,9 +116,9 @@ internal sealed class ArchiverWatcher
     }
 
     /// <summary>WinRAR busy with no window read (<see cref="BusyBytes"/> a second), till it has been quiet for a moment.</summary>
-    private ActivityState? Fallback(DateTimeOffset now)
+    private ActivityState? Fallback(DateTimeOffset now, List<(string Name, string Process, long Bytes)> all)
     {
-        var (busiest, written) = _written.Select(w => (w.Name, Bytes: w.Meter.Delta(now))).MaxBy(w => w.Bytes);
+        var (busiest, process, written) = all.MaxBy(w => w.Bytes);
         if (_jobs.Count > 0)
         {
             _quietUntil = now + AfterJob;
@@ -113,6 +141,7 @@ internal sealed class ArchiverWatcher
         {
             _busyLast = now;
             _busyName = busiest;
+            _busyProcess = process;
         }
 
         if (_busySince is null)
@@ -127,6 +156,9 @@ internal sealed class ArchiverWatcher
             RawKind = ActivityState.KindTransfer,
             Title = "Files",
             Name = _busyName,
+            Tool = _busyProcess + ".exe",
+            AppName = _busyName,
+            Speed = written > 0 ? written : null,
             Words = _text().CardRunning,
             Glyph = FileOperationWatcher.CompressGlyph,
             Stage = "copy",
@@ -143,12 +175,12 @@ internal sealed class ArchiverWatcher
 
     private void Look(DateTimeOffset now)
     {
-        var pids = new HashSet<uint>();
+        var pids = new Dictionary<uint, string>();
         foreach (var name in Processes)
         {
             foreach (var p in Process.GetProcessesByName(name))
             {
-                pids.Add((uint)p.Id);
+                pids[(uint)p.Id] = name;
                 p.Dispose();
             }
         }
@@ -160,7 +192,7 @@ internal sealed class ArchiverWatcher
             EnumWindows((window, _) =>
             {
                 GetWindowThreadProcessId(window, out var pid);
-                if (pids.Contains(pid) && GetClassName(window, cls, cls.Length) is var n && new string(cls, 0, n) == "#32770")
+                if (pids.ContainsKey(pid) && GetClassName(window, cls, cls.Length) is var n && new string(cls, 0, n) == "#32770")
                 {
                     dialogs.Add((window, pid));
                 }
@@ -185,7 +217,7 @@ internal sealed class ArchiverWatcher
         {
             if (!_jobs.TryGetValue(window, out var job))
             {
-                job = _jobs[window] = new Job(now);
+                job = _jobs[window] = new Job(now, pids.GetValueOrDefault(dialogs.First(d => d.Window == window).Pid) ?? "WinRAR");
                 Interop.TaskbarHost.Log($"archiver: {look.Job} {Path.GetFileName(look.Archive)} began");
             }
 
@@ -219,11 +251,16 @@ internal sealed class ArchiverWatcher
         }
 
         var text = _text();
+        var zipped = last.Job == ArchiveJob.Zip && File.Exists(last.Archive);
         _finished.Add(new ActivityState
         {
             RawKind = ActivityState.KindTransfer,
             Title = "Files",
             Name = Path.GetFileName(last.Archive),
+            Tool = job.Process + ".exe",
+            AppName = NameOf(job.Process),
+            Note = zipped ? Core.Ui.CardSheets.Bytes(new FileInfo(last.Archive).Length) : null,   // the archive's size
+            Took = now - job.Since,
             Words = last.Job == ArchiveJob.Zip ? text.FileZipped : text.FileUnzipped,
             Stage = "copy",
             State = "done",

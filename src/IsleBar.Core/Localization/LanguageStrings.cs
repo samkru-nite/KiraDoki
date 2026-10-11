@@ -373,6 +373,33 @@ public sealed class LanguageStrings
     public required string CardInUse { get; init; }
     public required string CardDownloaded { get; init; }
 
+    /// <summary>Time left on a transfer: "剩余2分钟" ({} = a length).</summary>
+    public required string CardLeft { get; init; }
+
+    /// <summary>How long a transfer has taken / took: "用时3分钟".</summary>
+    public required string CardTook { get; init; }
+
+    /// <summary>An export without a percentage: how much is written so far.</summary>
+    public required string CardWritten { get; init; }
+
+    /// <summary>A game download: bytes so far ({a}) of all ({b}).</summary>
+    public required string CardBytesOf { get; init; }
+
+    /// <summary>A print: pages printed ({a}) of all ({b}).</summary>
+    public required string CardPagesOf { get; init; }
+
+    /// <summary>A length under a minute.</summary>
+    public required string CardSeconds { get; init; }
+
+    /// <summary>A length of an hour or more: hours ({a}) and minutes ({b}).</summary>
+    public required string CardHours { get; init; }
+
+    /// <summary>A finished game download's button: starts the game (Steam).</summary>
+    public required string CardPlay { get; init; }
+
+    /// <summary>A finished transfer's button: shows the file in its folder.</summary>
+    public required string CardReveal { get; init; }
+
     /// <summary>Source names on the card's top row.</summary>
     public required string CardMusic { get; init; }
     public required string CardSystem { get; init; }

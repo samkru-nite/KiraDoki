@@ -201,17 +201,17 @@ internal sealed class SheetView
 
         if (next.Progress is { } p)
         {
-            if (_barLeft is not null)
+            if (_barLeft is not null && Words(_barLeft) != (p.Left ?? string.Empty))
             {
-                _barLeft.Text = p.Left ?? string.Empty;
+                SetWords(_barLeft, p.Left ?? string.Empty);
             }
 
-            if (_barRight is not null)
+            if (_barRight is not null && Words(_barRight) != (p.Right ?? string.Empty))
             {
-                _barRight.Text = p.Right ?? string.Empty;
+                SetWords(_barRight, p.Right ?? string.Empty);
             }
 
-            if (_bar is not null)
+            if (_bar is not null && !p.Flowing)
             {
                 _bar.Width = _width * Math.Clamp(p.Fraction, 0, 1);
                 _bar.Background = Brush(BarColor(p.Tone));
@@ -224,7 +224,7 @@ internal sealed class SheetView
     /// <summary>What can't change in place: which pieces of text there are, the buttons, which zones there are.</summary>
     private static string StructureKey(CardSheet s) => string.Join("\u0001",
         s.Layout, s.Source, s.Title is null, s.Body.Count, s.Raw is null, s.Progress is null,
-        s.Progress is { Left: null, Right: null }, s.Buttons.Count, s.Markdown ? string.Join('\n', s.Body) : string.Empty, s.Footnote is null,
+        s.Progress is { Left: null, Right: null }, s.Progress?.Flowing == true, s.Buttons.Count, s.Markdown ? string.Join('\n', s.Body) : string.Empty, s.Footnote is null,
         string.Join('\n', s.Files.Select(f => (f.Gone ? "-" : "+") + f.Path)),   // a file in or out, or gone: the list again
         string.Join('\n', s.Groups.Select(g => g.Name + "\u0002" + string.Join('\u0002', g.Lines))));   // a message more: built again (it grows)
 
@@ -819,6 +819,15 @@ internal sealed class SheetView
         mark.TextWrapping = TextWrapping.NoWrap;
         row.Children.Add(mark);
         var words = MdText(block.Text);
+        if (TextGap.Parts(block.Text) is { Length: > 1 } parts)
+        {
+            // "setup.zip 120.3 MB": the first part in the main colour, the rest grey after the gap (TODO ⑤ 全岛排版)
+            words.Inlines.Clear();
+            words.Inlines.Add(new Run { Text = parts[0] });
+            words.Inlines.Add(new Run { Text = TextGap.Break + string.Join(TextGap.Break, parts[1..]), Foreground = Brush(_palette.Hint) });
+            GapRuns.Spread(words.Inlines, words.FontSize);
+        }
+
         Grid.SetColumn(words, 1);
         row.Children.Add(words);
         return row;
@@ -1041,12 +1050,12 @@ internal sealed class SheetView
         {
             var labels = new Grid();
             _barLeft = Note();
-            _barLeft.Text = progress.Left ?? string.Empty;
             _barLeft.FontFamily = Fonts(progress.Left).Normal;
+            SetWords(_barLeft, progress.Left ?? string.Empty);   // "剩余2分钟 48.2 MB/s": two parts, 4 apart (TextGap)
             _barLeft.Foreground = Brush(_palette.Hint);
             _barRight = Note();
-            _barRight.Text = progress.Right ?? string.Empty;
             _barRight.FontFamily = Fonts(progress.Right).Normal;
+            SetWords(_barRight, progress.Right ?? string.Empty);
             _barRight.Foreground = Brush(_palette.Hint);
             _barRight.HorizontalAlignment = HorizontalAlignment.Right;
             labels.Children.Add(_barLeft);
@@ -1059,11 +1068,36 @@ internal sealed class SheetView
         _bar = new Border
         {
             CornerRadius = new CornerRadius(CardSheets.BarHeight / 2), HorizontalAlignment = HorizontalAlignment.Left,
-            Width = _width * Math.Clamp(progress.Fraction, 0, 1), Background = Brush(BarColor(progress.Tone)),
+            Width = progress.Flowing ? _width / 4 : _width * Math.Clamp(progress.Fraction, 0, 1), Background = Brush(BarColor(progress.Tone)),
         };
         track.Children.Add(_bar);
+        if (progress.Flowing)
+        {
+            Flow(track, _bar);
+        }
+
         zone.Children.Add(track);
         return zone;
+    }
+
+    /// <summary>
+    /// How far isn't known (a browser download, an export): a quarter of the track slides across and round again, as on the pill
+    /// (<see cref="PillView.FlowSeconds"/>), on the compositor; the track clips it at the ends.
+    /// </summary>
+    private void Flow(Grid track, Border piece)
+    {
+        var width = _width;
+        track.Clip = new RectangleGeometry { Rect = new Windows.Foundation.Rect(0, 0, width, CardSheets.BarHeight) };
+        Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.SetIsTranslationEnabled(piece, true);
+        var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(piece);
+        var compositor = visual.Compositor;
+        var linear = compositor.CreateLinearEasingFunction();
+        var slide = compositor.CreateScalarKeyFrameAnimation();
+        slide.InsertKeyFrame(0f, (float)(-width / 4), linear);
+        slide.InsertKeyFrame(1f, (float)width, linear);
+        slide.Duration = TimeSpan.FromSeconds(PillView.FlowSeconds);
+        slide.IterationBehavior = Microsoft.UI.Composition.AnimationIterationBehavior.Forever;
+        visual.StartAnimation("Translation.X", slide);
     }
 
     /// <summary>Equal widths sharing the row, 8 apart; Close (or Hide) last, on the right (user 10-08).</summary>
