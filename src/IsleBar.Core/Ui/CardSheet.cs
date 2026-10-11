@@ -46,6 +46,9 @@ public enum SheetAction
 
     /// <summary>A game Steam has just installed: start it (<c>steam://rungameid/{id}</c>, user 10-11).</summary>
     Play,
+
+    /// <summary>Copied files or an image: into the transit station, as the pill's "+" (TODO ④).</summary>
+    Keep,
 }
 
 /// <summary>A button: words, or (media) an icon from Segoe Fluent Icons.</summary>
@@ -192,7 +195,8 @@ public static class CardSheets
     /// agent done / needs you / working (user 10-09: what it says shouldn't be cut) / stopped, notifications, copied, downloads.
     /// </summary>
     /// <param name="tail">An agent's last answer / latest step, read by the App from its session record (F2b); null = none.</param>
-    public static CardSheet Build(Card card, DateTimeOffset now, LanguageStrings text, AgentTail? tail = null)
+    /// <param name="browser">The default browser's name, for a copied address's "用 Edge 打开"; null = "browser".</param>
+    public static CardSheet Build(Card card, DateTimeOffset now, LanguageStrings text, AgentTail? tail = null, string? browser = null)
     {
         ArgumentNullException.ThrowIfNull(card);
         ArgumentNullException.ThrowIfNull(text);
@@ -221,6 +225,7 @@ public static class CardSheets
                 text.CardSystem, s.Title,
                 s.State == SystemWatch.SystemNotice.WaitState ? SheetTone.Waiting : s.RunState == ActivityRunState.Done ? SheetTone.Ok : SheetTone.Plain,
                 null, s.Msg ?? s.Title, [s.Name], close),
+            ActivityKind.Notice when s.Subject is not null || s.Level is not null => SystemCard(s, text, close, browser),
             // "充电中 78%": a translation's " · " is a gap (TODO ⑤ 全岛排版)
             ActivityKind.Notice => Sheet(
                 text.CardSystem, null, SheetTone.Plain, Ago(Start(s), now, text), TextGap.FromDots(s.Title), [s.Msg, s.Name], close),
@@ -395,6 +400,34 @@ public static class CardSheets
     {
         SheetProgress? bar = s.Fraction is { } f ? new SheetProgress(f, null, $"{f * 100:0}%", SheetTone.Waiting) : null;
         return Sheet(s.AppName ?? text.CardSystem, s.Title, SheetTone.Waiting, null, s.Msg, [s.Note], close) with { Progress = bar };
+    }
+
+    /// <summary>
+    /// Windows' own news (TODO ⑤ 掀起卡片适配, user 10-11), laid out as the transfers: what it is about in the source row (电源 / 蓝牙 /
+    /// 网络 / 专注 / 剪贴板 / 性能), the state word alone on the right (orange when someone must act: a low battery); a percentage as the
+    /// one big number with a grey caption ("78%  约45分钟", "92%  chrome"), else the subject and a grey line; its button opens where
+    /// it is dealt with (Windows Settings, Task Manager) — a copied address, files or an image get theirs from the bar.
+    /// </summary>
+    private static CardSheet SystemCard(ActivityState s, LanguageStrings text, IReadOnlyList<SheetButton> close, string? browser)
+    {
+        IReadOnlyList<SheetButton> buttons = s.Open switch
+        {
+            null when s.Glyph is NoticeGlyphs.Files or NoticeGlyphs.Image => [new(SheetAction.Keep, text.CardAddToTransit), .. close],
+            null => close,
+            _ when s.Open.StartsWith("ms-settings:", StringComparison.OrdinalIgnoreCase) => [new(SheetAction.Open, text.CardOpenSettings), .. close],
+            "taskmgr" => [new(SheetAction.Open, text.CardTaskManager), .. close],
+            // a copied address (TODO ④): in the default browser, as the pill's ↗
+            _ => [new(SheetAction.Open, text.OpenWith.Replace("{a}", browser ?? text.CardBrowser, StringComparison.Ordinal)), .. close],
+        };
+        var tone = s.RunState == ActivityRunState.Error ? SheetTone.Waiting : SheetTone.Plain;
+        if (s.Level is { } level)
+        {
+            return new CardSheet(
+                s.AppName ?? text.CardSystem, s.Words, s.Words is null ? SheetTone.Plain : tone, null, SheetLayout.Number,
+                null, [], null, $"{Math.Clamp(level, 0, 100)}%", s.Note, null, buttons, Adaptive: false);
+        }
+
+        return Sheet(s.AppName ?? text.CardSystem, s.Words, tone, null, string.IsNullOrEmpty(s.Subject) ? null : s.Subject, [s.Note], buttons);
     }
 
     /// <summary>"45秒", "2分钟", "1小时5分钟".</summary>

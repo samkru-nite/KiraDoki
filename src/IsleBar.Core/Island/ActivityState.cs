@@ -114,6 +114,17 @@ public sealed class ActivityState
     [JsonIgnore]
     public TimeSpan? Eta { get; set; }
 
+    /// <summary>
+    /// A system card's subject on the lifted card (TODO ⑤ 掀起卡片适配, user 10-11): the device ("AirPods"), what was copied, "网络已断开";
+    /// its state word goes in <see cref="Words"/>, a grey line in <see cref="Note"/>, the source row in <see cref="AppName"/>. Not serialized.
+    /// </summary>
+    [JsonIgnore]
+    public string? Subject { get; set; }
+
+    /// <summary>A system card's percentage (battery, CPU, memory), the lifted card's big number. Not serialized to JSON.</summary>
+    [JsonIgnore]
+    public int? Level { get; set; }
+
     /// <summary>A finished transfer: how long it took. Not serialized to JSON.</summary>
     [JsonIgnore]
     public TimeSpan? Took { get; set; }

@@ -189,6 +189,50 @@ public sealed class CardSheetTests
     }
 
     [Fact]
+    public void A_low_battery_shows_its_percent_big_with_the_time_left_and_opens_settings()
+    {
+        var notice = SystemWatch.SystemNotice.Make("电量20% · 约45分钟", SystemWatch.NoticeGlyphs.Battery0, Now, urgent: true, open: "ms-settings:batterysaver");
+        (notice.AppName, notice.Words, notice.Level, notice.Note) = ("电源", "电量低", 20, "约45分钟");
+        var sheet = CardSheets.Build(Card(CardType.Temporary, notice), Now, Zh);
+
+        Assert.Equal("电源", sheet.Source);
+        Assert.Equal(("电量低", SheetTone.Waiting), (sheet.State, sheet.Tone));
+        Assert.Null(sheet.Time);
+        Assert.Equal(SheetLayout.Number, sheet.Layout);
+        Assert.Equal(("20%", "约45分钟"), (sheet.Number, sheet.NumberCaption));
+        Assert.Equal([(SheetAction.Open, "打开设置")], sheet.Buttons.Select(b => (b.Action, b.Label)));
+    }
+
+    [Fact]
+    public void A_bluetooth_device_is_the_subject_and_its_battery_the_grey_line()
+    {
+        var notice = SystemWatch.SystemNotice.Make("已连接 · AirPods", SystemWatch.NoticeGlyphs.Headphones, Now, open: "ms-settings:bluetooth");
+        (notice.AppName, notice.Words, notice.Subject, notice.Note) = ("蓝牙", SystemWatch.NoticeText.Head("已连接 · AirPods"), "AirPods", "电量80%");
+        var sheet = CardSheets.Build(Card(CardType.Temporary, notice), Now, Zh);
+
+        Assert.Equal(("蓝牙", "已连接", SheetTone.Plain), (sheet.Source, sheet.State, sheet.Tone));
+        Assert.Equal("AirPods", sheet.Title);
+        Assert.Equal(["电量80%"], sheet.Body);
+    }
+
+    [Fact]
+    public void A_copied_address_opens_in_the_browser_and_copied_files_go_to_the_transit_station()
+    {
+        var link = SystemWatch.SystemNotice.Make("已复制 · github.com/x", SystemWatch.NoticeGlyphs.Copy, Now, open: "https://github.com/x");
+        (link.AppName, link.Words, link.Subject, link.Note) = ("剪贴板", "已复制", string.Empty, "https://github.com/x");
+        var sheet = CardSheets.Build(Card(CardType.Temporary, link), Now, Zh, browser: "Microsoft Edge");
+        Assert.Null(sheet.Title);   // the text itself, grey: no title over it
+        Assert.Equal(["https://github.com/x"], sheet.Body);
+        Assert.Equal([(SheetAction.Open, "用 Microsoft Edge 打开")], sheet.Buttons.Select(b => (b.Action, b.Label)));
+
+        var files = SystemWatch.SystemNotice.Make("已复制 · 3个文件", SystemWatch.NoticeGlyphs.Files, Now);
+        (files.AppName, files.Words, files.Subject, files.Note) = ("剪贴板", "已复制", "a.png +2", @"C:\pics");
+        sheet = CardSheets.Build(Card(CardType.Temporary, files), Now, Zh);
+        Assert.Equal("a.png +2", sheet.Title);
+        Assert.Equal([SheetAction.Keep], sheet.Buttons.Select(b => b.Action));
+    }
+
+    [Fact]
     public void A_game_steam_installed_can_be_played()
     {
         var done = new ActivityState { RawKind = ActivityState.KindTransfer, Title = "Files", Name = "Portal 2", Stage = "copy", Words = "已安装", State = "done" };

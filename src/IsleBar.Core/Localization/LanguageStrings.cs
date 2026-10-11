@@ -400,6 +400,42 @@ public sealed class LanguageStrings
     /// <summary>A finished transfer's button: shows the file in its folder.</summary>
     public required string CardReveal { get; init; }
 
+    /// <summary>A lifted system card's source row: power and battery (TODO ⑤ 掀起卡片适配, 10-11).</summary>
+    public required string CardPower { get; init; }
+
+    /// <summary>A lifted system card's source row: Bluetooth.</summary>
+    public required string CardBluetooth { get; init; }
+
+    /// <summary>A lifted system card's source row: the network.</summary>
+    public required string CardNetwork { get; init; }
+
+    /// <summary>A lifted system card's source row: focus sessions.</summary>
+    public required string CardFocus { get; init; }
+
+    /// <summary>A lifted system card's source row: the clipboard.</summary>
+    public required string CardClipboard { get; init; }
+
+    /// <summary>A lifted system card's source row: CPU / memory load.</summary>
+    public required string CardPerformance { get; init; }
+
+    /// <summary>The state word of a low battery card.</summary>
+    public required string CardLowBattery { get; init; }
+
+    /// <summary>The state word of a busy CPU card.</summary>
+    public required string CardCpuHigh { get; init; }
+
+    /// <summary>The state word of a full memory card.</summary>
+    public required string CardMemoryHigh { get; init; }
+
+    /// <summary>A system card's button: opens its page in Windows Settings.</summary>
+    public required string CardOpenSettings { get; init; }
+
+    /// <summary>The load card's button: opens Task Manager.</summary>
+    public required string CardTaskManager { get; init; }
+
+    /// <summary>What was copied when it is an image.</summary>
+    public required string CardImage { get; init; }
+
     /// <summary>Source names on the card's top row.</summary>
     public required string CardMusic { get; init; }
     public required string CardSystem { get; init; }

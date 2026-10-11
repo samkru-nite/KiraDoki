@@ -85,11 +85,15 @@ internal sealed class NetworkWatcher : NoticeWatcher
             case ConnectivityChange.Lost:
                 // a status card for as long as it lasts (user 10-10: like focus mode — gone after 10 s, coming back you couldn't
                 // tell it was still down); no orange border — an outage (a plane, the provider) usually isn't the person's to fix
-                Board.Hold(Key, SystemNotice.Make(s.NoticeOffline, NoticeGlyphs.NoInternet, now, open: SettingsUri));
+                var lost = SystemNotice.Make(s.NoticeOffline, NoticeGlyphs.NoInternet, now, open: SettingsUri);
+                (lost.AppName, lost.Subject) = (s.CardNetwork, s.NoticeOffline);   // the lifted card (TODO ⑤, user 10-11)
+                Board.Hold(Key, lost);
                 break;
             case ConnectivityChange.Restored:
                 // the same card says "back online" for a glance, then goes (one thing, one card)
-                Board.Flash(Key, SystemNotice.Make(s.NoticeOnline, NoticeGlyphs.Wifi, now, open: SettingsUri), RestoredShow, now);
+                var back = SystemNotice.Make(s.NoticeOnline, NoticeGlyphs.Wifi, now, open: SettingsUri);
+                (back.AppName, back.Subject) = (s.CardNetwork, s.NoticeOnline);
+                Board.Flash(Key, back, RestoredShow, now);
                 break;
         }
     }

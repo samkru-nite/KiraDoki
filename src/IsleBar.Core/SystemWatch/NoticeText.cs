@@ -18,6 +18,10 @@ public static class NoticeText
     public static string Join(string head, string? tail)
         => string.IsNullOrWhiteSpace(tail) ? head : head + Separator + tail;
 
+    /// <summary>A line's state word, before its " · " ("已连接 · AirPods" → "已连接"); the whole line when it has none.</summary>
+    public static string Head(string line)
+        => Ui.TextGap.Parts(Ui.TextGap.FromDots(line)) is [var head, _, ..] ? head : line;
+
     public static string Charging(LanguageStrings s, int percent) => Percent(s.NoticeCharging, percent);
 
     public static string OnBattery(LanguageStrings s, int percent) => Percent(s.NoticeOnBattery, percent);

@@ -74,14 +74,14 @@ internal sealed class PowerWatcher : NoticeWatcher
             switch (_logic.Observe(reading))
             {
                 case PowerChange.PluggedIn:
-                    Board.Flash(PluggedKey, SystemNotice.Make(
+                    Board.Flash(PluggedKey, Lifted(SystemNotice.Make(
                         NoticeText.Charging(s, reading.Percent), NoticeGlyphs.Charging, now,
-                        open: SettingsUri), PluggedShow, now);   // no gauge — the percent is in the text (user 10-01)
+                        open: SettingsUri), NoticeText.Head(NoticeText.Charging(s, reading.Percent)), reading.Percent, null), PluggedShow, now);   // no gauge — the percent is in the text (user 10-01)
                     break;
                 case PowerChange.Unplugged:
-                    Board.Flash(PluggedKey, SystemNotice.Make(
+                    Board.Flash(PluggedKey, Lifted(SystemNotice.Make(
                         NoticeText.OnBattery(s, reading.Percent), NoticeGlyphs.Battery(reading.Percent), now,
-                        open: SettingsUri), UnpluggedShow, now);
+                        open: SettingsUri), NoticeText.Head(NoticeText.OnBattery(s, reading.Percent)), reading.Percent, NoticeText.Remaining(s, remaining)), UnpluggedShow, now);
                     break;
             }
 
@@ -101,9 +101,9 @@ internal sealed class PowerWatcher : NoticeWatcher
             }
 
             // no gauge — the percent is already in the text (user 10-01)
-            var notice = SystemNotice.Make(
+            var notice = Lifted(SystemNotice.Make(
                 NoticeText.BatteryLow(s, reading.Percent, remaining), NoticeGlyphs.Battery(reading.Percent), _lowSince,
-                urgent: true, open: SettingsUri);
+                urgent: true, open: SettingsUri), s.CardLowBattery, reading.Percent, NoticeText.Remaining(s, remaining));
             if (level == PowerLogic.Critical)
             {
                 // stays, pinned; percent and time left are rewritten each time, the timestamp stays at when it reached 5%
@@ -115,6 +115,18 @@ internal sealed class PowerWatcher : NoticeWatcher
                 Board.Flash(LowKey, notice, LowShow, now);   // once at 20%, once at 10%: not again every 30 s
             }
         }
+    }
+
+    /// <summary>
+    /// The lifted card's words (TODO ⑤ 掀起卡片适配, user 10-11): "电源", the state, the percent as the big number, time left beside it.
+    /// </summary>
+    private IsleBar.Core.Island.ActivityState Lifted(IsleBar.Core.Island.ActivityState notice, string words, int percent, string? left)
+    {
+        notice.AppName = Text.CardPower;
+        notice.Words = words;
+        notice.Level = percent;
+        notice.Note = left;
+        return notice;
     }
 
     private static PowerReading Read(out TimeSpan? remaining)

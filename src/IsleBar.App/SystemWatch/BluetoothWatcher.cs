@@ -208,11 +208,13 @@ internal sealed class BluetoothWatcher : NoticeWatcher
         var key = "bt:" + c.Name;   // keyed by name so the twins (classic/LE) share the same slot
         if (!c.Connected)
         {
-            Board.Flash(key, SystemNotice.Make(NoticeText.Disconnected(s, c.Name), glyph, now, open: SettingsUri), DisconnectedShow, now);
+            Board.Flash(key, Lifted(SystemNotice.Make(NoticeText.Disconnected(s, c.Name), glyph, now, open: SettingsUri),
+                NoticeText.Disconnected(s, c.Name), c.Name, null), DisconnectedShow, now);
             return;
         }
 
-        Board.Flash(key, SystemNotice.Make(NoticeText.Connected(s, c.Name), glyph, now, open: SettingsUri), ConnectedShow, now);
+        Board.Flash(key, Lifted(SystemNotice.Make(NoticeText.Connected(s, c.Name), glyph, now, open: SettingsUri),
+            NoticeText.Connected(s, c.Name), c.Name, null), ConnectedShow, now);
         if (info.Container is { } container)
         {
             _ = AddBatteryAsync(key, c.Name, glyph, container, now);
@@ -245,14 +247,24 @@ internal sealed class BluetoothWatcher : NoticeWatcher
             }
 
             var s = Text;
-            Board.Flash(key, SystemNotice.Make(
+            Board.Flash(key, Lifted(SystemNotice.Make(
                 NoticeText.Connected(s, name), glyph, shownAt, msg: NoticeText.BatteryLevel(s, p),
-                open: SettingsUri), left, now);   // no gauge — the battery level is in the text (user 10-02)
+                open: SettingsUri), NoticeText.Connected(s, name), name, NoticeText.BatteryLevel(s, p)), left, now);   // no gauge — the battery level is in the text (user 10-02)
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             // Many devices/drivers can't report battery — omit it if missing
         }
+    }
+
+    /// <summary>The lifted card's words (TODO ⑤, user 10-11): "蓝牙", "已连接" on the right, the device, its battery grey under it.</summary>
+    private IsleBar.Core.Island.ActivityState Lifted(IsleBar.Core.Island.ActivityState notice, string line, string device, string? battery)
+    {
+        notice.AppName = Text.CardBluetooth;
+        notice.Words = NoticeText.Head(line);
+        notice.Subject = device;
+        notice.Note = battery;
+        return notice;
     }
 
     private static bool? ReadBool(IReadOnlyDictionary<string, object> properties, string key)

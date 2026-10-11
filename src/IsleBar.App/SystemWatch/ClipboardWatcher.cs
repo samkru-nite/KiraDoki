@@ -153,14 +153,20 @@ internal sealed class ClipboardWatcher : NoticeWatcher
         }
 
         var now = DateTimeOffset.UtcNow;
-        Board.Flash(Key, SystemNotice.Make(notice.Title, notice.Glyph, now, open: notice.Link), ClipboardRules.ShowFor(notice.Long), now);
+        var card = SystemNotice.Make(notice.Title, notice.Glyph, now, open: notice.Link);
+        // the lifted card (TODO ⑤ 掀起卡片适配, user 10-11): "剪贴板", "已复制 / 已剪切" on the right, what it is, a grey line
+        (card.AppName, card.Words, card.Subject, card.Note) = (Text.CardClipboard, notice.Words, notice.Subject ?? string.Empty, notice.Note);
+        Board.Flash(Key, card, ClipboardRules.ShowFor(notice.Long), now);
     }
+
+    /// <summary>The longest copied text the lifted card shows (a few lines; the pill shows far less).</summary>
+    private const int LiftedText = 280;
 
     /// <summary>
     /// What a copy card says: its line and icon, the address its ↗ opens (<see cref="ClipboardRules.LinkOf"/>), and whether it stays
     /// the longer time (an address, files, an image — TODO ④, user 10-10).
     /// </summary>
-    private (string Title, string Glyph, string? Link, bool Long)? Read(IntPtr hwnd, string? owner)
+    private (string Title, string Glyph, string? Link, bool Long, string Words, string? Subject, string? Note)? Read(IntPtr hwnd, string? owner)
     {
         // If another program holds the clipboard, wait briefly and retry (this thread is ours, so waiting is fine)
         var opened = false;
@@ -181,32 +187,41 @@ internal sealed class ClipboardWatcher : NoticeWatcher
         try
         {
             var s = Text;
+            var copied = NoticeText.Head(NoticeText.Copied(s, "-"));   // "已复制"
             _files = [];
             _imageSequence = 0;
             if (IsFlaggedSecret() || ClipboardRules.IsPasswordManager(owner))
             {
-                return (NoticeText.Copied(s, NoticeText.Masked), NoticeGlyphs.Copy, null, false);
+                return (NoticeText.Copied(s, NoticeText.Masked), NoticeGlyphs.Copy, null, false, copied, NoticeText.Masked, null);
             }
 
             if (IsClipboardFormatAvailable(CfHdrop) && GetClipboardData(CfHdrop) is var drop && drop != IntPtr.Zero)
             {
                 var count = (int)DragQueryFile(drop, 0xFFFF_FFFF, null, 0);
                 _files = FilesOf(drop, count);
-                return count > 0 ? (NoticeText.CopiedFiles(s, count, IsCut()), NoticeGlyphs.Files, null, true) : null;
+                var cut = IsCut();
+                var first = _files.FirstOrDefault();
+                // the first file's name ("+2" for the rest), its folder grey under it
+                return count > 0
+                    ? (NoticeText.CopiedFiles(s, count, cut), NoticeGlyphs.Files, null, true, cut ? NoticeText.Head(NoticeText.CopiedFiles(s, 2, cut)) : copied,
+                        first is null ? null : Path.GetFileName(first.TrimEnd('\\')) + (count > 1 ? $" +{count - 1}" : string.Empty), first is null ? null : Path.GetDirectoryName(first))
+                    : null;
             }
 
             if (IsClipboardFormatAvailable(CfUnicodeText) && ReadText() is { } text)
             {
-                // only spaces / punctuation: "Copied" alone (user 10-07)
+                // only spaces / punctuation: "Copied" alone (user 10-07); the lifted card shows a few lines of it, grey
                 var link = ClipboardRules.LinkOf(text);
-                return string.IsNullOrEmpty(text) ? null : (NoticeText.Copied(s, ClipboardRules.Preview(text)), NoticeGlyphs.Copy, link, link is not null);
+                return string.IsNullOrEmpty(text) ? null
+                    : (NoticeText.Copied(s, ClipboardRules.Preview(text)), NoticeGlyphs.Copy, link, link is not null, copied, null,
+                        link ?? ClipboardRules.Preview(text, max: LiftedText));
             }
 
             if (IsClipboardFormatAvailable(CfDib) || IsClipboardFormatAvailable(CfDibV5)
                 || IsClipboardFormatAvailable(CfBitmap) || (_formatPng != 0 && IsClipboardFormatAvailable(_formatPng)))
             {
                 _imageSequence = GetClipboardSequenceNumber();
-                return (s.NoticeCopiedImage, NoticeGlyphs.Image, null, true);
+                return (s.NoticeCopiedImage, NoticeGlyphs.Image, null, true, copied, s.CardImage, null);
             }
 
             return null;   // other formats (app-private data) aren't notified

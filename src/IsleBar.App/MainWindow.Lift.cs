@@ -219,6 +219,10 @@ public sealed partial class MainWindow
                 Engine.FileActions.Open("steam://rungameid/" + game.ToString(System.Globalization.CultureInfo.InvariantCulture), revealInFolder: false);
                 CloseCard(card);
                 break;
+            case SheetAction.Keep:
+                _lift?.Collapse();
+                _ = KeepCopied(card);   // as the pill's "+": into the transit station, the copy card goes
+                break;
             case SheetAction.Clear:
                 _lift?.Collapse();
                 _feed.Watchers?.Transit?.Remove(null);   // forgets where they are; the files stay where they are
@@ -346,7 +350,8 @@ public sealed partial class MainWindow
             s.AppName = AppNames.For(program);
         }
 
-        return CardSheets.Build(card, DateTimeOffset.UtcNow, _text, _feed.Tails.For(s));
+        var browser = s.Glyph == IsleBar.Core.SystemWatch.NoticeGlyphs.Copy && s.Open is not null ? Interop.DefaultBrowser.Name() : null;
+        return CardSheets.Build(card, DateTimeOffset.UtcNow, _text, _feed.Tails.For(s), browser);
     }
 
     /// <summary>

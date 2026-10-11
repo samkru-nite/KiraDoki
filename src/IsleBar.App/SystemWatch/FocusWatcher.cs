@@ -77,7 +77,12 @@ internal sealed class FocusWatcher : NoticeWatcher
             }
 
             _since ??= DateTimeOffset.UtcNow;
-            Board.Hold(Key, SystemNotice.Make(Text.NoticeFocus, NoticeGlyphs.Focus, _since.Value, open: SettingsUri));
+            var focus = SystemNotice.Make(Text.NoticeFocus, NoticeGlyphs.Focus, _since.Value, open: SettingsUri);
+            // the lifted card (TODO ⑤, user 10-11): "专注", the session, when it began
+            focus.AppName = Text.CardFocus;
+            focus.Subject = Text.NoticeFocus;
+            focus.Note = Text.CardStarted.Replace("{}", _since.Value.ToLocalTime().ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal);
+            Board.Hold(Key, focus);
         }
     }
 }

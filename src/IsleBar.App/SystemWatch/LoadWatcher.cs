@@ -87,9 +87,10 @@ internal sealed class LoadWatcher : NoticeWatcher
                     if (now < _cpuUntil)   // live percent while it shows, then it steps aside
                     {
                         var percent = (int)Math.Round(cpu);
-                        Board.Flash(CpuKey, SystemNotice.Make(
-                            NoticeText.Cpu(s, percent, _topProcess), NoticeGlyphs.Load, _cpuSince,
-                            open: TaskManager), _cpuUntil - now, now);   // no gauge — the percent is in the text (user 10-02)
+                        var busy = SystemNotice.Make(NoticeText.Cpu(s, percent, _topProcess), NoticeGlyphs.Load, _cpuSince, open: TaskManager);
+                        // the lifted card (TODO ⑤, user 10-11): "性能", "CPU占用高", the percent big, the busiest program beside it
+                        (busy.AppName, busy.Words, busy.Level, busy.Note) = (s.CardPerformance, s.CardCpuHigh, percent, _topProcess);
+                        Board.Flash(CpuKey, busy, _cpuUntil - now, now);   // no gauge — the percent is in the text (user 10-02)
                     }
                 }
                 else
@@ -111,9 +112,9 @@ internal sealed class LoadWatcher : NoticeWatcher
 
                     if (now < _memoryUntil)
                     {
-                        Board.Flash(MemoryKey, SystemNotice.Make(
-                            NoticeText.Memory(s, memory), NoticeGlyphs.Load, _memorySince,
-                            open: TaskManager), _memoryUntil - now, now);
+                        var full = SystemNotice.Make(NoticeText.Memory(s, memory), NoticeGlyphs.Load, _memorySince, open: TaskManager);
+                        (full.AppName, full.Words, full.Level) = (s.CardPerformance, s.CardMemoryHigh, memory);
+                        Board.Flash(MemoryKey, full, _memoryUntil - now, now);
                     }
                 }
                 else
