@@ -132,7 +132,6 @@ public sealed partial class PillView : UserControl
         MoreLabel.Visibility = more > 0 ? Visibility.Visible : Visibility.Collapsed;
         MoreLabel.Text = more > 0 ? "+" + more.ToString(System.Globalization.CultureInfo.InvariantCulture) : string.Empty;
         MoreLabel.Foreground = BrushOf(Host.Theme.Hint);
-        _shownState = state;
         _inform = card is { Type: CardType.Inform };
         _tailGap = playing || more > 0;
         PlaceRight();
@@ -947,9 +946,9 @@ public sealed partial class PillView : UserControl
     }
 
     /// <summary>
-    /// A notification's app icon (TODO 四, user 10-11: QQ's penguin, not the bell; every app's). Asked for when the app changes —
-    /// a source of this pill's own (<see cref="AppIcon"/>: one shared between windows brought the app down); the bell stays until it
-    /// has loaded, and for good for an app that has none.
+    /// A notification's app icon (TODO 四, user 10-11: QQ's penguin, not the bell; every app's). Made when the app changes — a
+    /// picture of this pill's own (<see cref="AppIcon"/>: one shared between windows brought the app down), there at once; the bell
+    /// for an app that has none.
     /// </summary>
     private void ShowAppMark(ActivityState state)
     {
@@ -957,18 +956,7 @@ public sealed partial class PillView : UserControl
         if (app != _appMarkFor)
         {
             _appMarkFor = app;
-            AppMark.Source = null;
-            if (app is not null)
-            {
-                AppIcon.Resolve(app, source =>
-                {
-                    if (_appMarkFor == app)
-                    {
-                        AppMark.Source = source;
-                        ShowAppMark(_shownState ?? state);
-                    }
-                });
-            }
+            AppMark.Source = AppIcon.Now(app);   // at once: loaded later, the bell showed for a frame first (10-11)
         }
 
         var shown = app is not null && AppMark.Source is not null;
@@ -980,7 +968,6 @@ public sealed partial class PillView : UserControl
     }
 
     private string? _appMarkFor;
-    private ActivityState? _shownState;
 
     /// <summary>Turns the now-playing bars on/off. The animation is built once when turned on (the compositor runs it).</summary>
     private void SetEqualizer(bool on)

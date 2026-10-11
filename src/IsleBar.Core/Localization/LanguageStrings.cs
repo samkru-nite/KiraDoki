@@ -91,6 +91,9 @@ public sealed class LanguageStrings
     /// <summary>Several files cut: "{n} files cut".</summary>
     public required string NoticeCutFiles { get; init; }
 
+    /// <summary>A chat app's new message whose words it doesn't give (WeChat only flashes its taskbar button, 10-11).</summary>
+    public required string NoticeNewMessage { get; init; }
+
     public required string NoticeCpu { get; init; }
     public required string NoticeMemory { get; init; }
 

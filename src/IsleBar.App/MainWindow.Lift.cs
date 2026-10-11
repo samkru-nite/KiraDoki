@@ -188,9 +188,9 @@ public sealed partial class MainWindow
             case SheetAction.MediaNext:
                 _ = _feed.Media.SendAsync(MediaAction.Next, card.Key);
                 break;
-            case SheetAction.Open when state.AppId == ChatWindows.QqApp:
+            case SheetAction.Open when state.AppId == ChatWindows.QqApp || ChatWindows.IsLink(state.Open):
                 _lift?.Collapse();
-                ChatWindows.OpenQq();   // QQ's main window, as its ↗ (user 10-11: not each sender's chat)
+                OpenChatApp(state);   // QQ's main window (user 10-11: not each sender's chat); WeChat's window that flashed
                 break;
             case SheetAction.Open when state.Open is { } open:
                 _lift?.Collapse();
@@ -318,25 +318,17 @@ public sealed partial class MainWindow
     }
 
     /// <summary>
-    /// An app's own icon (16) over <paramref name="plain"/>, which shows until it has loaded and for good if the app has none — a
-    /// source of its own each time (<see cref="AppIcon"/>).
+    /// An app's own icon (16) in place of <paramref name="plain"/>, which stays for an app that has none — a picture of its own each
+    /// time, there at once (<see cref="AppIcon.Now"/>; 10-11: loaded later, the bell showed for a frame first).
     /// </summary>
     private static Microsoft.UI.Xaml.UIElement AppIconOver(Microsoft.UI.Xaml.UIElement plain, string app)
-    {
-        var image = new Microsoft.UI.Xaml.Controls.Image
-        {
-            Width = 16, Height = 16, Stretch = Microsoft.UI.Xaml.Media.Stretch.Uniform, VerticalAlignment = Microsoft.UI.Xaml.VerticalAlignment.Center,
-        };
-        var box = new Microsoft.UI.Xaml.Controls.Grid { IsHitTestVisible = false };
-        box.Children.Add(plain);
-        box.Children.Add(image);
-        AppIcon.Resolve(app, source =>
-        {
-            image.Source = source;
-            plain.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
-        });
-        return box;
-    }
+        => AppIcon.Now(app) is { } source
+            ? new Microsoft.UI.Xaml.Controls.Image
+            {
+                Source = source, Width = 16, Height = 16, Stretch = Microsoft.UI.Xaml.Media.Stretch.Uniform,
+                VerticalAlignment = Microsoft.UI.Xaml.VerticalAlignment.Center, IsHitTestVisible = false,
+            }
+            : plain;
 
     /// <summary>The app of a notification card (an app's own toast), whose icon it shows on the pills (TODO 四, user 10-11).</summary>
     private static string? NoticeApp(Card card)

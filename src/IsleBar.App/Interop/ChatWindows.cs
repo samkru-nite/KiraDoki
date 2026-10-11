@@ -92,6 +92,82 @@ internal static class ChatWindows
         }
     }
 
+    // ---- WeChat (10-11): its card remembers the window that flashed; that window is brought up, even from the tray ----
+
+    private const string WeChatExe = "weixin.exe";
+    private const string LinkHead = "window:";
+
+    /// <summary>Whether this window is WeChat's (by its program, so no other app's flash counts — QQ flashes too).</summary>
+    public static bool IsWeChat(IntPtr window)
+    {
+        GetWindowThreadProcessId(window, out var pid);
+        try
+        {
+            using var process = Process.GetProcessById((int)pid);
+            return string.Equals(process.ProcessName + ".exe", WeChatExe, StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>A window's title ("秦鹏宇" for a chat's own window, "微信" for the main one).</summary>
+    public static string Title(IntPtr window)
+    {
+        var text = new char[256];
+        var n = GetWindowText(window, text, text.Length);
+        return new string(text, 0, Math.Max(0, n)).Trim();
+    }
+
+    /// <summary>What a card keeps in its <c>Open</c> to bring this window up later.</summary>
+    public static string LinkTo(IntPtr window) => LinkHead + window.ToInt64().ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>The window a card's <c>Open</c> names (<see cref="LinkTo"/>), while it is still there; zero otherwise.</summary>
+    public static IntPtr Linked(string? open)
+        => open is not null && open.StartsWith(LinkHead, StringComparison.Ordinal)
+           && long.TryParse(open.AsSpan(LinkHead.Length), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var h)
+           && IsWindow((IntPtr)h)
+            ? (IntPtr)h
+            : IntPtr.Zero;
+
+    /// <summary>Whether this <c>Open</c> is a window link at all (then it is never handed to the shell).</summary>
+    public static bool IsLink(string? open) => open?.StartsWith(LinkHead, StringComparison.Ordinal) == true;
+
+    /// <summary>
+    /// Brings a WeChat window up — shown again if closed to the tray (hidden: WeChat draws it and takes clicks, user 10-11), restored
+    /// if minimized, then in front.
+    /// </summary>
+    public static bool ShowWeChat(IntPtr window)
+    {
+        if (window == IntPtr.Zero || !IsWindow(window))
+        {
+            TaskbarHost.Log("chat window: WeChat — its window is gone");
+            return false;
+        }
+
+        if (!IsWindowVisible(window))
+        {
+            ShowWindow(window, ShowShown);
+        }
+
+        if (IsIconic(window))
+        {
+            ShowWindow(window, ShowRestore);
+        }
+
+        ForegroundHelper.Bring(window);
+        TaskbarHost.Log("chat window: WeChat shown");
+        return true;
+    }
+
+    private const int ShowShown = 5;     // SW_SHOW
+    private const int ShowRestore = 9;   // SW_RESTORE
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ShowWindow(IntPtr window, int command);
+
     /// <summary>Brings a window up as a taskbar click does: restored if minimized, then in front. False when it is gone.</summary>
     public static bool Show(IntPtr window, string what)
     {

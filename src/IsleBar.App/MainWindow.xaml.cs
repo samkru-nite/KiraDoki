@@ -1441,7 +1441,10 @@ public sealed partial class MainWindow : Window
         NextStep.Reveal => _text.CardOpenFolder,
         NextStep.Drive => _text.MenuOpen,
         NextStep.Keep => _text.CardAddToTransit,
-        NextStep.App => _text.OpenWith.Replace("{a}", card.State.Name ?? Interop.ChatWindows.QqApp, StringComparison.Ordinal),   // "用 QQ 打开"
+        // "用 QQ 打开", "用微信打开" (no space between Han characters, TODO ⑤ 全岛排版)
+        NextStep.App => System.Text.RegularExpressions.Regex.Replace(
+            _text.OpenWith.Replace("{a}", card.State.Name ?? Interop.ChatWindows.QqApp, StringComparison.Ordinal),
+            @"(?<=\p{IsCJKUnifiedIdeographs}) (?=\p{IsCJKUnifiedIdeographs})", string.Empty),
         _ => _text.OpenWith.Replace("{a}", card.State.AgentLabel, StringComparison.Ordinal),
     };
 
@@ -1476,9 +1479,10 @@ public sealed partial class MainWindow : Window
                 : NextStep.None;
         }
 
-        if (s.AppId == Interop.ChatWindows.QqApp && Interop.ChatWindows.CanOpenQq())
+        if ((s.AppId == Interop.ChatWindows.QqApp && Interop.ChatWindows.CanOpenQq())
+            || (s.AppId == SystemWatch.ChatFlashWatcher.WeChatApp && Interop.ChatWindows.Linked(s.Open) != IntPtr.Zero))
         {
-            return NextStep.App;   // a QQ message (TODO 四, user 10-11): its main window, from the taskbar or the tray
+            return NextStep.App;   // a QQ / WeChat message (TODO 四, user 10-11): QQ's main window; WeChat's window that flashed
         }
 
         if (SystemWatch.DriveWatcher.Owns(s) && card.Type == CardType.Status && s.Open is { } root && Directory.Exists(root))
@@ -1513,7 +1517,7 @@ public sealed partial class MainWindow : Window
                 _ = KeepCopied(card);
                 break;
             case NextStep.App:
-                Interop.ChatWindows.OpenQq();
+                OpenChatApp(card.State);
                 break;
         }
     }
@@ -1550,6 +1554,19 @@ public sealed partial class MainWindow : Window
         catch (Exception ex) when (ex is not OutOfMemoryException)   // fire and forget: never let it take the bar down
         {
             TaskbarHost.Log("transit: from the copy card failed — " + ex.Message);
+        }
+    }
+
+    /// <summary>A chat app's card opens it (TODO 四, 10-11): QQ's main window; WeChat's window that flashed (the chat's, or the main one).</summary>
+    private static void OpenChatApp(ActivityState state)
+    {
+        if (state.AppId == Interop.ChatWindows.QqApp)
+        {
+            Interop.ChatWindows.OpenQq();
+        }
+        else
+        {
+            Interop.ChatWindows.ShowWeChat(Interop.ChatWindows.Linked(state.Open));
         }
     }
 

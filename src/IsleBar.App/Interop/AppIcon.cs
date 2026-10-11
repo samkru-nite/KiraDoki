@@ -40,6 +40,44 @@ internal static class AppIcon
     }
 
     /// <summary>
+    /// The app's icon at once, or null if it has none (10-11: through <see cref="Resolve(string?, Action{ImageSource})"/> the bell
+    /// showed for a frame before the app's icon, every time — WeChat's flashed in). A <see cref="WriteableBitmap"/> of its own each
+    /// call (never shared between windows, see <see cref="Cache"/>), its pixels written right here: nothing waits for a later frame.
+    /// </summary>
+    public static ImageSource? Now(string? aumid)
+    {
+        if (string.IsNullOrWhiteSpace(aumid))
+        {
+            return null;
+        }
+
+        try
+        {
+            var key = aumid;
+            if (!Cache.TryGetValue(key, out var bitmap))
+            {
+                bitmap = LoadSoftwareBitmap(AppNames.StartMenuId(aumid) is { } id ? @"shell:AppsFolder\" + id : AppNames.ExePath(aumid));
+                Cache[key] = bitmap;
+            }
+
+            if (bitmap is null)
+            {
+                return null;
+            }
+
+            var image = new WriteableBitmap(bitmap.PixelWidth, bitmap.PixelHeight);
+            bitmap.CopyToBuffer(image.PixelBuffer);   // premultiplied BGRA, as WriteableBitmap takes it
+            image.Invalidate();
+            return image;
+        }
+        catch (Exception ex) when (ex is COMException or ArgumentException or InvalidCastException or OutOfMemoryException or ObjectDisposedException)
+        {
+            TaskbarHost.Log($"app icon: {aumid} failed — {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
     /// A file's or folder's own icon, as File Explorer shows it (a .docx = Word's) — the transit station's list (10-10). Same rules
     /// as <see cref="Resolve(string?, Action{ImageSource})"/>: called back only when there is one.
     /// </summary>
