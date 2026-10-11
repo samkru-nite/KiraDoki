@@ -6,7 +6,7 @@ using IsleBar.Core.SystemWatch;
 namespace IsleBar.App.Media;
 
 /// <summary>
-/// WinRAR's packing and unpacking on the island (TODO 四, measured 10-11): its progress window is an ordinary dialog whose words can be
+/// WinRAR's and 7-Zip's packing and unpacking on the island (TODO 四, measured 10-11): its progress window is an ordinary dialog whose words can be
 /// read (<see cref="ArchiverReader"/>) — "压缩中 X.rar" with the real overall percentage, then "已压缩 X.rar" when it surely went
 /// through (<see cref="ArchiveTally"/>), nothing when cancelled or after a question. Each window is its own card ("archiver:{window}"),
 /// hidden while another window of WinRAR asks something. A window sent to the background (hidden) is still read; a job ends when
@@ -14,7 +14,8 @@ namespace IsleBar.App.Media;
 /// </summary>
 internal sealed class ArchiverWatcher
 {
-    private static readonly string[] Processes = ["WinRAR"];
+    // WinRAR; 7-Zip: 7zG.exe is its right-click menu's, 7zFM.exe its own window (the same progress window)
+    private static readonly string[] Processes = ["WinRAR", "7zG", "7zFM", "Bandizip", "bz"];
 
     private readonly Func<Core.Localization.LanguageStrings> _text;
     private readonly Dictionary<IntPtr, Job> _jobs = [];
@@ -31,8 +32,16 @@ internal sealed class ArchiverWatcher
     // window we know → "进行中 WinRAR", a flowing bar, no percentage, no "done" (it isn't known how it ended)
     private const long BusyBytes = 1024 * 1024;   // a second
     private static readonly TimeSpan BusyLinger = TimeSpan.FromSeconds(3);
-    private readonly Interop.ProcessWriteMeter _written = new("WinRAR");
+    private readonly (string Name, Interop.ProcessWriteMeter Meter)[] _written =
+        [("WinRAR", new("WinRAR")), ("7-Zip", new("7zG")), ("7-Zip", new("7zFM")), ("Bandizip", new("Bandizip")), ("Bandizip", new("bz"))];
+    private string _busyName = string.Empty;
     private DateTimeOffset? _busySince, _busyLast;
+
+    // a job's last writes come in the second its window closes (10-11: the fallback showed for 3 s after every 7-Zip job), so none
+    // for a while after a job, and only after two busy seconds in a row
+    private static readonly TimeSpan AfterJob = TimeSpan.FromSeconds(5);
+    private DateTimeOffset _quietUntil;
+    private int _busyStreak;
     private IReadOnlyList<string> _unread = [];
 
     public ArchiverWatcher(Func<Core.Localization.LanguageStrings> text) => _text = text;
@@ -81,8 +90,15 @@ internal sealed class ArchiverWatcher
     /// <summary>WinRAR busy with no window read (<see cref="BusyBytes"/> a second), till it has been quiet for a moment.</summary>
     private ActivityState? Fallback(DateTimeOffset now)
     {
-        var written = _written.Delta(now);
-        if (_jobs.Count > 0 || (written < BusyBytes && (_busyLast is null || now - _busyLast > BusyLinger)))
+        var (busiest, written) = _written.Select(w => (w.Name, Bytes: w.Meter.Delta(now))).MaxBy(w => w.Bytes);
+        if (_jobs.Count > 0)
+        {
+            _quietUntil = now + AfterJob;
+        }
+
+        _busyStreak = written >= BusyBytes ? _busyStreak + 1 : 0;
+        if (now < _quietUntil || (_busySince is null && _busyStreak < 2)
+            || (written < BusyBytes && (_busyLast is null || now - _busyLast > BusyLinger)))
         {
             if (_busySince is not null)
             {
@@ -96,6 +112,7 @@ internal sealed class ArchiverWatcher
         if (written >= BusyBytes)
         {
             _busyLast = now;
+            _busyName = busiest;
         }
 
         if (_busySince is null)
@@ -109,7 +126,7 @@ internal sealed class ArchiverWatcher
         {
             RawKind = ActivityState.KindTransfer,
             Title = "Files",
-            Name = "WinRAR",
+            Name = _busyName,
             Words = _text().CardRunning,
             Glyph = FileOperationWatcher.CompressGlyph,
             Stage = "copy",
