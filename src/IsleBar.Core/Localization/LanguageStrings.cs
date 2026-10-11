@@ -137,6 +137,9 @@ public sealed class LanguageStrings
     /// <summary>A video editor writing its export (Jianying, TODO 四 10-11), and done.</summary>
     public required string FileExport { get; init; }
     public required string FileExported { get; init; }
+    /// <summary>Steam: a game's download went through — a new one ("已安装") or an update ("已更新").</summary>
+    public required string GameInstalled { get; init; }
+    public required string GameUpdated { get; init; }
     public required string FileItems { get; init; }
 
     /// <summary>The lifted transit card: its button that empties it, and a file no longer where it was.</summary>

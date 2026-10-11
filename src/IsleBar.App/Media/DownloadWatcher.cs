@@ -10,7 +10,8 @@ namespace IsleBar.App.Media;
 /// Baidu Netdisk <c>.baiduyun.p.downloading</c>, so we check the download folders every second (the system Downloads folder, or
 /// the ones set in settings): downloading → speed + flowing bar, several at once → one item (<see cref="DownloadTracker"/>),
 /// stopped growing → paused; when the partial file disappears and the finished file appears → done (clicking shows it in Explorer).
-/// Explorer's copy/unzip/compress (<see cref="FileOperationWatcher"/>) and WinRAR's (<see cref="ArchiverWatcher"/>) run on the same thread.
+/// Explorer's copy/unzip/compress (<see cref="FileOperationWatcher"/>), WinRAR's (<see cref="ArchiverWatcher"/>), exports
+/// (<see cref="VideoExportWatcher"/>) and Steam's downloads (<see cref="SteamWatcher"/>) run on the same thread.
 /// Nothing is written to disk; memory only.
 /// </summary>
 internal sealed partial class DownloadWatcher : IDisposable
@@ -27,6 +28,7 @@ internal sealed partial class DownloadWatcher : IDisposable
     private readonly FileOperationWatcher _fileOps;
     private readonly ArchiverWatcher _archivers;
     private readonly VideoExportWatcher _exports;
+    private readonly SteamWatcher _steam;
     private readonly List<ActivityState> _finished = [];
     /// <summary>Files finished since the merged card started; told together when the last one is through.</summary>
     private readonly List<string> _batch = [];
@@ -45,6 +47,7 @@ internal sealed partial class DownloadWatcher : IDisposable
         _fileOps = new FileOperationWatcher(text);
         _archivers = new ArchiverWatcher(text);
         _exports = new VideoExportWatcher(text);
+        _steam = new SteamWatcher(text);
     }
 
     /// <summary>Downloads and file operations to show now (in progress + just finished). Safe to read from any thread.</summary>
@@ -99,6 +102,7 @@ internal sealed partial class DownloadWatcher : IDisposable
                 items.AddRange(_fileOps.Scan(now));
                 items.AddRange(_archivers.Scan(now));   // WinRAR, 7-Zip, Bandizip (TODO 四, 10-11)
                 items.AddRange(_exports.Scan(now));     // 剪映's export (TODO 四, 10-11)
+                items.AddRange(_steam.Scan(now));       // Steam's game downloads (TODO 四, 10-11, experimental)
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException
                                            or System.ComponentModel.Win32Exception or DllNotFoundException or EntryPointNotFoundException)
