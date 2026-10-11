@@ -1490,7 +1490,9 @@ public sealed partial class MainWindow : Window
             return NextStep.Drive;   // a USB drive plugged in (TODO ④, 10-10): open it
         }
 
-        return card.Key == "download" && s is { Kind: ActivityKind.Transfer, RunState: ActivityRunState.Done, Open: { } open }
+        // a finished browser download, or a video editor's export (TODO 四, 10-11): shown in its folder
+        return (card.Key == "download" || card.Key.StartsWith("export:", StringComparison.Ordinal))
+               && s is { Kind: ActivityKind.Transfer, RunState: ActivityRunState.Done, Open: { } open }
                && (File.Exists(open) || Directory.Exists(open))
             ? NextStep.Reveal
             : NextStep.None;

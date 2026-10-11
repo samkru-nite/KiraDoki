@@ -952,7 +952,8 @@ public sealed partial class PillView : UserControl
     /// </summary>
     private void ShowAppMark(ActivityState state)
     {
-        var app = state is { Kind: ActivityKind.Notice, Stage: "expand", AppId: { Length: > 0 } id } ? id : null;
+        // a notification, or a transfer of an app's own (剪映's export, 10-11)
+        var app = state is { AppId: { Length: > 0 } id } && (state is { Kind: ActivityKind.Notice, Stage: "expand" } || state.Kind == ActivityKind.Transfer) ? id : null;
         if (app != _appMarkFor)
         {
             _appMarkFor = app;

@@ -26,6 +26,7 @@ internal sealed partial class DownloadWatcher : IDisposable
     private readonly DownloadTracker _tracker = new();
     private readonly FileOperationWatcher _fileOps;
     private readonly ArchiverWatcher _archivers;
+    private readonly VideoExportWatcher _exports;
     private readonly List<ActivityState> _finished = [];
     /// <summary>Files finished since the merged card started; told together when the last one is through.</summary>
     private readonly List<string> _batch = [];
@@ -43,6 +44,7 @@ internal sealed partial class DownloadWatcher : IDisposable
         _settingFolders = folders;
         _fileOps = new FileOperationWatcher(text);
         _archivers = new ArchiverWatcher(text);
+        _exports = new VideoExportWatcher(text);
     }
 
     /// <summary>Downloads and file operations to show now (in progress + just finished). Safe to read from any thread.</summary>
@@ -95,7 +97,8 @@ internal sealed partial class DownloadWatcher : IDisposable
             try
             {
                 items.AddRange(_fileOps.Scan(now));
-                items.AddRange(_archivers.Scan(now));   // WinRAR (TODO 四, 10-11)
+                items.AddRange(_archivers.Scan(now));   // WinRAR, 7-Zip, Bandizip (TODO 四, 10-11)
+                items.AddRange(_exports.Scan(now));     // 剪映's export (TODO 四, 10-11)
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException
                                            or System.ComponentModel.Win32Exception or DllNotFoundException or EntryPointNotFoundException)
@@ -323,5 +326,6 @@ internal sealed partial class DownloadWatcher : IDisposable
         _stop.Cancel();
         _stop.Dispose();
         _fileOps.Dispose();
+        _exports.Dispose();
     }
 }

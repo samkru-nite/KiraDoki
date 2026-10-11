@@ -133,6 +133,10 @@ public sealed class LanguageStrings
     public required string FileMoved { get; init; }
     public required string FileUnzipped { get; init; }
     public required string FileZipped { get; init; }
+
+    /// <summary>A video editor writing its export (Jianying, TODO 四 10-11), and done.</summary>
+    public required string FileExport { get; init; }
+    public required string FileExported { get; init; }
     public required string FileItems { get; init; }
 
     /// <summary>The lifted transit card: its button that empties it, and a file no longer where it was.</summary>

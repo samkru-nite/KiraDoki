@@ -309,7 +309,7 @@ public sealed partial class MainWindow
         // (F2b, 10-09); the usual icon stays until it has loaded, and for good if the app has none to give
         var s = card.State;
         if (s.AppId is not { Length: > 0 } app
-            || !(s.Kind == IsleBar.Core.Island.ActivityKind.Music || (s.Kind == IsleBar.Core.Island.ActivityKind.Notice && s.Stage == "expand")))
+            || !(s.Kind == IsleBar.Core.Island.ActivityKind.Music || NoticeApp(card) is not null))
         {
             return plain;
         }
@@ -330,9 +330,12 @@ public sealed partial class MainWindow
             }
             : plain;
 
-    /// <summary>The app of a notification card (an app's own toast), whose icon it shows on the pills (TODO 四, user 10-11).</summary>
+    /// <summary>The app of a notification card (an app's own toast) or of an app's transfer (剪映's export), whose icon it shows on the pills (TODO 四, user 10-11).</summary>
     private static string? NoticeApp(Card card)
-        => card.State is { Kind: IsleBar.Core.Island.ActivityKind.Notice, Stage: "expand", AppId: { Length: > 0 } app } ? app : null;
+        => card.State is { AppId: { Length: > 0 } app } s
+           && (s is { Kind: IsleBar.Core.Island.ActivityKind.Notice, Stage: "expand" } || s.Kind == IsleBar.Core.Island.ActivityKind.Transfer)
+            ? app
+            : null;
 
     /// <summary>What the icon is drawn from; a new icon only when this changes.</summary>
     private string LiftIconKey(Card card)
