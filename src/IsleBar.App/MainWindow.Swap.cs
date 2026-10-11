@@ -233,7 +233,7 @@ public sealed partial class MainWindow
         // the small pill on the left (fixed 10-10): circle │ cells, then the big pill
         var smallX = 0.0;
         var bigX = smallWidth + PillGeometry.Gap;
-        var firstCell = smallX + PillGeometry.BallBox + PillGeometry.Rule;
+        var firstCell = smallX + PillGeometry.FirstCell;
         var ballX = smallX + (PillGeometry.BallBox / 2);
         double? ruleX = keys.Count == 0 ? null : smallX + PillGeometry.BallBox;
         var row = PillGeometry.ArcRoom;

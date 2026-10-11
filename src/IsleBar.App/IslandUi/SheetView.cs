@@ -484,8 +484,8 @@ internal sealed class SheetView
         var icon = new Grid { Width = FileGlyph, Height = FileGlyph, VerticalAlignment = VerticalAlignment.Center };
         icon.Children.Add(new FontIcon
         {
-            FontFamily = new FontFamily("Segoe Fluent Icons"), FontSize = FileGlyph, Foreground = Brush(_palette.Hint),
-            Glyph = Directory.Exists(file.Path) ? "" : "",   // folder / document
+            FontFamily = AppFonts.IconFamily, FontSize = FileGlyph, Foreground = Brush(_palette.Hint),
+            Glyph = Directory.Exists(file.Path) ? Icons.Folder : Icons.Document,   // folder / document
         });
         if (!file.Gone)
         {
@@ -524,7 +524,7 @@ internal sealed class SheetView
             VerticalAlignment = VerticalAlignment.Center,
             Child = new FontIcon
             {
-                FontFamily = new FontFamily("Segoe Fluent Icons"), FontSize = 12, Glyph = "", Foreground = Brush(_palette.Hint),
+                FontFamily = AppFonts.IconFamily, FontSize = 12, Glyph = Icons.Dismiss, Foreground = Brush(_palette.Hint),
                 HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
             },
         };
@@ -725,7 +725,7 @@ internal sealed class SheetView
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.Children.Add(new FontIcon
         {
-            FontFamily = new FontFamily("Segoe Fluent Icons"), FontSize = FileGlyph, Glyph = "", Foreground = Brush(_palette.Hint),
+            FontFamily = AppFonts.IconFamily, FontSize = FileGlyph, Glyph = Icons.Stack, Foreground = Brush(_palette.Hint),
             VerticalAlignment = VerticalAlignment.Center,
         });
         var words = DraggedWords(paths);
@@ -1051,7 +1051,7 @@ internal sealed class SheetView
     {
         art.Background = cover is null ? Brush(Faint(_palette.Fore, 0.06)) : new ImageBrush { ImageSource = cover, Stretch = Stretch.UniformToFill };
         art.Child = cover is null
-            ? new FontIcon { FontFamily = new FontFamily("Segoe Fluent Icons"), Glyph = "", FontSize = 24, Foreground = Brush(_palette.Hint) }
+            ? new FontIcon { FontFamily = AppFonts.IconFamily, Glyph = Icons.MusicLarge, FontSize = 24, Foreground = Brush(_palette.Hint) }
             : null;
     }
 
@@ -1168,7 +1168,7 @@ internal sealed class SheetView
             }
             else
             {
-                button.Child = new FontIcon { FontFamily = new FontFamily("Segoe Fluent Icons"), Glyph = glyph, FontSize = 16, Foreground = Brush(_palette.Fore), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+                button.Child = new FontIcon { FontFamily = AppFonts.IconFamily, Glyph = glyph, FontSize = 16, Foreground = Brush(_palette.Fore), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
             }
 
             ToolTipService.SetToolTip(button, b.Label);

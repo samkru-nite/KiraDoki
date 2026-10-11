@@ -157,8 +157,8 @@ public sealed class UiLogicTests
     public void Small_pill_is_the_circle_alone_or_cells_line_and_circle()
     {
         Assert.Equal(32, PillGeometry.SmallWidth(0));
-        Assert.Equal(4 + 24 + 1 + 32, PillGeometry.SmallWidth(1));
-        Assert.Equal(4 + (24 * 4) + 1 + 32, PillGeometry.SmallWidth(4));
+        Assert.Equal(4 + 24 + 4 + 1 + 32, PillGeometry.SmallWidth(1));
+        Assert.Equal(4 + (24 * 4) + 4 + 1 + 32, PillGeometry.SmallWidth(4));
     }
 
     // ---------- Deciding whether to exit on its own ----------

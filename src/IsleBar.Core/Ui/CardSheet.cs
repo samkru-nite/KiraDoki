@@ -51,7 +51,7 @@ public enum SheetAction
     Keep,
 }
 
-/// <summary>A button: words, or (media) an icon from Segoe Fluent Icons.</summary>
+/// <summary>A button: words, or (media) an icon from the island's icon font (Icons).</summary>
 public sealed record SheetButton(SheetAction Action, string? Label, string? Glyph = null);
 
 /// <summary>One sender's messages on a notification card: the name, then what they sent, oldest first (TODO 四, user 10-11).</summary>
@@ -309,9 +309,9 @@ public static class CardSheets
             string.IsNullOrWhiteSpace(s.AppName) ? text.CardMusic : s.AppName, playing ? text.CardPlaying : text.Paused, SheetTone.Plain, null, SheetLayout.Media,
             s.Name, s.Msg is { } artist ? [artist] : [], null, null, null, bar,
             [
-                new(SheetAction.MediaPrevious, null, ""),
-                new(SheetAction.MediaPlayPause, null, playing ? "" : ""),
-                new(SheetAction.MediaNext, null, ""),
+                new(SheetAction.MediaPrevious, null, Icons.Previous),
+                new(SheetAction.MediaPlayPause, null, playing ? Icons.Pause : Icons.Play),
+                new(SheetAction.MediaNext, null, Icons.Next),
             ],
             Adaptive: false);
     }

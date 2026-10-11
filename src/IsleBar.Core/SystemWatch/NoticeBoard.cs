@@ -166,54 +166,52 @@ public static class SystemNotice
 }
 
 /// <summary>
-/// Notice icons (Segoe Fluent Icons character codes). Same font as the island's other icons.
-/// All codes below were confirmed present in the SegoeIcons.ttf character map on PC (09-30). However, whether the shapes match their meaning
-/// has not yet been checked by eye for <see cref="NoInternet"/> (F384), <see cref="Image"/> (EB9F) and <see cref="Load"/> (E950).
+/// Notice icons: the island's icon font (<see cref="Ui.Icons"/>, Fluent UI System Icons, picked by the user 10-11).
 /// </summary>
 public static class NoticeGlyphs
 {
-    /// <summary>Lightning (LightningBolt) — charging.</summary>
-    public const string Charging = "";
+    /// <summary>A battery with a lightning bolt — charging.</summary>
+    public const string Charging = Ui.Icons.Charging;
 
-    /// <summary>Empty battery (Battery0). <see cref="Battery"/> picks 1–10 bars in 10% steps.</summary>
-    public const string Battery0 = "";
+    /// <summary>Empty battery. <see cref="Battery"/> picks 1–10 bars in 10% steps (Battery0–10 follow each other in the font).</summary>
+    public const string Battery0 = Ui.Icons.Battery0;
 
-    public const string Bluetooth = "";
-    public const string Headphones = "";
-    public const string Wifi = "";
+    public const string Bluetooth = Ui.Icons.Bluetooth;
+    public const string Headphones = Ui.Icons.Headphones;
+    public const string Wifi = Ui.Icons.Wifi;
 
-    /// <summary>NetworkOffline (Fluent Icons). Not in MDL2.</summary>
-    public const string NoInternet = "";
+    /// <summary>A crossed-out globe — no internet, by Wi-Fi or cable.</summary>
+    public const string NoInternet = Ui.Icons.Offline;
 
-    /// <summary>Moon (QuietHours) — focus session.</summary>
-    public const string Focus = "";
+    /// <summary>Moon — focus session.</summary>
+    public const string Focus = Ui.Icons.Focus;
 
-    public const string Copy = "";
-    public const string Image = "";
-    public const string Files = "";
+    public const string Copy = Ui.Icons.Copy;
+    public const string Image = Ui.Icons.Image;
+    public const string Files = Ui.Icons.Document;
 
-    /// <summary>Diagnostic — CPU/memory overload (no fitting dedicated icon, so the diagnostic icon is used).</summary>
-    public const string Load = "";
+    /// <summary>A screen with a pulse — CPU/memory overload.</summary>
+    public const string Load = Ui.Icons.Load;
 
     /// <summary>Download (arrow into a tray) — a newer IsleBar is out (10-01). Same glyph as incoming transfers.</summary>
-    public const string Download = "";
+    public const string Download = Ui.Icons.Download;
 
-    public const string Calendar = "";
-    /// <summary>USB (E88E) — a USB drive / memory card plugged in (TODO ④, 10-10).</summary>
-    public const string Drive = "\uE88E";
+    public const string Calendar = Ui.Icons.Calendar;
+    /// <summary>A USB stick — a USB drive / memory card plugged in (TODO ④, 10-10).</summary>
+    public const string Drive = Ui.Icons.Drive;
 
-    /// <summary>Package (E7B8, a box) \u2014 the transit station (TODO \u2463, 10-10); a placeholder until the user picks one.</summary>
-    public const string Transit = "\uE7B8";
+    /// <summary>A box — the transit station (TODO ④; the user picked it 10-11).</summary>
+    public const string Transit = Ui.Icons.Box;
 
-    /// <summary>Print (E749) \u2014 the printer's card, and what stops it ("\u7F3A\u7EB8", TODO \u56DB, 10-11).</summary>
-    public const string Printer = "\uE749";
-    public const string Microphone = "";
-    public const string Camera = "";
+    /// <summary>Printer \u2014 the printer's card, and what stops it ("\u7F3A\u7EB8", TODO \u56DB, 10-11).</summary>
+    public const string Printer = Ui.Icons.Print;
+    public const string Microphone = Ui.Icons.Mic;
+    public const string Camera = Ui.Icons.Camera;
 
-    /// <summary>Bell (Ringer, E7E7) — a system notification, until each app's own icon is drawn there (user 10-10: it had none).</summary>
-    public const string Bell = "";
+    /// <summary>Bell — a system notification, until each app's own icon is drawn there (user 10-10: it had none).</summary>
+    public const string Bell = Ui.Icons.Alert;
 
-    /// <summary>Battery bar icon. 0–100% → Battery0–Battery10 (EBA0–EBAA).</summary>
+    /// <summary>Battery bar icon. 0–100% → Battery0–Battery10.</summary>
     public static string Battery(int percent)
         => ((char)(Battery0[0] + Math.Clamp((percent + 5) / 10, 0, 10))).ToString();
 }

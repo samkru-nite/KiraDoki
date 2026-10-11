@@ -18,7 +18,7 @@ public enum IconTone
     Error,
 }
 
-/// <summary>A small icon: a Segoe Fluent Icons glyph (or the album cover / an agent's logo), its colour, and the pause bars.</summary>
+/// <summary>A small icon: a glyph of the island's icon font (<see cref="Icons"/>) (or the album cover / an agent's logo), its colour, and the pause bars.</summary>
 /// <param name="Cover">Music with album art: draw the cover instead of <paramref name="Glyph"/> (the glyph is the fallback).</param>
 /// <param name="Logo">An agent's card: draw that agent's logo ("claude" / "codex") when this PC has it; the glyph is the fallback.</param>
 public sealed record TaskIcon(string Glyph, IconTone Tone, bool Paused, bool Cover, string? Logo = null);
@@ -34,22 +34,22 @@ public sealed record TaskIcon(string Glyph, IconTone Tone, bool Paused, bool Cov
 /// <item>Agents: every stage shows the maker's logo (user 10-07, replacing "one-colour line glyphs"); the glyphs below are only
 /// the fallback when the logo can't be found on this PC.</item>
 /// </list>
-/// Glyphs are stand-ins from Segoe Fluent Icons until the user picks the final set (10-07): change them here only.
+/// Glyphs are Fluent UI System Icons (<see cref="Icons"/>, user 10-11).
 /// </summary>
 public static class TaskIcons
 {
-    public const string Chat = "";
-    public const string Bell = "";
-    public const string Completed = "";
-    public const string ErrorBadge = "";
-    public const string Download = "";
-    public const string Upload = "";
-    public const string Copy = "";
-    public const string Stopwatch = "";
-    public const string Note = "";
-    public const string Camera = "";
-    public const string Microphone = "";
-    public const string Info = "";
+    public const string Chat = Icons.Chat;
+    public const string Bell = Icons.Alert;
+    public const string Completed = Icons.Done;
+    public const string ErrorBadge = Icons.Error;
+    public const string Download = Icons.Download;
+    public const string Upload = Icons.Upload;
+    public const string Copy = Icons.Copy;
+    public const string Stopwatch = Icons.Timer;
+    public const string Note = Icons.Music;
+    public const string Camera = Icons.Camera;
+    public const string Microphone = Icons.Mic;
+    public const string Info = Icons.Info;
 
     public static TaskIcon For(Card card, bool hasCover, DateTimeOffset now)
     {

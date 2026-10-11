@@ -26,7 +26,6 @@ public sealed partial class MainWindow : IPillHost
     private Microsoft.UI.Xaml.Controls.Image ClaudeGlyphImage => Big.ClaudeGlyphImage;
     private Microsoft.UI.Xaml.Controls.Image CodexGlyph => Big.CodexGlyph;
     private Microsoft.UI.Xaml.Controls.FontIcon LeadIcon => Big.LeadIcon;
-    private Microsoft.UI.Xaml.Controls.Canvas ZipTeeth => Big.ZipTeeth;
     private Microsoft.UI.Xaml.Controls.Grid IslandContent => Big.IslandContent;
     private Microsoft.UI.Xaml.Controls.TextBlock IslandText => Big.IslandText;
     private Microsoft.UI.Xaml.Controls.Grid FlowTrack => Big.FlowTrack;

@@ -23,7 +23,7 @@ namespace IsleBar.App.Media;
 /// </summary>
 internal sealed class VideoExportWatcher : IDisposable
 {
-    internal const string VideoGlyph = "\uE714";   // video
+    internal const string VideoGlyph = IsleBar.Core.Ui.Icons.Video;   // only when the editor's own icon can't be found (user 10-11: its logo)
     private const string Videos = "ext:mp4;mov;mkv;avi;m4v;mxf";
     private const string JianyingTemp = "__jianying_export_temp_folder_";
     private const string JianyingWindow = "导出-";

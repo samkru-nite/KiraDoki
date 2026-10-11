@@ -11,8 +11,8 @@ namespace IsleBar.Core.Island;
 /// </summary>
 public static class AgentNotices
 {
-    private const string Clock = "";      // Segoe Fluent Icons: clock ("wait until")
-    private const string Warning = "";    // Segoe Fluent Icons: warning
+    private const string Clock = Ui.Icons.Clock;       // "wait until"
+    private const string Warning = Ui.Icons.Warning;
 
     public static string Name(string agent) => agent == AgentKind.Codex ? "ChatGPT" : "Claude";
 

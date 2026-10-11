@@ -22,7 +22,7 @@ namespace IsleBar.App.Media;
 internal sealed class SteamWatcher
 {
     private const string App = "steam.exe";
-    private const string DownloadGlyph = "";   // download
+    private const string DownloadGlyph = Icons.Download;
     private const string AppsKey = @"Software\Valve\Steam\Apps";
     private const long BusyBytes = 1024 * 1024;   // a second
     private static readonly TimeSpan BusyLinger = TimeSpan.FromSeconds(3);

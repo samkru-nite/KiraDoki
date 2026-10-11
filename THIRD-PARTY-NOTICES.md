@@ -14,10 +14,10 @@ its own licence. The full licence and notice texts are in the `licenses` folder 
 | [Interop.UIAutomationClient](https://www.nuget.org/packages/Interop.UIAutomationClient) | Finding the taskbar search box via UI Automation | MIT, Copyright (c) 2019 Roman | `licenses/Interop.UIAutomationClient-LICENSE.txt` |
 | [Everything SDK](https://www.voidtools.com/support/everything/sdk/) (`Everything64.dll`) | File search (talks to Everything, which you install yourself) | MIT, Copyright (C) 2022 David Carpenter | below |
 | [Pretendard](https://github.com/orioncactus/pretendard) (Regular, Medium) | UI font for Latin and Korean text | SIL Open Font License 1.1 | `licenses/Pretendard-OFL.txt` |
+| [Fluent UI System Icons](https://github.com/microsoft/fluentui-system-icons) (Regular; only the icons used, as `Assets/Fonts/IsleIcons.ttf`, built by `scripts/make-icons.py`) | Every icon on the island | MIT, Copyright (c) 2020 Microsoft Corporation | `licenses/FluentSystemIcons-LICENSE.txt` |
 
 The Microsoft components are licensed to you by Microsoft under the terms in their licence files; installing IsleBar
-means accepting those terms for those components. Segoe Fluent Icons and Segoe UI are part of Windows and are not
-redistributed.
+means accepting those terms for those components. Segoe UI is part of Windows and is not redistributed.
 
 "Claude" and "Claude Code" are trademarks of Anthropic PBC; "OpenAI" and "Codex" are trademarks of OpenAI;
 "Everything" is a product of voidtools; "Dynamic Island" is a trademark of Apple Inc. IsleBar is not affiliated with

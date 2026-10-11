@@ -2,13 +2,10 @@ namespace IsleBar.Core.Localization;
 
 /// <summary>
 /// Default Windows UI font per language. Drawing Japanese/Chinese with a Korean font gives awkward spacing.
-/// Icons use Segoe Fluent Icons regardless of language — no third-party fonts or icons (public release rule).
+/// Icons: the bundled icon font, the same in every language (Ui.Icons; Fluent UI System Icons, MIT, since 10-11).
 /// </summary>
 public static class UiFonts
 {
-    /// <summary>Icon font. Ships with Windows 11.</summary>
-    public const string Icon = "Segoe Fluent Icons";
-
     /// <summary>General UI font for options, settings, notifications, etc.</summary>
     public static string Text(string? language) => language switch
     {

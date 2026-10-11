@@ -30,11 +30,11 @@ internal sealed partial class FileOperationWatcher : IDisposable
     private static readonly TimeSpan ArchiveIdle = TimeSpan.FromSeconds(5);
     private static readonly string[] ArchiveExtensions = [".zip", ".7z", ".tar", ".gz", ".tgz", ".rar", ".cab"];
 
-    // icons on the pill's left (Segoe Fluent Icons)
-    internal const string CopyGlyph = "\uE8C8";
-    internal const string MoveGlyph = "\uE8C6";       // cut (user 10-10: moving = the cut icon)
-    internal const string UnzipGlyph = "\uE838";      // open folder
-    internal const string CompressGlyph = "\uE8A5";   // document; MainWindow lays zipper teeth over it (ZipTeeth) \u2014 the font has no zip file, and its zip folder F012 looked crude (user 10-04)
+    // icons on the pill's left
+    internal const string CopyGlyph = Icons.Copy;
+    internal const string MoveGlyph = Icons.Move;       // cut (user 10-10: moving = the cut icon)
+    internal const string UnzipGlyph = Icons.Unzip;      // open folder
+    internal const string CompressGlyph = Icons.Zip;   // a zipped folder (the old font had none, so teeth were drawn over a document until 10-11)
 
     private IUIAutomation? _automation;
     private IUIAutomationCondition? _all;

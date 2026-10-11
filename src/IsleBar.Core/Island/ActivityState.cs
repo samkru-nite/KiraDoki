@@ -77,7 +77,7 @@ public sealed class ActivityState
     public double? Due { get; set; }
 
     /// <summary>
-    /// Icon for a short notice (<see cref="ActivityKind.Notice"/>): a Segoe Fluent Icons character code (e.g. "" lightning).
+    /// Icon for a short notice (<see cref="ActivityKind.Notice"/>): a character of the island's icon font (Ui.Icons, e.g. Icons.Charging).
     /// If absent, the default icon for the kind.
     /// </summary>
     [System.Text.Json.Serialization.JsonPropertyName("glyph")]

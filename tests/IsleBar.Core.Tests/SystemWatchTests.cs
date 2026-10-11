@@ -76,13 +76,16 @@ public sealed class SystemWatchTests
     }
 
     [Theory]
-    [InlineData(0, '\uEBA0')]
-    [InlineData(4, '\uEBA0')]
-    [InlineData(78, '\uEBA8')]
-    [InlineData(100, '\uEBAA')]
-    [InlineData(150, '\uEBAA')]
-    public void Battery_icon_steps_by_10_percent(int percent, char glyph)
-        => Assert.Equal(glyph.ToString(), NoticeGlyphs.Battery(percent));
+    [InlineData(0, 0)]
+    [InlineData(4, 0)]
+    [InlineData(78, 8)]
+    [InlineData(100, 10)]
+    [InlineData(150, 10)]
+    public void Battery_icon_steps_by_10_percent(int percent, int bars)
+    {
+        Assert.Equal(((char)(Ui.Icons.Battery0[0] + bars)).ToString(), NoticeGlyphs.Battery(percent));
+        Assert.Equal(Ui.Icons.Battery10, NoticeGlyphs.Battery(100));   // the font keeps Battery0\u201310 in a row
+    }
 
     // ---------------- Text ----------------
 

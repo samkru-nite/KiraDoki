@@ -502,30 +502,32 @@ public sealed partial class MainWindow : Window
             : IconContent(icon, CoverOf(card)?.Image);
 
     /// <summary>
-    /// A timer's small icon (user 10-07): Segoe Fluent's stopwatch (E916) rebuilt in its own proportions — ring, top bar, side
-    /// button — with a hand that turns (the font draws the hand into the glyph, it can't move on its own). Measured from E916 at
-    /// 160 px: ring centre (8, 9.1), outer radius 6.9, line 1; bar 5.6–10.4 on top; hand 1.2 wide up to 4.3; button a short
-    /// diagonal at the top right. The compositor turns the hand (<see cref="TimerDial"/>).
+    /// A timer's small icon (user 10-07): the icon font's timer (Fluent timer_16, <see cref="Icons.Timer"/>) rebuilt in its own
+    /// proportions — ring, top bar, side button — with a hand that turns (the font draws the hand into the glyph, it can't move on
+    /// its own). Read from the font's outline (10-11): ring centre (7.5, 9), outer radius 6, line 1; bar 5–10 at y 1–2; hand 1 wide
+    /// from 5 to one width below the centre, round ends; button from (12.1, 3) to (13.5, 4.4). The compositor turns the hand
+    /// (<see cref="TimerDial"/>).
     /// </summary>
     private UIElement DialContent(TimerDial dial, Windows.UI.Color color, bool paused)
     {
         var brush = BrushOf(color);
         var box = new Microsoft.UI.Xaml.Controls.Grid { Width = 16, Height = 16, IsHitTestVisible = false };
         var canvas = new Microsoft.UI.Xaml.Controls.Canvas { Width = 16, Height = 16 };
-        const double cx = 8, cy = 9.1, outer = 6.9, line = 1, hand = 1.2, tip = 4.3;
+        const double cx = 7.5, cy = 9, outer = 6, line = 1, hand = 1, tip = 5;
         var ring = new Microsoft.UI.Xaml.Shapes.Ellipse { Width = 2 * outer, Height = 2 * outer, Stroke = brush, StrokeThickness = line };
         Microsoft.UI.Xaml.Controls.Canvas.SetLeft(ring, cx - outer);
         Microsoft.UI.Xaml.Controls.Canvas.SetTop(ring, cy - outer);
-        var bar = new Microsoft.UI.Xaml.Shapes.Rectangle { Width = 4.8, Height = line, RadiusX = line / 2, RadiusY = line / 2, Fill = brush };
-        Microsoft.UI.Xaml.Controls.Canvas.SetLeft(bar, cx - 2.4);
+        var bar = new Microsoft.UI.Xaml.Shapes.Rectangle { Width = 5, Height = line, RadiusX = line / 2, RadiusY = line / 2, Fill = brush };
+        Microsoft.UI.Xaml.Controls.Canvas.SetLeft(bar, cx - 2.5);
+        Microsoft.UI.Xaml.Controls.Canvas.SetTop(bar, 1);
         var button = new Microsoft.UI.Xaml.Shapes.Line
         {
-            X1 = 13.3, Y1 = 2.7, X2 = 14.4, Y2 = 3.9, Stroke = brush, StrokeThickness = line,
+            X1 = 12.1, Y1 = 3, X2 = 13.5, Y2 = 4.4, Stroke = brush, StrokeThickness = line,
             StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round,
         };
         var needle = new Microsoft.UI.Xaml.Shapes.Rectangle
         {
-            Width = hand, Height = cy - tip + (hand / 2), RadiusX = hand / 2, RadiusY = hand / 2, Fill = brush,
+            Width = hand, Height = cy - tip + hand, RadiusX = hand / 2, RadiusY = hand / 2, Fill = brush,
         };
         Microsoft.UI.Xaml.Controls.Canvas.SetLeft(needle, cx - (hand / 2));
         Microsoft.UI.Xaml.Controls.Canvas.SetTop(needle, tip);
@@ -604,7 +606,7 @@ public sealed partial class MainWindow : Window
         var color = ToneColor(icon.Tone);
         box.Children.Add(new Microsoft.UI.Xaml.Controls.FontIcon
         {
-            FontFamily = new FontFamily("Segoe Fluent Icons"), FontSize = 16, Glyph = icon.Glyph, Foreground = BrushOf(color),
+            FontFamily = AppFonts.IconFamily, FontSize = 16, Glyph = icon.Glyph, Foreground = BrushOf(color),
         });
         if (icon.Paused)
         {
@@ -681,7 +683,7 @@ public sealed partial class MainWindow : Window
         PillBody.Visibility = big ? Visibility.Visible : Visibility.Collapsed;
         GapColumn.Width = new GridLength(big ? PillGeometry.Gap : 0);
         // the small pill's own order: circle │ task cells (the 4 margin on the outer end, next to the big pill)
-        TaskCells.Margin = TaskCellCount == 0 ? new Thickness(0) : new Thickness(0, 0, PillGeometry.CellMargin, 0);
+        TaskCells.Margin = TaskCellCount == 0 ? new Thickness(0) : new Thickness(PillGeometry.CellMargin, 0, PillGeometry.CellMargin, 0);
         ApplyCorners();
 
         var layout = PillGeometry.Compute(DpiSetup.Scale, big, PillGeometry.SmallWidth(TaskCellCount));

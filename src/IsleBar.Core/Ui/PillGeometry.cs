@@ -34,10 +34,14 @@ public static class PillGeometry
     public const double Rule = 1;
 
     /// <summary>
-    /// Width of the small pill with <paramref name="taskCells"/> task cells: the circle alone is 32; with tasks,
-    /// 4 + 24 per cell + the 1 line + the circle's 32 (TODO 7.9 D).
+    /// Width of the small pill with <paramref name="taskCells"/> task cells: the circle alone is 32; with tasks, the circle's 32 +
+    /// the 1 line + 4 + 24 per cell + 4 (TODO 7.9 D). The 4 after the line came 10-11 (user: lopsided) — the circle sat 16 from the
+    /// edge and 16 from the line, the first icon only 12 from the line; now both halves mirror each other.
     /// </summary>
-    public static double SmallWidth(int taskCells) => BallBox + (taskCells > 0 ? CellMargin + (taskCells * Cell) + Rule : 0);
+    public static double SmallWidth(int taskCells) => BallBox + (taskCells > 0 ? Rule + CellMargin + (taskCells * Cell) + CellMargin : 0);
+
+    /// <summary>Where the first task cell starts, from the small pill's left edge: after the circle, the line and 4.</summary>
+    public const double FirstCell = BallBox + Rule + CellMargin;
 
     /// <summary>Dip → pixels, rounded the way XAML's layout rounding places elements.</summary>
     public static int Px(double dip, double scale) => (int)Math.Round(dip * scale);

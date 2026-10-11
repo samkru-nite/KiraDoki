@@ -1,7 +1,11 @@
 # IsleBar 二次开发 — 项目上下文（交接文件）
 
 > 新会话先读本文件和 **TODO.md（10-09 整理的新版，只放现在要做的事和现行规则）**。旧 TODO 改名为 **`TODO-history.md`**（全部讨论和决定来历；**下文和代码注释里的 "TODO 7.9 …""TODO 4.5" 等都指它的章节号**）。源码已通读，地图见下方。
-> **最新交接（10-11 深夜，先看这条）：ChatGPT 应用适配做完，下一个会话做"图标统一替换"**（用户定；设置页重写往后挪）。工作区干净，构建 0 警告 0 错误，测试 770，界面文案 186。
+> **最新交接（10-12，先看这条）：图标统一替换做完**（全岛字体图标 → 微软 Fluent UI System Icons Regular，用户看过对照表定的，对照全在 TODO ⑤ 图标条）。同一提交里还带了**小胶囊竖线后面加 4 dip**（`PillGeometry.SmallWidth / FirstCell`，用户嫌左右不对称，另一处改的、用户让一起提交）。构建 0 警告 0 错误，测试 770，界面文案 186。
+> - **图标怎么来的**：`scripts/make-icons.py` 从官方字体抽出用到的 52 个 → `src/IsleBar.App/Assets/Fonts/IsleIcons.ttf`（12 KB，家族 "IsleBar Icons"，U+E000 起）+ `src/IsleBar.Core/Ui/Icons.cs`（常量，生成的，别手改）。代码里一律 `Icons.X`、字体 `AppFonts.IconFamily`（XAML 写 `ms-appx:///Assets/Fonts/IsleIcons.ttf#IsleBar Icons`）。**加图标**：下载官方 `fonts/FluentSystemIcons-Regular.ttf/.json`（jsdelivr gh/microsoft/fluentui-system-icons），列表末尾加一行，`pip install fonttools` 后跑脚本。计时器表盘仍是自画（MW `DialContent`，照 timer_16 轮廓）。
+> - **待真机**：掀起卡片里的图标（音乐按钮、中转站 ✕ / 文件夹、多选拖动 `stack`、↗ / +）没点开看过。
+> - **这次学到的**：①fonttools 抽字体会重算边界，Fluent 原文件左边距是 0 → 图标整体左偏 1.5 px；脚本把左边距设成真实墨迹左边（用 PIL 渲染对比墨迹列验证）。②工作区里出现不是自己改的文件 = 别处在改，先问用户再决定提交范围。③bash heredoc 吃反斜杠又踩了一次，补丁脚本一律写成文件。
+> **上一条交接（10-11 深夜）：ChatGPT 应用适配做完，下一个会话做"图标统一替换"**（用户定；设置页重写往后挪）。工作区干净，构建 0 警告 0 错误，测试 770，界面文案 186。
 > - **图标替换要做什么**：TODO ⑤"图标统一换成微软官方 Fluent UI System Icons"那条（见 history 7.10）+ 那条列的占位图标（中转站盒子 E7B8、"+ 加入中转站"、中转站多选拖动的"多个文件"块借用复制图标 E8C8、拖出时鼠标旁"↗ 移动"提示）。规矩在记忆 `icon-style-consistency`：**统一换图标这一轮要先出预览**（PowerShell + System.Drawing 画对照表，自己先看过再给用户，说明可能和真胶囊差 ±1 px），线条风格一致。照例**先讨论**：先列出全岛现在用到的所有图标（字体图标的码位在 `Core/Ui/TaskIcons.cs`、`NoticeGlyphs`、MainWindow.xaml、PillView、SheetView 等，grep `"\uE`/`&#xE` 找），和用户定范围（应用自己的彩色图标、Claude / ChatGPT logo 不在此列），再出预览。
 > - **这次做的 ChatGPT 适配**（细节全在 TODO 第四节"ChatGPT 应用"条）：Codex 应用改名 ChatGPT；**我们装的 5 个 Codex 钩子从没跑过**（新版要用户在"审查钩子"弹窗同意，用户一直看到这个弹窗）→ 全删，**Codex 卡片改为读会话记录**（`Core/Island/CodexRollout.cs` + `SystemWatch/CodexWatcher.cs`）；申请权限超过 3 秒没结果 = 橙色等你；卡片名"ChatGPT"；胶囊 ↗ = `codex://threads/{id}`。**待真机**：↗ 是否真跳到那个对话（用户换话题前没来得及确认）、"等你"（用户设置下不会出现）。
 > - **这次学到的**：①**猜测先验证再写进方案**——我先说"批准不写进记录"（凭记忆），翻 9 月的真记录才发现写了（`request_permissions` 调用 + 输出），推荐跟着改了两次；②应用的"自动审核"是一个子对话（`thread_source: guardian_review`），会话记录里的子对话都有 `parent_thread_id`；③找应用的链接格式：在 `app.asar` 里 grep `协议名://`；④bash heredoc 里 `\\` 会被吃成 `\`，补丁里有反斜杠的改用 Edit 工具；⑤开发版构建输出里没有 `setup/hooks.ps1`，要改钩子就直接跑 `installer/hooks.ps1`（跑前备份 `~/.claude/settings.json`，跑后 diff）。
@@ -145,6 +149,7 @@ Start-Process "src\IsleBar.App\bin\Debug\net8.0-windows10.0.26100.0\IsleBar.App.
 - **输入面板（H）、文件搜索**：10-10 第 1 次删除时删了（`InputPanel`、`Search/*`、`ComposeWindow`、`StartMenu`、`ForegroundEvents`、`GlobalHotkey`、`ImeFont`、`Core/Search|History|Commands`）。要查当时的做法看 git `325efc9` 及之前。
 - 其他窗口：设置 `App/Options/SettingsWindow.cs`、弹出窗口公用摆放 `Options/PopupPlacement.cs`（⌄ 选项面板 E1 删了）、系统通知横幅 `App/SystemWatch/ToastBanners.cs`。
 - 嵌入任务栏：`App/Interop/TaskbarHost.cs`（Attach/Detach，弹右键菜单时会脱离任务栏；嵌入失败 = 置顶浮动在任务栏上方，`LastError` 记错误码）、`App/Tracking/TaskbarTracker.cs`（后台线程用 UIA 读任务栏布局：开始/搜索/程序按钮 = 图标区，WidgetsButton，TrayNotifyWnd = 托盘）→ `Core/Ui/BarSlot.cs`（按设置 `Position` 最左边/正中间/托盘左边/手动 + `ManualOffset` 算位置，放不下就隐藏；有测试）、`PillRegion.cs`（裁剪成胶囊形）。10-05 起不再跟随/盖住系统搜索框（`SearchBoxTracker`、`NativeSearchBox` 已删）。设置窗口最下面有"诊断"小节（MW `Diagnostics()`）。
+- **图标**（10-12）：全部是自带的小字体 `Assets/Fonts/IsleIcons.ttf`（Fluent UI System Icons，`scripts/make-icons.py` 生成），常量 `Core/Ui/Icons.cs`，字体 `AppFonts.IconFamily`；小图标总表 `TaskIcons`、告知图标 `NoticeGlyphs` 都引用 `Icons`。
 - 主题色 `App/Interop/ThemeColors.cs`、`Core/Ui/ThemePalette.cs`（10-11 起主文字 / 灰色按胶囊底色算 `ForBackground / HintOn`）；**卡片文字分段** `Core/Ui/TextGap.cs` + `IslandUi/GapRuns.cs`（两段之间 4 dip，不用「·」和空格）；字体 `Core/Localization/UiFonts.cs`、`App/IslandUi/AppFonts.cs`；多语言文案 `Core/Localization/LanguageCatalog.cs`。
 - 日志：`%LOCALAPPDATA%\IsleBar\logs`（`TaskbarHost.Log`），排查启动失败先看这里。
 

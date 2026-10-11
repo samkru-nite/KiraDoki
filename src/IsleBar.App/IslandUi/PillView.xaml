@@ -43,11 +43,11 @@
                     </TextBlock>
                     <!-- a Claude done / interrupted card that can reach its chat: a 22 circle with a 12 ↗ (user 10-10), concentric with the
                          pill's end. Icon smaller than the 16 lead icon on purpose: a control, not content -->
-                    <FontIcon x:Name="OpenIcon" x:FieldModifier="internal" FontFamily="Segoe Fluent Icons" FontSize="12" Glyph="&#xE8AD;" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False" Visibility="Collapsed" />
+                    <FontIcon x:Name="OpenIcon" x:FieldModifier="internal" FontFamily="ms-appx:///Assets/Fonts/IsleIcons.ttf#IsleBar Icons" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False" Visibility="Collapsed" />
                 </Grid>
             </Grid>
 
-            <!-- Left icon 16. Glyphs are Segoe Fluent Icons (part of Windows; no third-party icon sets) -->
+            <!-- Left icon 16. Glyphs are the bundled icon font (Core/Ui/Icons.cs: Fluent UI System Icons, MIT) -->
             <Grid x:Name="LeadSlot" x:FieldModifier="internal" Grid.Column="1" Width="16" Height="16" Margin="8,0,8,0" VerticalAlignment="Center">
                 <!-- Claude mode: spark extracted from claude.exe's official icon (ClaudeGlyph); the image has padding, hence larger than 16 -->
                 <Image x:Name="ClaudeGlyphImage" x:FieldModifier="internal" Width="20" Height="20" Margin="-2" Visibility="Collapsed" />
@@ -61,26 +61,8 @@
                         <ImageBrush x:Name="AlbumArtBrush" Stretch="UniformToFill" />
                     </Border.Background>
                 </Border>
-                <FontIcon x:Name="LeadIcon" x:FieldModifier="internal" FontFamily="Segoe Fluent Icons" FontSize="16" Width="16" Height="16" Glyph="&#xE721;"
+                <FontIcon x:Name="LeadIcon" x:FieldModifier="internal" FontFamily="ms-appx:///Assets/Fonts/IsleIcons.ttf#IsleBar Icons" FontSize="16" Width="16" Height="16"
                           HorizontalAlignment="Center" VerticalAlignment="Center" />
-                <!-- Compressing: zipper teeth over the font's document outline (E8A5) — drawn for the old 18 glyph in a 23 box, scaled to 16 -->
-                <Canvas
-                    x:Name="ZipTeeth"
-                    x:FieldModifier="internal"
-                    Width="23"
-                    Height="23"
-                    Margin="-3.5"
-                    Opacity="0"
-                    IsHitTestVisible="False"
-                    RenderTransformOrigin="0.5,0.5"
-                    Visibility="{Binding ElementName=LeadIcon, Path=Visibility}">
-                    <Canvas.RenderTransform>
-                        <ScaleTransform ScaleX="0.8889" ScaleY="0.8889" />
-                    </Canvas.RenderTransform>
-                    <Path
-                        Fill="{Binding ElementName=LeadIcon, Path=Foreground}"
-                        Data="M7.9,3.6 h1.2 v1.2 h-1.2 Z M9.1,4.8 h1.2 v1.2 h-1.2 Z M7.9,6 h1.2 v1.2 h-1.2 Z M9.1,7.2 h1.2 v1.2 h-1.2 Z M7.9,8.4 h1.2 v1.2 h-1.2 Z M9.1,9.6 h1.2 v1.2 h-1.2 Z M7.9,11.1 h2.4 v2.2 h-2.4 Z" />
-                </Canvas>
                 <!-- Paused song: veil + two bars over the cover, or a notch with them in the glyph's corner (ShowLeadPause) -->
                 <!-- Timer: a stopwatch whose hand turns (ShowLeadDial; the font's stopwatch can't move its hand) -->
                 <Grid x:Name="LeadDial" IsHitTestVisible="False" />

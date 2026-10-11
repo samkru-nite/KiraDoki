@@ -23,6 +23,14 @@ internal static class AppFonts
     /// </summary>
     public static readonly string Medium = Bundled("Pretendard-Medium.otf", "Pretendard Medium");
 
+    /// <summary>
+    /// The island's icons: Fluent UI System Icons (MIT), only the ones used, built by scripts/make-icons.py (user 10-11; was the
+    /// system's Segoe Fluent Icons). The XAML names the same file (PillView.xaml).
+    /// </summary>
+    public static readonly string Icons = Bundled("IsleIcons.ttf", Core.Ui.Icons.Family);
+
+    public static FontFamily IconFamily => Family(Icons);
+
     private static string Bundled(string file, string family)
     {
         // The internal name differs per weight ("Pretendard", "Pretendard Medium") — you must use that name to get that weight.

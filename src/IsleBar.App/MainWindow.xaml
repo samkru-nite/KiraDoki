@@ -33,7 +33,7 @@
     </Grid>
 
     <!-- Small pill (TODO 7.9 D): circle │ ⋯ + task icons.
-         Task cells are 24 (icon 16) with a 4 margin after them, the line is 1×16, the circle's box is 32 (cell 24 with 4 either side). The
+         Task cells are 24 (icon 16) with a 4 margin either side (the one by the line since 10-11), the line is 1×16, the circle's box is 32 (cell 24 with 4 either side). The
          hover background of every cell is a 24 circle. No task cells → only the circle, and no line -->
     <Grid x:Name="SmallPill" Height="32">
         <ui:SmoothBorder x:Name="SmallSurface" EdgeWidth="1" Radius="16" IsHitTestVisible="False" />
@@ -44,7 +44,7 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <!-- the cells are built in code (one per card behind the big pill, then ⋯) -->
-            <StackPanel x:Name="TaskCells" Grid.Column="2" Orientation="Horizontal" Margin="0,0,4,0" />
+            <StackPanel x:Name="TaskCells" Grid.Column="2" Orientation="Horizontal" Margin="4,0,4,0" />
             <Rectangle x:Name="SmallRule" Grid.Column="1" Width="1" Height="16" VerticalAlignment="Center" IsHitTestVisible="False" />
             <Grid x:Name="BallBox" Width="32" Height="32">
                 <Grid x:Name="BallCell" Width="24" Height="24" Background="Transparent">

@@ -118,7 +118,7 @@ public sealed partial class PillView : UserControl
         _card = card;
         IslandContent.Visibility = Visibility.Visible;
 
-        LeadIcon.Glyph = state.IsPaused ? "" : GlyphFor(state);   // paused timer = pause icon
+        LeadIcon.Glyph = state.IsPaused ? Icons.Pause : GlyphFor(state);   // paused timer = pause icon
         LeadIcon.Foreground = BrushOf(Host.Theme.Icon);   // only small icons are orange / green / red (user 10-10): the border tells it here
         ShowLeadDial(plainIcon ? null : state, Host.Theme.Icon);
         // Gaps like every other card (user 10-08): 8 between the icon and the text, 8 between the text and the now-playing bars.
@@ -135,9 +135,6 @@ public sealed partial class PillView : UserControl
         _inform = card is { Type: CardType.Inform };
         _tailGap = playing || more > 0;
         PlaceRight();
-        // compressing: the document outline gets zipper teeth (the drop hint uses the same outline without them)
-        ZipTeeth.Opacity = state.Stage == "copy" && state.RunState == ActivityRunState.Running
-                           && state.Glyph == FileOperationWatcher.CompressGlyph ? 1 : 0;
         ShowAgentMark(state);
         ShowAlbumArt(state.Kind == ActivityKind.Music);
         ShowAppMark(state);
@@ -1304,8 +1301,8 @@ public sealed partial class PillView : UserControl
     private const double ButtonInset = 5;
     private const double CloseChipWidth = 66;
     private const double OpenChip = 22;
-    private const string OpenGlyph = "";
-    private const string KeepGlyph = "";   // + : into the transit station (a stand-in, user 10-11: all icons get redrawn together later)
+    private const string OpenGlyph = Icons.Open;
+    private const string KeepGlyph = Icons.Add;   // + : into the transit station
     /// <summary>
     /// "Close" centred by its glyphs, not its line box (user 10-07: it sat off-centre up and down): its own inked rows are found in
     /// a snapshot and the label is moved so their middle is the zone's middle, rounded to 0.5. Again when the text changes.
@@ -1437,22 +1434,22 @@ public sealed partial class PillView : UserControl
     /// <summary>Left icon. The text uses no emoji (blue boxes, overlaps), so the icon conveys kind, direction and result.</summary>
     private static string GlyphFor(ActivityState state) => state.Kind switch
     {
-        ActivityKind.AgentPermission => "",                       // bell
-        ActivityKind.Error => "",                                 // error
+        ActivityKind.AgentPermission => Icons.Alert,
+        ActivityKind.Error => Icons.Error,
         ActivityKind.Transfer => state.RunState switch
         {
-            ActivityRunState.Done => "",                          // ✓
-            ActivityRunState.Error => "",
-            _ when state.IsPausedTransfer => "",                  // pause (download stopped growing)
-            _ when state.Stage == "copy" => state.Glyph ?? "",     // Explorer: copy / unzip / compress, chosen by the watcher
-            _ => state.Direction == TransferDirection.Incoming ? "" : "",   // receive ↓ / send ↑
+            ActivityRunState.Done => Icons.Done,
+            ActivityRunState.Error => Icons.Error,
+            _ when state.IsPausedTransfer => Icons.Pause,                  // pause (download stopped growing)
+            _ when state.Stage == "copy" => state.Glyph ?? Icons.Copy,     // Explorer: copy / unzip / compress, chosen by the watcher
+            _ => state.Direction == TransferDirection.Incoming ? Icons.Download : Icons.Upload,   // receive ↓ / send ↑
         },
-        ActivityKind.AgentDone => "",
-        ActivityKind.Timer => "",                                 // stopwatch
-        ActivityKind.Notice => state.Glyph ?? "",                   // icon chosen by the notice (bell if none)
-        ActivityKind.Music => state.Stage == "paused" ? "" : "",
+        ActivityKind.AgentDone => Icons.Done,
+        ActivityKind.Timer => Icons.Timer,
+        ActivityKind.Notice => state.Glyph ?? Icons.Alert,            // icon chosen by the notice (bell if none)
+        ActivityKind.Music => state.Stage == "paused" ? Icons.Pause : Icons.Music,
         ActivityKind.AgentWorking => TaskIcons.Chat,   // same as its small icon (it was the magnifier — a card flying down changed face)
-        _ => "",
+        _ => Icons.Info,
     };
 
     /// <summary>Card text: the normal colour, dimmed when paused — the card's type shows in its icon and border (TODO 7.9 D).</summary>

@@ -175,10 +175,9 @@ public sealed class LocalizationTests
         => Assert.Equal(expected, UiFonts.Entry(code));
 
     [Fact]
-    public void Icon_font_is_Segoe_Fluent_Icons()
+    public void Text_fonts_are_not_apple_fonts()
     {
-        // third-party fonts are banned in the public build — only fonts shipped with Windows are used
-        Assert.Equal("Segoe Fluent Icons", UiFonts.Icon);
+        // no SF fonts: only Windows fonts and the bundled ones (Pretendard, the icon font)
         Assert.All(Expected, code => Assert.DoesNotContain("SF ", UiFonts.Text(code)));
     }
 
