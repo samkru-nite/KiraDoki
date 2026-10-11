@@ -4,8 +4,8 @@ using IsleBar.App.Interop;
 namespace IsleBar.App.Media;
 
 /// <summary>
-/// Everything SDK wrapper — only used by <see cref="FileOperationWatcher"/> to find an archive being written (file search was
-/// removed 10-10). The SDK keeps one global query state, so calls go through <see cref="Gate"/>. Do not call it from the UI
+/// Everything SDK wrapper — used to find an archive being written (<see cref="FileOperationWatcher"/>), an editor's export
+/// (<see cref="VideoExportWatcher"/>) and downloads saved anywhere (<see cref="DownloadWatcher"/>); file search was removed 10-10. The SDK keeps one global query state, so calls go through <see cref="Gate"/>. Do not call it from the UI
 /// thread (a query waits for Everything's reply).
 /// </summary>
 internal sealed class EverythingSdk : IDisposable
@@ -53,6 +53,38 @@ internal sealed class EverythingSdk : IDisposable
                     break;   // newest first: the rest are older
                 }
 
+                var name = Marshal.PtrToStringUni(Everything_GetResultFileNameW(i));
+                var dir = Marshal.PtrToStringUni(Everything_GetResultPathW(i));
+                if (name is not null && dir is not null)
+                {
+                    paths.Add(Path.Combine(dir, name));
+                }
+            }
+
+            return paths;
+        }
+    }
+
+    /// <summary>Full paths of files matching <paramref name="query"/>, however old (a downloader's temporary files, 10-11). Empty when
+    /// Everything isn't running.</summary>
+    public IReadOnlyList<string> Find(string query, int max)
+    {
+        lock (Gate)
+        {
+            Everything_SetSearchW(query);
+            Everything_SetOffset(0);
+            Everything_SetMax((uint)max);
+            Everything_SetSort(SortDateModifiedDescending);
+            Everything_SetRequestFlags(RequestFileName | RequestPath);
+            if (!Everything_QueryW(wait: true))
+            {
+                return [];
+            }
+
+            var paths = new List<string>();
+            var count = Everything_GetNumResults();
+            for (var i = 0u; i < count; i++)
+            {
                 var name = Marshal.PtrToStringUni(Everything_GetResultFileNameW(i));
                 var dir = Marshal.PtrToStringUni(Everything_GetResultPathW(i));
                 if (name is not null && dir is not null)

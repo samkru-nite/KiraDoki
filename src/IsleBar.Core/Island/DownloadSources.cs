@@ -28,6 +28,8 @@ public static class DownloadSources
         return path switch
         {
             _ when path.EndsWith(".baiduyun.p.downloading", StringComparison.OrdinalIgnoreCase) => "百度网盘",
+            _ when path.EndsWith(Downloaders.Thunder, StringComparison.OrdinalIgnoreCase) => "迅雷",
+            _ when path.EndsWith(Downloaders.Quark, StringComparison.OrdinalIgnoreCase) => "夸克网盘",
             _ when path.EndsWith(".part", StringComparison.OrdinalIgnoreCase) => "Firefox",
             _ when path.EndsWith(".opdownload", StringComparison.OrdinalIgnoreCase) => "Opera",
             _ when path.EndsWith(".crdownload", StringComparison.OrdinalIgnoreCase) && runningChromium.Count == 1 => runningChromium.First(),

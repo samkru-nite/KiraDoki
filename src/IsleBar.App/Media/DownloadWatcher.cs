@@ -6,21 +6,27 @@ namespace IsleBar.App.Media;
 
 /// <summary>
 /// Puts downloads on the island (decision card #3: "download progress — extend to browser downloads").
-/// While downloading, browsers append <c>.crdownload</c> (Chrome, Edge, Whale, etc.) or <c>.part</c> (Firefox) to the file, and
-/// Baidu Netdisk <c>.baiduyun.p.downloading</c>, so we check the download folders every second (the system Downloads folder, or
-/// the ones set in settings): downloading → speed + flowing bar, several at once → one item (<see cref="DownloadTracker"/>),
-/// stopped growing → paused; when the partial file disappears and the finished file appears → done (clicking shows it in Explorer).
+/// While downloading, browsers append <c>.crdownload</c> (Chrome, Edge, Whale, etc.) or <c>.part</c> (Firefox) to the file, Baidu
+/// Netdisk <c>.baiduyun.p.downloading</c>, 迅雷 <c>.xltd</c> and 夸克网盘 <c>.qkdownloading</c> (<see cref="Downloaders"/>, 10-11), so
+/// every second we look for those files: asked of Everything wherever they are (a folder picked for one download, 10-11), and in the
+/// download folders — the ones set in settings (else the system Downloads folder), the desktop, and the ones the download programs'
+/// own settings name. Downloading → speed + flowing bar, several at once → one item (<see cref="DownloadTracker"/>), stopped
+/// growing → paused; when the partial file disappears and the finished file appears → done (clicking shows it in Explorer).
 /// Explorer's copy/unzip/compress (<see cref="FileOperationWatcher"/>), WinRAR's (<see cref="ArchiverWatcher"/>), exports
 /// (<see cref="VideoExportWatcher"/>) and Steam's downloads (<see cref="SteamWatcher"/>) run on the same thread.
-/// Nothing is written to disk; memory only.
+/// Nothing is written to disk; memory only. Log "download: …" (迅雷 and 夸克: experimental, TODO 四 10-11).
 /// </summary>
 internal sealed partial class DownloadWatcher : IDisposable
 {
     private const string BaiduExtension = ".baiduyun.p.downloading";
-    private static readonly string[] PartialExtensions = [BaiduExtension, ".crdownload", ".part", ".opdownload", ".download"];
+    private static readonly string[] PartialExtensions = [BaiduExtension, Downloaders.Thunder, Downloaders.Quark, ".crdownload", ".part", ".opdownload", ".download"];
+    private const string Anywhere = "<ext:xltd;qkdownloading;crdownload;opdownload | endwith:.baiduyun.p.downloading> !\"$Recycle.Bin\"";
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan Glance = TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan FoldersEvery = TimeSpan.FromSeconds(30);
     private const long BaiduQuiet = 64 * 1024;   // Baidu's helper writes logs and settings too; less than this a second isn't the download
+    private const long ThunderQuiet = 512 * 1024;   // 迅雷 writes about 0.3 MB/s of its own all the time (measured 10-11)
+    private const long ThunderBusy = 1024 * 1024;
 
     private readonly Func<IReadOnlyList<string>> _settingFolders;
     private readonly CancellationTokenSource _stop = new();
@@ -32,23 +38,41 @@ internal sealed partial class DownloadWatcher : IDisposable
     private readonly List<ActivityState> _finished = [];
     /// <summary>Files finished since the merged card started; told together when the last one is through.</summary>
     private readonly List<string> _batch = [];
+    private string? _batchApp;
     private HashSet<string> _lastPartials = [];
     private readonly Dictionary<string, HashSet<string>> _lastListing = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string?> _lastApps = new(StringComparer.OrdinalIgnoreCase);
 
-    // Baidu reserves each download at full size up front (measured 10-04), so the file can't show how far it is: what its helper
-    // process writes stands in, shared out among the Baidu downloads under way
-    private readonly ProcessWriteMeter _baidu = new("baidunetdiskhost");
-    private readonly Dictionary<string, double> _baiduReceived = new(StringComparer.OrdinalIgnoreCase);
+    private EverythingSdk? _everything;
+    private bool _everythingTried;
+    private List<string> _ownFolders = [];
+    private DateTimeOffset _ownFoldersAt;
+
+    // Baidu reserves each download at full size up front (measured 10-04), and so does 迅雷 (10-11): the file can't show how far it
+    // is, so what the program writes stands in, shared out among its downloads under way
+    private readonly Reserved _baidu = new("baidunetdiskhost", BaiduQuiet);
+    private readonly Reserved _thunder = new("thunder", ThunderQuiet, always: true);
+
+    // 迅雷's ".xltd" sizes (its whole file): done only if a file of the very size took its place
+    private readonly Dictionary<string, long> _thunderSizes = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _thunderOpen = new(StringComparer.OrdinalIgnoreCase);
+
+    // the fallback (TODO 一): 迅雷 writing a lot with no download of its we can see (saved where we don't look, Everything missing)
+    private int _thunderStreak;
+    private DateTimeOffset? _thunderBusySince, _thunderBusyLast;
 
     /// <param name="folders">Folders set in settings; empty = the system Downloads folder.</param>
     public DownloadWatcher(Func<IReadOnlyList<string>> folders, Func<Core.Localization.LanguageStrings> text)
     {
         _settingFolders = folders;
+        _text = text;
         _fileOps = new FileOperationWatcher(text);
         _archivers = new ArchiverWatcher(text);
         _exports = new VideoExportWatcher(text);
         _steam = new SteamWatcher(text);
     }
+
+    private readonly Func<Core.Localization.LanguageStrings> _text;
 
     /// <summary>Downloads and file operations to show now (in progress + just finished). Safe to read from any thread.</summary>
     public IReadOnlyList<ActivityState> Current { get; private set; } = [];
@@ -75,11 +99,59 @@ internal sealed partial class DownloadWatcher : IDisposable
         return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
     }
 
-    private List<string> Folders()
+    /// <summary>The settings' folders (else Downloads), the desktop, and the folders the download programs save to by their own settings.</summary>
+    private List<string> Folders(DateTimeOffset now)
     {
+        if (now - _ownFoldersAt >= FoldersEvery)
+        {
+            _ownFoldersAt = now;
+            _ownFolders = OwnFolders();
+        }
+
         var set = _settingFolders();
         IEnumerable<string> folders = set.Count > 0 ? set.Select(Environment.ExpandEnvironmentVariables) : [DefaultFolder()];
-        return folders.Select(f => f.TrimEnd('\\', '/')).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        return folders.Append(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory)).Concat(_ownFolders)
+            .Where(f => f.Length > 0).Select(f => f.TrimEnd('\\', '/')).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    /// <summary>Where 迅雷, 夸克 and the Chromium browsers save by their own settings (10-11, user: read them, don't ask).</summary>
+    private static List<string> OwnFolders()
+    {
+        var found = new List<string?>();
+        var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (AppNames.ExePath("thunder.exe") is { } thunder && Path.GetDirectoryName(Path.GetDirectoryName(thunder)) is { } root)
+        {
+            found.Add(Downloaders.ThunderFolder(ReadText(Path.Combine(root, "Profiles", "config.json"))));
+        }
+
+        found.Add(Downloaders.QuarkFolder(ReadText(Path.Combine(local, "QuarkCloudDrive", "User Data", "preference.json"))));
+        foreach (var browser in new[] { @"Microsoft\Edge\User Data", @"Google\Chrome\User Data" })
+        {
+            var data = Path.Combine(local, browser);
+            if (!Directory.Exists(data))
+            {
+                continue;
+            }
+
+            foreach (var profile in Directory.EnumerateDirectories(data).Where(d => Path.GetFileName(d) is "Default" || Path.GetFileName(d).StartsWith("Profile ", StringComparison.Ordinal)))
+            {
+                found.Add(Downloaders.ChromiumFolder(ReadText(Path.Combine(profile, "Preferences"))));
+            }
+        }
+
+        return [.. found.OfType<string>()];
+    }
+
+    private static string ReadText(string path)
+    {
+        try
+        {
+            return File.Exists(path) ? File.ReadAllText(path) : string.Empty;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return string.Empty;
+        }
     }
 
     private async Task LoopAsync()
@@ -142,9 +214,18 @@ internal sealed partial class DownloadWatcher : IDisposable
     private List<ActivityState> Scan(DateTimeOffset now)
     {
         var result = new List<ActivityState>();
-        var files = new List<(string Path, FileInfo Info)>();
+        var files = new Dictionary<string, FileInfo>(StringComparer.OrdinalIgnoreCase);
         var listings = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
-        foreach (var folder in Folders())
+        foreach (var file in Everything()?.Find(Anywhere, 50) ?? [])
+        {
+            if (IsPartial(file) && new FileInfo(file) is { Exists: true } info)
+            {
+                files[file] = info;
+            }
+        }
+
+        // the folders listed too: what a browser's "Unconfirmed 123" became is the file that newly appeared beside it
+        foreach (var folder in Folders(now).Concat(files.Keys.Select(Path.GetDirectoryName).OfType<string>()).Distinct(StringComparer.OrdinalIgnoreCase))
         {
             if (!Directory.Exists(folder))
             {
@@ -156,23 +237,40 @@ internal sealed partial class DownloadWatcher : IDisposable
             foreach (var file in Directory.EnumerateFiles(folder))
             {
                 names.Add(Path.GetFileName(file));
-                if (PartialExtensions.Any(ext => file.EndsWith(ext, StringComparison.OrdinalIgnoreCase)))
+                if (IsPartial(file) && !files.ContainsKey(file))
                 {
-                    files.Add((file, new FileInfo(file)));
+                    files[file] = new FileInfo(file);
                 }
             }
         }
 
-        var baidu = files.Where(f => IsBaidu(f.Path)).Select(f => f.Path).ToList();
-        ShareBaiduWrites(now, baidu);
-        var chromium = files.Any(f => f.Path.EndsWith(".crdownload", StringComparison.OrdinalIgnoreCase)) ? RunningChromium() : [];
+        _baidu.Share(now, [.. files.Keys.Where(IsBaidu)]);
+        var thunder = files.Keys.Where(IsThunder).ToList();
+        var open = ThunderOpen(thunder);
+        var thunderWritten = _thunder.Share(now, open);
+        foreach (var path in thunder)
+        {
+            _thunderSizes[path] = files[path].Length;
+        }
+
+        var chromium = files.Keys.Any(f => f.EndsWith(".crdownload", StringComparison.OrdinalIgnoreCase)) ? RunningChromium() : [];
         var partials = files.Select(f =>
         {
-            var written = new DateTimeOffset(f.Info.LastWriteTimeUtc, TimeSpan.Zero);
-            var source = DownloadSources.Of(f.Path, chromium);
-            return _baiduReceived.TryGetValue(f.Path, out var received)
-                ? new PartialDownload(f.Path, FinalName(f.Path), (long)received, written, Total: f.Info.Length, Source: source)
-                : new PartialDownload(f.Path, FinalName(f.Path), f.Info.Length, written, Source: source);
+            var (path, info) = (f.Key, f.Value);
+            var written = new DateTimeOffset(info.LastWriteTimeUtc, TimeSpan.Zero);
+            var source = DownloadSources.Of(path, chromium);
+            var app = AppOf(path);
+            if (IsThunder(path))
+            {
+                // its write time moves only when it's closed: held open = being downloaded now; no total shown (only what came
+                // since it was first seen is known, not what came before — a resumed download)
+                return new PartialDownload(path, FinalName(path), (long)_thunder.Received(path), open.Contains(path) ? now : written,
+                    Source: source, App: app, Moving: open.Contains(path));
+            }
+
+            return IsBaidu(path)
+                ? new PartialDownload(path, FinalName(path), (long)_baidu.Received(path), written, Total: info.Length, Source: source, App: app)
+                : new PartialDownload(path, FinalName(path), info.Length, written, Source: source, App: app);
         }).ToList();
 
         // all downloads under way become one item: summed speed · earliest name · "+N"
@@ -191,6 +289,7 @@ internal sealed partial class DownloadWatcher : IDisposable
             if (!File.Exists(gone) && Finished(gone, listings) is { } final)
             {
                 _batch.Add(final);
+                _batchApp ??= _lastApps.GetValueOrDefault(gone);
             }
         }
 
@@ -199,6 +298,7 @@ internal sealed partial class DownloadWatcher : IDisposable
             _finished.Clear();
             _finished.Add(new ActivityState
             {
+                AppId = _batchApp,
                 RawKind = ActivityState.KindTransfer,
                 Title = "Download → PC",
                 Name = Path.GetFileName(_batch[0]),
@@ -209,6 +309,7 @@ internal sealed partial class DownloadWatcher : IDisposable
                 UpdatedAt = now,
             });
             _batch.Clear();
+            _batchApp = null;
         }
         else if (summary is not null)
         {
@@ -216,10 +317,26 @@ internal sealed partial class DownloadWatcher : IDisposable
         }
 
         _lastPartials = tracked;
+        _lastApps.Clear();
+        foreach (var p in partials.Where(p => tracked.Contains(p.Path)))
+        {
+            _lastApps[p.Path] = p.App;
+        }
+
+        foreach (var gone in _thunderSizes.Keys.Where(k => !files.ContainsKey(k) && !_lastPartials.Contains(k)).ToList())
+        {
+            _thunderSizes.Remove(gone);
+        }
+
         _lastListing.Clear();
         foreach (var (folder, names) in listings)
         {
             _lastListing[folder] = names;
+        }
+
+        if (ThunderFallback(now, thunderWritten, open.Count > 0) is { } busy)
+        {
+            result.Add(busy);
         }
 
         _finished.RemoveAll(f => now - f.UpdatedAt > ActivityStore.DoneLinger);
@@ -227,18 +344,94 @@ internal sealed partial class DownloadWatcher : IDisposable
         return result;
     }
 
+    /// <summary>迅雷's files it holds open now (being downloaded), logged when that changes.</summary>
+    private HashSet<string> ThunderOpen(List<string> thunder)
+    {
+        var open = new HashSet<string>(thunder.Where(FileUsers.IsOpen), StringComparer.OrdinalIgnoreCase);
+        foreach (var path in open.Where(p => !_thunderOpen.Contains(p)))
+        {
+            AppLog.Write($"download: 迅雷 downloading {Path.GetFileName(path)} ({new FileInfo(path).Length >> 20} MB reserved)");
+        }
+
+        foreach (var path in _thunderOpen.Where(p => !open.Contains(p)))
+        {
+            AppLog.Write($"download: 迅雷 let go of {Path.GetFileName(path)} ({(File.Exists(path) ? "paused or cancelled: still there" : "gone")})");
+        }
+
+        _thunderOpen.Clear();
+        _thunderOpen.UnionWith(open);
+        return open;
+    }
+
+    /// <summary>迅雷 writing a lot (two busy seconds in a row) with none of its downloads in sight, till it's quiet a moment.</summary>
+    private ActivityState? ThunderFallback(DateTimeOffset now, long written, bool seen)
+    {
+        _thunderStreak = written >= ThunderBusy ? _thunderStreak + 1 : 0;
+        if (seen || (_thunderBusySince is null && _thunderStreak < 2)
+            || (written < ThunderBusy && (_thunderBusyLast is null || now - _thunderBusyLast > TimeSpan.FromSeconds(3))))
+        {
+            if (_thunderBusySince is not null)
+            {
+                AppLog.Write("download: 迅雷 busy without a download we see — over");
+            }
+
+            _thunderBusySince = _thunderBusyLast = null;
+            return null;
+        }
+
+        if (written >= ThunderBusy)
+        {
+            _thunderBusyLast = now;
+        }
+
+        if (_thunderBusySince is null)
+        {
+            _thunderBusySince = now;
+            AppLog.Write($"download: 迅雷 writing {written >> 10} KB/s without a download we see — fallback card ({(_everything is null ? "no Everything" : "Everything found no .xltd it holds")})");
+        }
+
+        return new ActivityState
+        {
+            AppId = "thunder.exe",
+            RawKind = ActivityState.KindTransfer,
+            Title = "Download → PC",
+            Name = "迅雷",
+            Stage = "download",
+            State = "run",   // no size, no speed: the bar flows
+            SourcePath = "download:busy:thunder",
+            UpdatedAt = _thunderBusySince.Value,
+        };
+    }
+
     /// <summary>
     /// The finished file of a partial that went away: its final name — really finished only if it has content (Firefox keeps an
-    /// empty placeholder under the final name while it downloads, and a paused download read as "done" — review 10-03). For
-    /// Chrome/Edge's "Unconfirmed 123" the name isn't known, so it's the file that newly appeared in that folder this second.
+    /// empty placeholder under the final name while it downloads, and a paused download read as "done" — review 10-03); 迅雷's only
+    /// if it is exactly the size of the reserved ".xltd" (not seen finishing yet, 10-11: no guess). For Chrome/Edge's
+    /// "Unconfirmed 123" the name isn't known, so it's the file that newly appeared in that folder this second.
     /// </summary>
     private string? Finished(string partial, Dictionary<string, HashSet<string>> listings)
     {
         var folder = Path.GetDirectoryName(partial) ?? string.Empty;
         if (FinalName(partial) is { } name)
         {
-            var final = Path.Combine(folder, name);
-            return File.Exists(final) && new FileInfo(final).Length > 0 ? final : null;
+            var final = new FileInfo(Path.Combine(folder, name));
+            if (IsThunder(partial))
+            {
+                var size = _thunderSizes.GetValueOrDefault(partial);
+                var through = final.Exists && size > 0 && final.Length == size;
+                AppLog.Write($"download: 迅雷 {Path.GetFileName(partial)} went — {(through ? "done" : final.Exists ? $"{name} is {final.Length} bytes, not {size}: no card" : $"no {name}: cancelled, no card")}");
+                return through ? final.FullName : null;
+            }
+
+            if (final.Exists && final.Length > 0 && (!IsQuark(partial) || DateTime.UtcNow - final.LastWriteTimeUtc < TimeSpan.FromMinutes(1)))
+            {
+                return final.FullName;
+            }
+
+            if (!IsQuark(partial))
+            {
+                return null;   // 夸克 may finish under another name when that one's taken: the file that newly appeared, below
+            }
         }
 
         if (!listings.TryGetValue(folder, out var now) || !_lastListing.TryGetValue(folder, out var before))
@@ -253,25 +446,40 @@ internal sealed partial class DownloadWatcher : IDisposable
             .FirstOrDefault()?.FullName;
     }
 
-    /// <summary>Shares what Baidu's helper wrote this second among the Baidu downloads under way.</summary>
-    private void ShareBaiduWrites(DateTimeOffset now, List<string> baidu)
+    /// <summary>
+    /// What a program that reserves its files at full size wrote, shared out among its downloads under way (Baidu: all its
+    /// partials; 迅雷: the ones it holds open).
+    /// </summary>
+    /// <param name="always">Looked at even with nothing to follow (迅雷's fallback); otherwise the process isn't even looked at then.</param>
+    private sealed class Reserved(string process, long quiet, bool always = false)
     {
-        foreach (var gone in _baiduReceived.Keys.Where(k => !baidu.Contains(k, StringComparer.OrdinalIgnoreCase)).ToList())
-        {
-            _baiduReceived.Remove(gone);
-        }
+        private readonly ProcessWriteMeter _meter = new(process);
+        private readonly Dictionary<string, double> _received = new(StringComparer.OrdinalIgnoreCase);
 
-        if (baidu.Count == 0)
-        {
-            _baidu.Reset();   // nothing to follow: don't even look at the process
-            return;
-        }
+        public double Received(string path) => _received.GetValueOrDefault(path);
 
-        var written = _baidu.Delta(now);
-        var share = written >= BaiduQuiet ? (double)written / baidu.Count : 0;
-        foreach (var path in baidu)
+        /// <summary>Takes this second's writes and returns them (the first look sets the baseline: 0).</summary>
+        public long Share(DateTimeOffset now, IReadOnlyCollection<string> under)
         {
-            _baiduReceived[path] = _baiduReceived.GetValueOrDefault(path) + share;
+            foreach (var gone in _received.Keys.Where(k => !under.Contains(k, StringComparer.OrdinalIgnoreCase)).ToList())
+            {
+                _received.Remove(gone);
+            }
+
+            if (under.Count == 0 && !always)
+            {
+                _meter.Reset();
+                return 0;
+            }
+
+            var written = _meter.Delta(now);
+            var share = written >= quiet && under.Count > 0 ? (double)written / under.Count : 0;
+            foreach (var path in under)
+            {
+                _received[path] = _received.GetValueOrDefault(path) + share;
+            }
+
+            return written;
         }
     }
 
@@ -296,11 +504,27 @@ internal sealed partial class DownloadWatcher : IDisposable
         return names;
     }
 
+    private static bool IsPartial(string path) => PartialExtensions.Any(ext => path.EndsWith(ext, StringComparison.OrdinalIgnoreCase));
+
     private static bool IsBaidu(string path) => path.EndsWith(BaiduExtension, StringComparison.OrdinalIgnoreCase);
 
+    private static bool IsThunder(string path) => path.EndsWith(Downloaders.Thunder, StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsQuark(string path) => path.EndsWith(Downloaders.Quark, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The download program whose icon its card shows; null = a browser's (the arrow, as before).</summary>
+    private static string? AppOf(string path) => path switch
+    {
+        _ when IsThunder(path) => "thunder.exe",
+        _ when IsQuark(path) => "quark_cloud_drive.exe",
+        _ when IsBaidu(path) => "BaiduNetdisk.exe",
+        _ => null,
+    };
+
     /// <summary>
-    /// "report.pdf.crdownload" → "report.pdf". Null for Chrome/Edge's "Unconfirmed 123.crdownload" ("未确认 307769" in Chinese):
-    /// the browser keeps that name until the download ends, then renames it (measured 10-04).
+    /// "report.pdf.crdownload" → "report.pdf"; 夸克's "X-c4d5541d929b.zip.qkdownloading" → "X.zip". Null for Chrome/Edge's
+    /// "Unconfirmed 123.crdownload" ("未确认 307769" in Chinese): the browser keeps that name until the download ends, then renames
+    /// it (measured 10-04).
     /// </summary>
     private static string? FinalName(string partial)
     {
@@ -308,6 +532,11 @@ internal sealed partial class DownloadWatcher : IDisposable
         if (UnconfirmedPattern().IsMatch(name))
         {
             return null;
+        }
+
+        if (IsQuark(name))
+        {
+            return Downloaders.QuarkFinalName(name);
         }
 
         foreach (var ext in PartialExtensions)
@@ -325,11 +554,23 @@ internal sealed partial class DownloadWatcher : IDisposable
     [GeneratedRegex(@"^[^.]+ \d+\.crdownload$", RegexOptions.IgnoreCase)]
     private static partial Regex UnconfirmedPattern();
 
+    private EverythingSdk? Everything()
+    {
+        if (!_everythingTried)
+        {
+            _everythingTried = true;
+            _everything = EverythingSdk.TryLoad();
+        }
+
+        return _everything;
+    }
+
     public void Dispose()
     {
         _stop.Cancel();
         _stop.Dispose();
         _fileOps.Dispose();
         _exports.Dispose();
+        _everything?.Dispose();
     }
 }

@@ -7,7 +7,9 @@ namespace IsleBar.Core.Island;
 /// <param name="LastWrite">When the file was last written.</param>
 /// <param name="Total">Full size when known (a file reserved at full size up front); null = unknown.</param>
 /// <param name="Source">Which program downloads it ("Edge", "Firefox", "百度网盘"); null = a browser, not known which.</param>
-public sealed record PartialDownload(string Path, string? Name, long Size, DateTimeOffset LastWrite, long? Total = null, string? Source = null);
+/// <param name="App">The download program's exe ("thunder.exe"), whose icon the card shows; null = a browser's (the arrow).</param>
+/// <param name="Moving">Known to be under way however little it grew (迅雷 holds its file open exactly while downloading, 10-11).</param>
+public sealed record PartialDownload(string Path, string? Name, long Size, DateTimeOffset LastWrite, long? Total = null, string? Source = null, string? App = null, bool Moving = false);
 
 /// <summary>One download under way, for the lifted card's list (F2b): from where, its name if known, how much came, how fast.</summary>
 public sealed record DownloadLine(string? Source, string? Name, long Size, double? Speed, bool Paused);
@@ -54,8 +56,9 @@ public sealed class DownloadTracker
             present.Add(file.Path);
             entry.Name = file.Name;
             entry.Source = file.Source;
+            entry.App = file.App;
             entry.Total = file.Total is > 0 ? file.Total : null;
-            entry.Observe(now, file.Size);
+            entry.Observe(now, file.Size, file.Moving);
         }
 
         foreach (var gone in _entries.Keys.Where(k => !present.Contains(k)).ToList())
@@ -71,10 +74,12 @@ public sealed class DownloadTracker
         var all = _entries.OrderBy(e => e.Value.FirstSeen).ToList();
         var moving = all.Where(e => !e.Value.IsPaused(now)).ToList();
         var shown = moving.Count > 0 ? moving[0] : all[0];
-        var speeds = moving.Select(e => e.Value.Speed(now)).Where(s => s is not null).ToList();
+        var speeds = moving.Select(e => e.Value.Speed(now)).Where(s => s is > 0).ToList();   // none: no "0 KB/s", just the name
         var known = all.All(e => e.Value.Total is not null);   // the bar shows all of them together, or flows
+        var app = all.Select(e => e.Value.App).Distinct().ToList() is [{ } one] ? one : null;   // all from one program: its icon
         return new ActivityState
         {
+            AppId = app,
             RawKind = ActivityState.KindTransfer,
             Title = "Download → PC",   // ending with "PC" means receiving (↓)
             Name = shown.Value.Name,
@@ -100,15 +105,17 @@ public sealed class DownloadTracker
 
         public string? Source { get; set; }
 
+        public string? App { get; set; }
+
         public long? Total { get; set; }
 
         public DateTimeOffset FirstSeen { get; } = firstSeen;
 
         public long Size { get; private set; } = size;
 
-        public void Observe(DateTimeOffset now, long size)
+        public void Observe(DateTimeOffset now, long size, bool moving = false)
         {
-            if (size != Size)
+            if (size != Size || moving)
             {
                 _lastGrowth = now;
             }
