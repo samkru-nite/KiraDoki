@@ -30,6 +30,9 @@ internal sealed class CalendarWatcher : NoticeWatcher
 
     private readonly string[] _urls;
     private IReadOnlyList<IcsEvent> _testEvents = [];
+
+    /// <summary>Each calendar's own name (the test file's last), for the lifted card's source row; null = "日历".</summary>
+    private readonly string?[] _names;
     private DateTime _testStamp;
     private readonly IReadOnlyList<IcsEvent>[] _events;
     private readonly CancellationTokenSource _stop = new();
@@ -48,6 +51,7 @@ internal sealed class CalendarWatcher : NoticeWatcher
     {
         _urls = Normalize(calendars);
         _events = [.. _urls.Select(_ => (IReadOnlyList<IcsEvent>)[])];   // + the test file's, kept apart
+        _names = new string?[_urls.Length + 1];
     }
 
     /// <summary>The addresses this watcher uses, normalized and one per line (to compare whether the setting changed).</summary>
@@ -112,6 +116,7 @@ internal sealed class CalendarWatcher : NoticeWatcher
                     lock (_gate)
                     {
                         _events[index] = events;   // keep the previous events if the response is bogus (e.g. a login page)
+                        _names[index] = IcsParser.CalendarName(text);
                         _expandedAt = DateTimeOffset.MinValue;
                     }
 
@@ -177,7 +182,7 @@ internal sealed class CalendarWatcher : NoticeWatcher
         var s = Text;
         var cards = CalendarLogic.Cards(occurrences, now, closed);
         Board.ReplaceAll(cards.Select(c => new KeyValuePair<string, ActivityState>(
-            c.Card == CalendarLogic.MainCard ? CardKey : CardKey + ":" + c.Card, CardFor(c.Look, now, s))));
+            c.Card == CalendarLogic.MainCard ? CardKey : CardKey + ":" + c.Card, Named(CardFor(c.Look, now, s), c.Look.Event.Calendar))));
 
         var looks = string.Join(" + ", cards.Select(c => c.Look.Kind.ToString()));
         var tags = string.Join("|", cards.Select(c => c.Look.Tag));
@@ -198,10 +203,12 @@ internal sealed class CalendarWatcher : NoticeWatcher
         }
 
         _testStamp = stamp;
-        var events = stamp == default ? [] : IcsParser.Parse(File.ReadAllText(TestFile), calendar: _urls.Length);
+        var test = stamp == default ? null : File.ReadAllText(TestFile);
+        var events = IcsParser.Parse(test, calendar: _urls.Length);
         lock (_gate)
         {
             _testEvents = events;
+            _names[_urls.Length] = IcsParser.CalendarName(test);
             _expandedAt = DateTimeOffset.MinValue;
         }
 
@@ -214,6 +221,18 @@ internal sealed class CalendarWatcher : NoticeWatcher
     /// between them): <see cref="ActivityState.Title"/> = the words, <see cref="ActivityState.Msg"/> = the name,
     /// <see cref="ActivityState.Name"/> = its time "8:00 – 9:35" (only on the lifted card).
     /// </remarks>
+    /// <summary>The lifted card's source row: the event's calendar by its own name ("课程表"), else "日历" (10-11).</summary>
+    private ActivityState Named(ActivityState card, int calendar)
+    {
+        lock (_gate)
+        {
+            card.AppName = calendar >= 0 && calendar < _names.Length ? _names[calendar] : null;
+        }
+
+        card.AppName ??= Text.CardCalendar;
+        return card;
+    }
+
     private static ActivityState CardFor(CalendarLook look, DateTimeOffset now, Core.Localization.LanguageStrings s)
     {
         var o = look.Event;

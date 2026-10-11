@@ -442,6 +442,9 @@ public sealed class LanguageStrings
     /// <summary>The tooltip of a copied file's ✕: it leaves the clipboard, the file isn't deleted.</summary>
     public required string CardRemoveFromClipboard { get; init; }
 
+    /// <summary>A lifted calendar card's source row when its calendar has no name of its own (10-11).</summary>
+    public required string CardCalendar { get; init; }
+
     /// <summary>Source names on the card's top row.</summary>
     public required string CardMusic { get; init; }
     public required string CardSystem { get; init; }

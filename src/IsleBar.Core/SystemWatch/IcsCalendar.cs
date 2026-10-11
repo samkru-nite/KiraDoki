@@ -476,6 +476,29 @@ public static class IcsParser
         return parts;
     }
 
+    /// <summary>
+    /// The calendar's own name (<c>X-WR-CALNAME</c>, which Google and Outlook write: "课程表"), for the lifted card's source row
+    /// (10-11); null when it has none.
+    /// </summary>
+    public static string? CalendarName(string? text)
+    {
+        foreach (var line in Unfold(text ?? string.Empty))
+        {
+            if (line.StartsWith("BEGIN:VEVENT", StringComparison.OrdinalIgnoreCase))
+            {
+                break;   // it's in the calendar's head, before the events
+            }
+
+            if (line.StartsWith("X-WR-CALNAME", StringComparison.OrdinalIgnoreCase) && line.IndexOf(':', StringComparison.Ordinal) is var at and > 0
+                && Unescape(line[(at + 1)..]).Trim() is { Length: > 0 } name)
+            {
+                return name;
+            }
+        }
+
+        return null;
+    }
+
     /// <summary>Unescapes TEXT values (\n \, \; \\); for multi-line values the island shortens it based on the first line.</summary>
     private static string Unescape(string value)
     {

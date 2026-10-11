@@ -249,6 +249,43 @@ public sealed class CardSheetTests
     }
 
     [Fact]
+    public void A_calendar_card_is_headed_by_its_calendar()
+    {
+        var card = SystemWatch.SystemNotice.Make("10分钟后", SystemWatch.NoticeGlyphs.Calendar, Now, msg: "高数");
+        (card.Name, card.Look, card.State) = ("8:00 – 9:35", "remind", SystemWatch.SystemNotice.WaitState);
+        Assert.Equal("日历", CardSheets.Build(Card(CardType.Pending, card), Now, Zh).Source);   // a calendar with no name of its own
+
+        card.AppName = "课程表";
+        var sheet = CardSheets.Build(Card(CardType.Pending, card), Now, Zh);
+        Assert.Equal(("课程表", "10分钟后", SheetTone.Waiting), (sheet.Source, sheet.State, sheet.Tone));
+        Assert.Equal("高数", sheet.Title);
+        Assert.Equal(["8:00 – 9:35"], sheet.Body);
+    }
+
+    [Fact]
+    public void A_calendar_s_name_is_read_from_its_head()
+    {
+        Assert.Equal("课程表", SystemWatch.IcsParser.CalendarName("BEGIN:VCALENDAR\r\nX-WR-CALNAME:课程表\r\nBEGIN:VEVENT\r\nSUMMARY:x\r\nEND:VEVENT\r\nEND:VCALENDAR"));
+        Assert.Null(SystemWatch.IcsParser.CalendarName("BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nX-WR-CALNAME:no\r\nEND:VEVENT\r\nEND:VCALENDAR"));
+        Assert.Null(SystemWatch.IcsParser.CalendarName(null));
+    }
+
+    [Fact]
+    public void A_mic_in_use_says_since_when_not_how_long_ago()
+    {
+        var sheet = CardSheets.Build(Card(CardType.Status, new ActivityState
+        {
+            RawKind = ActivityState.KindNotice, Title = "麦克风使用中", Name = "微信", Glyph = SystemWatch.NoticeGlyphs.Microphone,
+            Stage = "privacy", UpdatedAt = Now,
+        }), Now, Zh);
+
+        Assert.Equal(("麦克风", "使用中"), (sheet.Source, sheet.State));
+        Assert.Null(sheet.Time);
+        Assert.Equal("微信", sheet.Title);
+        Assert.Equal([Now.ToLocalTime().ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture) + "开始"], sheet.Body);   // not "3分钟前"
+    }
+
+    [Fact]
     public void A_game_steam_installed_can_be_played()
     {
         var done = new ActivityState { RawKind = ActivityState.KindTransfer, Title = "Files", Name = "Portal 2", Stage = "copy", Words = "已安装", State = "done" };

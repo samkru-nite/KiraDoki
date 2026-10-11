@@ -228,7 +228,7 @@ public static class CardSheets
             ActivityKind.Notice when s.Glyph == NoticeGlyphs.Transit => Transit(s, text),
             // the calendar (10-10): the event's name, its state in the card's colour, its time "8:00 – 9:35"
             ActivityKind.Notice when s.Look is not null => Sheet(
-                text.CardSystem, s.Title,
+                s.AppName ?? text.CardCalendar, s.Title,
                 s.State == SystemWatch.SystemNotice.WaitState ? SheetTone.Waiting : s.RunState == ActivityRunState.Done ? SheetTone.Ok : SheetTone.Plain,
                 null, s.Msg ?? s.Title, [s.Name], close),
             ActivityKind.Notice when s.Subject is not null || s.Level is not null => SystemCard(s, text, close, browser),
@@ -525,14 +525,19 @@ public static class CardSheets
         };
     }
 
+    /// <summary>
+    /// Mic / camera in use (10-11, as the system cards): "使用中" alone on the right, the program as the subject (several: a list),
+    /// when it began in grey ("14:32开始") — "3分钟前" read as if it had happened then.
+    /// </summary>
     private static CardSheet Privacy(ActivityState s, DateTimeOffset now, LanguageStrings text)
     {
         var apps = s.Apps is { Count: > 1 } many ? many : null;
+        var began = s.UpdatedAt == default ? null : Fill(text.CardStarted, Clock(s.UpdatedAt));
         var sheet = Sheet(s.Glyph == NoticeGlyphs.Camera ? text.CardCamera : text.CardMicrophone, text.CardInUse, SheetTone.Plain,
-            Ago(s.UpdatedAt, now, text), apps is null ? s.Name : null,
-            apps is null ? [] : [string.Join('\n', apps.Select(a => "- " + a))],
+            null, apps is null ? s.Name : null,
+            apps is null ? [began] : [string.Join('\n', apps.Select(a => "- " + a))],
             [new(SheetAction.PrivacySettings, text.CardPrivacy), new(SheetAction.Hide, text.CardHide)]);
-        return sheet with { Markdown = apps is not null };
+        return apps is null ? sheet : sheet with { Markdown = true, Footnote = began };
     }
 
     // ---------------- parts ----------------
