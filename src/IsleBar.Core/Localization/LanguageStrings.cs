@@ -140,6 +140,15 @@ public sealed class LanguageStrings
     /// <summary>Steam: a game's download went through — a new one ("已安装") or an update ("已更新").</summary>
     public required string GameInstalled { get; init; }
     public required string GameUpdated { get; init; }
+    /// <summary>The printer card: printing, printed, and what stops it (paper out, a jam, offline, toner, something to see to, an error).</summary>
+    public required string Printing { get; init; }
+    public required string Printed { get; init; }
+    public required string PrintPaperOut { get; init; }
+    public required string PrintPaperJam { get; init; }
+    public required string PrintOffline { get; init; }
+    public required string PrintToner { get; init; }
+    public required string PrintAttention { get; init; }
+    public required string PrintError { get; init; }
     public required string FileItems { get; init; }
 
     /// <summary>The lifted transit card: its button that empties it, and a file no longer where it was.</summary>

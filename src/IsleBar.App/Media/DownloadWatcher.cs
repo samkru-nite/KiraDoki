@@ -13,7 +13,7 @@ namespace IsleBar.App.Media;
 /// own settings name. Downloading → speed + flowing bar, several at once → one item (<see cref="DownloadTracker"/>), stopped
 /// growing → paused; when the partial file disappears and the finished file appears → done (clicking shows it in Explorer).
 /// Explorer's copy/unzip/compress (<see cref="FileOperationWatcher"/>), WinRAR's (<see cref="ArchiverWatcher"/>), exports
-/// (<see cref="VideoExportWatcher"/>) and Steam's downloads (<see cref="SteamWatcher"/>) run on the same thread.
+/// (<see cref="VideoExportWatcher"/>), Steam's downloads (<see cref="SteamWatcher"/>) and the printer (<see cref="PrintWatcher"/>) run on the same thread.
 /// Nothing is written to disk; memory only. Log "download: …" (迅雷 and 夸克: experimental, TODO 四 10-11).
 /// </summary>
 internal sealed partial class DownloadWatcher : IDisposable
@@ -35,6 +35,7 @@ internal sealed partial class DownloadWatcher : IDisposable
     private readonly ArchiverWatcher _archivers;
     private readonly VideoExportWatcher _exports;
     private readonly SteamWatcher _steam;
+    private readonly PrintWatcher _print;
     private readonly List<ActivityState> _finished = [];
     /// <summary>Files finished since the merged card started; told together when the last one is through.</summary>
     private readonly List<string> _batch = [];
@@ -70,6 +71,7 @@ internal sealed partial class DownloadWatcher : IDisposable
         _archivers = new ArchiverWatcher(text);
         _exports = new VideoExportWatcher(text);
         _steam = new SteamWatcher(text);
+        _print = new PrintWatcher(text);
     }
 
     private readonly Func<Core.Localization.LanguageStrings> _text;
@@ -175,6 +177,7 @@ internal sealed partial class DownloadWatcher : IDisposable
                 items.AddRange(_archivers.Scan(now));   // WinRAR, 7-Zip, Bandizip (TODO 四, 10-11)
                 items.AddRange(_exports.Scan(now));     // 剪映's export (TODO 四, 10-11)
                 items.AddRange(_steam.Scan(now));       // Steam's game downloads (TODO 四, 10-11, experimental)
+                items.AddRange(_print.Scan(now));       // the printer's queue (TODO 四, 10-11)
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException
                                            or System.ComponentModel.Win32Exception or DllNotFoundException or EntryPointNotFoundException)
