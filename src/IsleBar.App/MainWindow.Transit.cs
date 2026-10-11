@@ -501,7 +501,9 @@ public sealed partial class MainWindow
             // picture was taken under the pressing hand (lit or dimmed), the pill now looks as it does (user 10-11)
             _returnPending = false;
             _keepUnseen = false;
+            _unlitUntil = DateTimeOffset.UtcNow + UnlitAfterPutBack;
             RenderIsland();
+            PaintFill();
             await Animate(Animations.On ? PutBackFade : TimeSpan.FromMilliseconds(1), t => catcher.HandOpacity = 1 - t);
         }
         finally
@@ -521,6 +523,14 @@ public sealed partial class MainWindow
             }
         }
     }
+
+    /// <summary>
+    /// Put back, the pill doesn't light under the mouse this long (user 10-11): it lands dark, and the mouse — still on it — lit it at
+    /// its first move, a flash. Lighting again is up to the next time the mouse comes onto it (<see cref="PaintFill"/>).
+    /// </summary>
+    private static readonly TimeSpan UnlitAfterPutBack = TimeSpan.FromSeconds(2);
+
+    private DateTimeOffset _unlitUntil = DateTimeOffset.MinValue;
 
     /// <summary>The picture fades off the real pill once it's down.</summary>
     private static readonly TimeSpan PutBackFade = TimeSpan.FromMilliseconds(100);

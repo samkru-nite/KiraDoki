@@ -1339,7 +1339,7 @@ public sealed partial class MainWindow : Window
     {
         var colours = PillView.Colours;
         // on the close button only the button lights up; elsewhere on the pill only the pill, the button stays as it is (user 10-10)
-        var lift = _hoverBig && !_closeHover;
+        var lift = _hoverBig && !_closeHover && DateTimeOffset.UtcNow >= _unlitUntil;   // (not just after a put back, MainWindow.Transit)
         PillSurface.Fill = BrushOf(PillView.ColourOf(lift ? colours.Hover : colours.Rest));
         SmallSurface.Fill = BrushOf(PillView.ColourOf(colours.Rest));   // the small pill lifts only its circle cell (BallHover)
         // the close button: a step off the resting pill's colour, one more under the pointer (user 10-08, B5)
