@@ -53,6 +53,67 @@ internal static class DropSpot
         return new Spot(cls, folder, item, type);
     }
 
+    /// <summary>The folders open in Explorer (every window and tab) and the desktop, read on an STA thread; empty when unreadable.</summary>
+    public static Task<IReadOnlyList<string>> OpenFoldersAsync()
+    {
+        var done = new TaskCompletionSource<IReadOnlyList<string>>();
+        var thread = new Thread(() =>
+        {
+            var folders = new List<string> { Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory) };
+            try
+            {
+                var shellType = Type.GetTypeFromProgID("Shell.Application");
+                if (shellType is not null)
+                {
+                    dynamic shell = Activator.CreateInstance(shellType)!;
+                    try
+                    {
+                        dynamic windows = shell.Windows();
+                        var count = (int)windows.Count;
+                        for (var i = 0; i < count; i++)
+                        {
+                            dynamic? w = windows.Item(i);
+                            if (w is null)
+                            {
+                                continue;
+                            }
+
+                            try
+                            {
+                                if ((string?)w.Document?.Folder?.Self?.Path is { Length: > 0 } path && Directory.Exists(path))
+                                {
+                                    folders.Add(path);
+                                }
+                            }
+                            catch (Exception ex) when (ex is COMException or Microsoft.CSharp.RuntimeBinder.RuntimeBinderException)
+                            {
+                                // a window that isn't a folder (a search, Control Panel)
+                            }
+                            finally
+                            {
+                                Marshal.FinalReleaseComObject(w);
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        Marshal.FinalReleaseComObject(shell);
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is COMException or InvalidCastException or Microsoft.CSharp.RuntimeBinder.RuntimeBinderException)
+            {
+                TaskbarHost.Log("dropspot: open folders unreadable — " + ex.Message);
+            }
+
+            done.TrySetResult([.. folders.Distinct(StringComparer.OrdinalIgnoreCase)]);
+        })
+        { IsBackground = true };
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        return done.Task;
+    }
+
     /// <summary>The folder an Explorer window shows, from the shell's window list (matched by its handle).</summary>
     private static string? FolderOf(IntPtr window)
     {

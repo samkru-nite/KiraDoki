@@ -156,7 +156,7 @@ public sealed partial class PillView : UserControl
         {
             // the calendar (user 10-10): "Ended Maths" — the words first, the event's name grey after a gap (its time is on the
             // lifted card only)
-            ShowIslandText(state, Head(state.Title, state.Msg), state.Msg ?? string.Empty);
+            ShowIslandText(state, Head(state.Title, state.Msg), state.Msg ?? string.Empty, More(state));   // the transit station's "+N" (10-11)
         }
         else if (state is { Kind: ActivityKind.Transfer, Words: { } words })
         {

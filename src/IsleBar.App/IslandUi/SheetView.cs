@@ -61,6 +61,9 @@ internal sealed class SheetView
     /// <summary>A file list's row was dragged out and dropped somewhere: the file's path.</summary>
     public Action<string>? FileDragged { get; set; }
 
+    /// <summary>A row's file starts being dragged out.</summary>
+    public Action<string>? FileDragStarting { get; set; }
+
     public SheetView(CardSheet sheet, UIElement icon, ImageSource? cover, SheetPalette palette, string? language, double width)
     {
         _sheet = sheet;
@@ -503,6 +506,7 @@ internal sealed class SheetView
             row.PointerExited += (_, _) => row.Background = Brush(Microsoft.UI.Colors.Transparent);
             row.DragStarting += async (_, e) =>
             {
+                FileDragStarting?.Invoke(file.Path);
                 var deferral = e.GetDeferral();
                 try
                 {

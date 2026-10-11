@@ -140,14 +140,48 @@ internal sealed class TransitWatcher : NoticeWatcher
     /// </summary>
     public void Dragged(IReadOnlyList<string> paths, string? target, DateTimeOffset since)
     {
+        var dragged = paths;
+        var snap = _snap;
         _ = Task.Run(async () =>
         {
+            var before = snap is null ? null : await snap.ConfigureAwait(false);
             var waited = TimeSpan.Zero;
             foreach (var at in MovedChecks)
             {
                 await Task.Delay(at - waited).ConfigureAwait(false);
                 waited = at;
-                var (moved, copied) = TransitOut.Check(paths, target, since, p => File.Exists(p) || Directory.Exists(p), Made);
+
+                // Explorer's progress window came up for it (a big copy, 10-11): this card follows it — "复制中 …" with its
+                // percentage, then what it says at the end; Explorer's own card stays away (one thing, one card)
+                if (WindowIsOurs(since))
+                {
+                    AppLog.Write($"transit: following Explorer's progress window ({at.TotalSeconds:0.#} s)");
+                    while (Media.FileOperationWatcher.Window.Up)
+                    {
+                        Follow(Media.FileOperationWatcher.Running, dragged);
+                        await Task.Delay(FollowEvery).ConfigureAwait(false);
+                    }
+
+                    Follow(null, dragged);
+                    var gone = TransitOut.Check(paths, target, since, Exists, Made).Moved;
+                    var ended = Media.FileOperationWatcher.Ended;
+                    AppLog.Write($"transit: the window closed — {(ended is null ? "not surely through, nothing said" : "through")}, {gone.Count} moved away");
+                    if (ended?.Words is { } words)
+                    {
+                        Tell(words, dragged, takeOut: false);
+                    }
+
+                    TakeOut(gone);
+                    return;
+                }
+
+                var moved = TransitOut.Check(paths, target, since, Exists, Made, Written).Moved;
+                var copied = InWhere(paths, target, since, before);
+                if (at < FolderWait)
+                {
+                    copied = [.. copied.Where(p => !Directory.Exists(p))];   // a folder has no "modified" step: give the window time to be seen
+                }
+
                 if (moved.Count > 0)
                 {
                     AppLog.Write($"transit: {moved.Count} moved away");
@@ -171,13 +205,166 @@ internal sealed class TransitWatcher : NoticeWatcher
         });
     }
 
+    /// <summary>
+    /// What was copied — into the folder let go on, or one of its subfolders written to since the drag began. The item under the mouse
+    /// isn't always readable (10-11 14:12:50: let go on a subfolder's icon on the desktop, read as the desktop's list), and a copy into
+    /// a folder updates that folder's "modified".
+    /// </summary>
+    private static IReadOnlyList<string> InWhere(IReadOnlyList<string> paths, string? target, DateTimeOffset since, Snapshot? before)
+    {
+        if (target is null)
+        {
+            return [];
+        }
+
+        Func<string, bool?>? had = before is null ? null
+            : p => before.Folders.Contains(Path.GetDirectoryName(p) ?? string.Empty) && before.Names.Contains(Path.GetFileName(p))
+                ? before.There.Contains(p) : null;
+        var copied = new List<string>(TransitOut.Check(paths, target, since, Exists, Made, Written, had).Copied);
+        try
+        {
+            foreach (var sub in Directory.EnumerateDirectories(target).Take(500))
+            {
+                if (copied.Count == paths.Count)
+                {
+                    break;
+                }
+
+                if (Directory.GetLastWriteTimeUtc(sub) >= (since - TransitOut.Slack).UtcDateTime)
+                {
+                    var left = paths.Except(copied).ToList();
+                    copied.AddRange(TransitOut.Check(left, sub, since, Exists, Made, Written, had).Copied);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            AppLog.Write("transit: subfolders unreadable — " + ex.GetType().Name);
+        }
+
+        return copied;
+    }
+
+    /// <summary>Which of the dragged names were in which folders when the drag began: the open Explorer folders, the desktop, and
+    /// the folders right inside them (a drop on a folder's icon).</summary>
+    private sealed record Snapshot(HashSet<string> Folders, HashSet<string> Names, HashSet<string> There);
+
+    private Task<Snapshot?>? _snap;
+
+    /// <summary>A drag out of the station begins (before anything can be let go): note where these names already are.</summary>
+    public void Snap(IReadOnlyList<string> paths)
+    {
+        _snap = Task.Run(async () =>
+        {
+            try
+            {
+                var started = DateTime.UtcNow;
+                var open = await DropSpot.OpenFoldersAsync().ConfigureAwait(false);
+                var folders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var folder in open)
+                {
+                    folders.Add(folder);
+                    try
+                    {
+                        folders.UnionWith(Directory.EnumerateDirectories(folder).Take(500));
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        // a folder we can't list: its subfolders fall back to the creation time
+                    }
+                }
+
+                var names = paths.Select(p => Path.GetFileName(p.TrimEnd('\\'))).ToArray();
+                var there = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var folder in folders)
+                {
+                    foreach (var name in names)
+                    {
+                        var p = Path.Combine(folder, name);
+                        if (Exists(p))
+                        {
+                            there.Add(p);
+                        }
+                    }
+                }
+
+                AppLog.Write($"transit: snapshot — {open.Count} open folder(s), {folders.Count} looked at, {there.Count} same name(s) already, "
+                             + $"{(DateTime.UtcNow - started).TotalMilliseconds:0} ms");
+                return new Snapshot(folders, new HashSet<string>(names, StringComparer.OrdinalIgnoreCase), there);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                AppLog.Write("transit: snapshot failed — " + ex.GetType().Name);
+                return null;
+            }
+        });
+    }
+
+    /// <summary>A copied folder is told from this check on: the progress window is looked for once a second.</summary>
+    private static readonly TimeSpan FolderWait = TimeSpan.FromSeconds(2);
+
+    /// <summary>The station's own progress window (it came up just after the drop), first seen after this drag began.</summary>
+    private static bool WindowIsOurs(DateTimeOffset since)
+        => Media.FileOperationWatcher.Window is { Owned: true, Opened: { } opened } && opened >= since - TransitOut.Slack;
+
+    private static readonly TimeSpan FollowEvery = TimeSpan.FromMilliseconds(250);
+
+    private ActivityStateLook? _following;
+
+    /// <summary>The card while Explorer moves the files: its words and percentage, the dragged files' names (null = back to itself;
+    /// the window asking a question = back to itself till it's answered).</summary>
+    private void Follow(Core.Island.ActivityState? running, IReadOnlyList<string> dragged) => Guard(() =>
+    {
+        var now = running is { Words: { } words } ? new ActivityStateLook(words, running.Done, running.Total, dragged) : null;
+        lock (_gate)
+        {
+            if (now == _following)
+            {
+                return;
+            }
+
+            if (now?.Words != _following?.Words)
+            {
+                _saids++;   // new words: a look of its own (it debuts)
+            }
+
+            _following = now;
+            Show(debut: false);
+        }
+    });
+
+    private sealed record ActivityStateLook(string Words, long? Done, long? Total, IReadOnlyList<string> Paths);
+
+    private static bool Exists(string path) => File.Exists(path) || Directory.Exists(path);
+
+    /// <summary>
+    /// When the file or folder at a path was made — only for folders the drag's snapshot didn't cover (<see cref="Snap"/>): Windows
+    /// hands a creation time on to a file of the same name put in the same folder within 15 s ("tunnelling"), and NTFS's "changed"
+    /// doesn't help either — Explorer's copy takes the original's (10-11 logs).
+    /// </summary>
     private static DateTimeOffset? Made(string path)
         => File.Exists(path) ? File.GetCreationTimeUtc(path) : Directory.Exists(path) ? Directory.GetCreationTimeUtc(path) : null;
+
+    private static DateTimeOffset? Written(string path) => File.Exists(path) ? File.GetLastWriteTimeUtc(path) : null;
+
+    /// <summary>Moved away while the card followed Explorer's window: out of the station (what happened was said already).</summary>
+    private void TakeOut(IReadOnlyList<string> paths) => Guard(() =>
+    {
+        lock (_gate)
+        {
+            if (paths.Count > 0 && _shelf.Remove(paths) > 0)
+            {
+                _gone = Missing();
+                Save();
+                Show(debut: false);
+            }
+        }
+    });
 
     /// <summary>How long "已复制 / 已移动" shows (user 10-10: 2 s).</summary>
     private static readonly TimeSpan SaidLength = TimeSpan.FromSeconds(2);
 
-    private (string Words, string Names)? _said;
+    private (string Words, IReadOnlyList<string> Paths)? _said;
     private int _saids;
 
     /// <summary>The card says what happened for <see cref="SaidLength"/> (a debut), then is itself again — or goes, when it's empty.</summary>
@@ -192,7 +379,7 @@ internal sealed class TransitWatcher : NoticeWatcher
                 Save();
             }
 
-            _said = (words, TransitOut.Names(paths));
+            _said = (words, paths);
             said = ++_saids;
             Show(debut: false);
         }
@@ -215,14 +402,21 @@ internal sealed class TransitWatcher : NoticeWatcher
     {
         if (_said is { } said)
         {
-            // "已复制 DSC02580.ARW +1": its own look, so it debuts (2 s); kept up for that even when everything was moved out
-            var told = SystemNotice.Make(said.Words, NoticeGlyphs.Transit, _since, msg: said.Names);
-            told.Files = [.. _shelf.Paths];
-            told.Gone = _gone;
-            told.Look = "out" + _saids;
-            told.DebutFor = SaidLength;
-            told.ByHand = true;
+            // "已复制 DSC02580.ARW +1": its own look, so it debuts (2 s), green like other things done (user 10-11); kept up for
+            // that even when everything was moved out
+            var told = Saying(said.Words, said.Paths, "out" + _saids, SaidLength);
+            told.State = "done";
             Board.Hold(Key, told);
+            return;
+        }
+
+        if (_following is { } follow)
+        {
+            // Explorer moving them (its progress window, 10-11): "复制中 DSC02580.ARW +1" and its percentage
+            var moving = Saying(follow.Words, follow.Paths, "follow" + _saids, SaidLength);
+            moving.Done = follow.Done;
+            moving.Total = follow.Total;
+            Board.Hold(Key, moving);
             return;
         }
 
@@ -252,6 +446,21 @@ internal sealed class TransitWatcher : NoticeWatcher
         card.DebutFor = _lookFor;
         card.ByHand = true;
         Board.Hold(Key, card);
+    }
+
+    /// <summary>Call under the lock. The card saying something of these files: words first, the first one's name grey, "+N" apart
+    /// (the same as Explorer's card — a long name can't push the +N off).</summary>
+    private Core.Island.ActivityState Saying(string words, IReadOnlyList<string> paths, string look, TimeSpan debut)
+    {
+        var card = SystemNotice.Make(words, NoticeGlyphs.Transit, _since,
+            msg: paths.Count == 0 ? null : Path.GetFileName(paths[0].TrimEnd('\\')));
+        card.MoreCount = Math.Max(0, paths.Count - 1);
+        card.Files = [.. _shelf.Paths];
+        card.Gone = _gone;
+        card.Look = look;
+        card.DebutFor = debut;
+        card.ByHand = true;
+        return card;
     }
 
     private string _look = "in0";

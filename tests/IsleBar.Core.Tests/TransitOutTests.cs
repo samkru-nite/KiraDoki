@@ -52,6 +52,36 @@ public class TransitOutTests
         => Assert.Empty(Check(@"C:\Users\K\Desktop\新建文件夹", [A, B], new() { [A] = Since.AddSeconds(1) }).Copied);
 
     [Fact]
+    public void A_copy_still_being_written_is_not_copied_yet()
+    {
+        // 10-11 13:37:58: told "已复制" while Explorer's window said 10% — the copy is made first, its "modified" comes last
+        var original = Since.AddDays(-3);
+        var made = new Dictionary<string, DateTimeOffset> { [@"E:\DSC02580.ARW"] = Since.AddSeconds(1), [@"E:\DSC02581.ARW"] = Since.AddSeconds(1) };
+        var written = new Dictionary<string, DateTimeOffset>
+        {
+            [A] = original, [B] = original,
+            [@"E:\DSC02580.ARW"] = Since.AddSeconds(1),            // still being written
+            [@"E:\DSC02581.ARW"] = original.AddSeconds(1),         // done; FAT32 rounds to the even second
+        };
+        var there = new HashSet<string>([A, B], StringComparer.OrdinalIgnoreCase);
+        var (_, copied) = TransitOut.Check([A, B], @"E:\", Since, there.Contains, p => made.TryGetValue(p, out var t) ? t : null,
+            p => written.TryGetValue(p, out var t) ? t : null);
+        Assert.Equal([B], copied);
+    }
+
+    [Fact]
+    public void Known_before_the_drag_beats_the_creation_time()
+    {
+        // 10-11 14:18:10: copied into a folder it had left 6 s before — the copy got the old creation time (and the old "changed")
+        var old = Since.AddDays(-1);
+        var made = new Dictionary<string, DateTimeOffset> { [@"E:\DSC02580.ARW"] = old, [@"E:\DSC02581.ARW"] = old };
+        var there = new HashSet<string>([A, B, @"E:\DSC02580.ARW", @"E:\DSC02581.ARW"], StringComparer.OrdinalIgnoreCase);
+        var (_, copied) = TransitOut.Check([A, B], @"E:\", Since, there.Contains, p => made.TryGetValue(p, out var t) ? t : null,
+            hadBefore: p => p.EndsWith("DSC02581.ARW", StringComparison.Ordinal));   // the second was there already
+        Assert.Equal([A], copied);
+    }
+
+    [Fact]
     public void Names_are_the_first_and_how_many_more()
     {
         Assert.Equal("DSC02580.ARW +1", TransitOut.Names([A, B]));

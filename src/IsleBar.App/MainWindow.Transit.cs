@@ -234,6 +234,7 @@ public sealed partial class MainWindow
         _draggingOut = true;
         _draggedPaths = paths;
         _dragSince = DateTimeOffset.UtcNow;
+        _feed.Watchers?.Transit?.Snap(paths);   // where these names already are, to tell a fresh copy (10-11)
         _dragKeys = -1;   // Ctrl / Shift as the drag begins: only changes from here nudge the mouse
         _upSince = null;
         // the press that began the drag isn't a click: its release (after the drop) lifted the card that had come up (user 10-11)
@@ -543,6 +544,11 @@ public sealed partial class MainWindow
     private async Task AfterDragOut(string[] paths, DateTimeOffset since, bool back = false)
     {
         string? target = null;
+        if (!back)
+        {
+            Media.FileOperationWatcher.TransitDropped(DateTimeOffset.UtcNow);   // a progress window coming up now is ours
+        }
+
         try
         {
             NativeMethods.GetCursorPos(out var at);

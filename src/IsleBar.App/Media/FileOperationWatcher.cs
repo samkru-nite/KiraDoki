@@ -60,6 +60,32 @@ internal sealed partial class FileOperationWatcher : IDisposable
     /// <summary>Explorer's progress window is up (it's then looked at 4 times a second, <see cref="Glance"/>).</summary>
     public bool Busy => _opSince is not null;
 
+    // For the transit station (other threads; TODO ④ 10-11, user: one thing, one card): a progress window that comes up just after
+    // something was dragged out of the station is the station's — this card stays away, the station's own card shows what it reads.
+    private static long _windowOpened;   // UTC ticks the last window was first seen, 0 = never
+    private static int _windowUp;
+    private static long _transitDropped;   // UTC ticks of the last drop out of the station
+    private static int _owned;             // the window up now (or last) is the station's
+    private static ActivityState? _running, _ended;
+
+    /// <summary>A window first seen this soon after a drop out of the station is taken to be that drop's.</summary>
+    private static readonly TimeSpan TransitClaim = TimeSpan.FromSeconds(3);
+
+    /// <summary>When the last progress window was first seen (null = none yet), whether it is still up, and whether it is the
+    /// transit station's (<see cref="TransitDropped"/>).</summary>
+    public static (DateTimeOffset? Opened, bool Up, bool Owned) Window
+        => (Volatile.Read(ref _windowOpened) is var t and > 0 ? new DateTimeOffset(t, TimeSpan.Zero) : null,
+            Volatile.Read(ref _windowUp) == 1, Volatile.Read(ref _owned) == 1);
+
+    /// <summary>The station's window as this card would show it now ("复制中 …" with the percentage); null while it asks a question.</summary>
+    public static ActivityState? Running => Volatile.Read(ref _running);
+
+    /// <summary>How the station's last window ended: "已复制 …" when surely through, else null.</summary>
+    public static ActivityState? Ended => Volatile.Read(ref _ended);
+
+    /// <summary>Something was just let go out of the transit station.</summary>
+    public static void TransitDropped(DateTimeOffset at) => Volatile.Write(ref _transitDropped, at.UtcTicks);
+
     public List<ActivityState> Scan(DateTimeOffset now)
     {
         var result = new List<ActivityState>();
@@ -68,13 +94,25 @@ internal sealed partial class FileOperationWatcher : IDisposable
 
         if (ProgressWindow() is { } window)
         {
-            _opSince ??= now;
+            if (_opSince is null)
+            {
+                _opSince = now;
+                var dropped = Volatile.Read(ref _transitDropped);
+                var ago = now.UtcTicks - dropped;
+                var owned = dropped > 0 && ago >= -TimeSpan.TicksPerSecond && ago <= TransitClaim.Ticks;
+                Volatile.Write(ref _owned, owned ? 1 : 0);
+                Volatile.Write(ref _ended, null);
+                Volatile.Write(ref _windowOpened, now.UtcTicks);
+                Volatile.Write(ref _windowUp, 1);
+                AppLog.Write($"fileop: window up{(owned ? " — the transit station's (dragged out of it just now)" : string.Empty)}");
+            }
+
             _archive = null;
             Look(window, now);
             var tally = _tally!;
             var job = FileOpText.JobOf(tally.Verb, _unzip);
             var words = FileOpText.Running(job, tally.Count, tally.Name, _text());
-            result.Add(new ActivityState
+            var running = new ActivityState
             {
                 RawKind = ActivityState.KindTransfer,
                 Title = "Files",
@@ -89,13 +127,32 @@ internal sealed partial class FileOperationWatcher : IDisposable
                 State = "run",
                 SourcePath = "fileop:window",
                 UpdatedAt = _opSince.Value,
-            });
+            };
+
+            // the window asking a question (a name clash): nothing moves till it's answered, and the window is right there — no
+            // card meanwhile (user 10-11: "移动中" showed under a question)
+            var shown = tally.Asking ? null : running;
+            Volatile.Write(ref _running, shown);
+            if (shown is not null && Volatile.Read(ref _owned) == 0)
+            {
+                result.Add(shown);
+            }
         }
         else
         {
             if (_opSince is not null)
             {
+                var before = _finished;
                 Closed(now);
+                Volatile.Write(ref _running, null);
+                if (Volatile.Read(ref _owned) == 1)
+                {
+                    // the station's card says it ("已复制 …" made just now; otherwise nothing)
+                    Volatile.Write(ref _ended, ReferenceEquals(before, _finished) ? null : _finished);
+                    _finished = before;
+                }
+
+                Volatile.Write(ref _windowUp, 0);
             }
 
             if (FollowArchive(now, written) is { } archive)
