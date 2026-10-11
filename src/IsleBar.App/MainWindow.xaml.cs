@@ -783,6 +783,8 @@ public sealed partial class MainWindow : Window
             // a status notice gone wrong (a USB drive that wouldn't eject, 10-10): red on its debut
             { Type: CardType.Status, State: { Kind: ActivityKind.Notice, RunState: ActivityRunState.Error } } when card.Key == _cards.DebutKey
                 => ($"fail|{card.Key}", Alarm()),
+            // something you waited for went through (user 10-11): a download, Explorer's copy / move / unzip / zip — green while up
+            { Type: CardType.Temporary, State: { Kind: ActivityKind.Transfer, RunState: ActivityRunState.Done } } => ($"done|{card.Key}", _theme.Ok),
             null or { Pinned: false } => ((string?)null, _theme.Ok),
             { Type: CardType.Pending } => ($"ask|{card.Key}", Attention()),
             { Type: CardType.Inform } when card.State.RunState == ActivityRunState.Error => ($"fail|{card.Key}", Alarm()),   // interrupted / stopped / failed: red, not green (user 10-07)
