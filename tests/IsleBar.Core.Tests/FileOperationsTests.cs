@@ -140,4 +140,12 @@ public class FileOperationsTests
         var moving = FileOpText.Running(FileJob.Move, 273, null, Zh);
         Assert.Equal(("移动中", "273个", 0), (moving.Words, moving.Detail, moving.More));
     }
+
+    [Fact]
+    public void A_window_that_says_neither_copy_nor_move_is_just_running()
+    {
+        // deleting uses the same window (user 10-11): never "复制中"
+        Assert.Equal(FileJob.Unknown, FileOpText.JobOf(FileVerb.Unknown, unzip: false));
+        Assert.Equal("进行中", FileOpText.Running(FileJob.Unknown, 3000, null, Zh).Words);
+    }
 }

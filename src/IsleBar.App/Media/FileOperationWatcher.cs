@@ -209,7 +209,11 @@ internal sealed partial class FileOperationWatcher : IDisposable
     {
         var tally = _tally ?? new FileOpTally();
         var job = FileOpText.JobOf(tally.Verb, _unzip);
-        if (tally.Finished(now))
+        if (job == FileJob.Unknown)
+        {
+            AppLog.Write("fileop: ended, no card (the window said neither copy nor move — deleting?)");
+        }
+        else if (tally.Finished(now))
         {
             var words = FileOpText.Done(job, tally.Count, tally.Name, _text());
             _finished = new ActivityState

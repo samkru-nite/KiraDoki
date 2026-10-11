@@ -226,6 +226,9 @@ public enum FileJob
     Move,
     Unzip,
     Zip,
+
+    /// <summary>The window said neither copy nor move — deleting uses the same window (user 10-11: "进行中", and no "done").</summary>
+    Unknown,
 }
 
 /// <summary>
@@ -237,7 +240,12 @@ public enum FileJob
 /// <param name="More">"+N" after a name (0 = none).</param>
 public sealed record FileOpText(string Words, string? Detail, int More)
 {
-    public static FileJob JobOf(FileVerb verb, bool unzip) => unzip ? FileJob.Unzip : verb == FileVerb.Move ? FileJob.Move : FileJob.Copy;
+    public static FileJob JobOf(FileVerb verb, bool unzip) => unzip ? FileJob.Unzip : verb switch
+    {
+        FileVerb.Move => FileJob.Move,
+        FileVerb.Copy => FileJob.Copy,
+        _ => FileJob.Unknown,
+    };
 
     /// <summary>While it runs: "复制中 DSC02580.ARW +271".</summary>
     public static FileOpText Running(FileJob job, int? count, string? name, Localization.LanguageStrings text)
@@ -248,6 +256,7 @@ public sealed record FileOpText(string Words, string? Detail, int More)
             FileJob.Move => text.FileMove,
             FileJob.Unzip => text.FileUnzip,
             FileJob.Zip => text.FileZip,
+            FileJob.Unknown => text.CardRunning,
             _ => text.FileCopy,
         };
         return Named(words, count, name, text);
