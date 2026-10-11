@@ -2012,14 +2012,14 @@ public sealed partial class MainWindow : Window
                 var prepared = _dragReady ?? ReadyDragOut(transit);
                 _dragReady = null;
                 var (items, picture) = await prepared;
-                if (items.Count == 0)
+                if (items.Paths.Count == 0)
                 {
                     TaskbarHost.Log("transit: drag — none of the files are there any more");
                     e.Cancel = true;
                     return;
                 }
 
-                e.Data.SetStorageItems(items);
+                DragFiles.Put(e.Data, items);
                 e.AllowedOperations = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy
                     | Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
                 if (picture is { } shot)
@@ -2029,8 +2029,8 @@ public sealed partial class MainWindow : Window
                     e.DragUI.SetContentFromSoftwareBitmap(shot.Bitmap, _grab);
                 }
 
-                TaskbarHost.Log($"transit: drag started with {items.Count}");
-                PickUp([.. items.Select(i => i.Path)]);
+                TaskbarHost.Log($"transit: drag started with {items.Paths.Count}");
+                PickUp([.. items.Paths]);
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)   // async void: anything escaping ends the app
             {

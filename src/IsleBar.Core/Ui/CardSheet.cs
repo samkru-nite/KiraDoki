@@ -102,6 +102,12 @@ public sealed record CardSheet(
     /// <summary>What a gone file's row says ("not found").</summary>
     public string? FileGone { get; init; }
 
+    /// <summary>Under a list cut short: "还有 1800 个" (the copy card shows at most <see cref="CardSheets.MostFiles"/>).</summary>
+    public string? FilesMore { get; init; }
+
+    /// <summary>The tooltip of a row's ✕ (the copy card's: "从剪贴板移除（文件不会被删除）"); null = none.</summary>
+    public string? FileRemove { get; init; }
+
     /// <summary>Several rows dragged at once, "{n}" the count: all files / all folders / both ("3个文件 / 3个文件夹 / 3个项目").</summary>
     public (string Files, string Folders, string Items) FilesDragged { get; init; } = ("{n}", "{n}", "{n}");
 }
@@ -408,8 +414,26 @@ public static class CardSheets
     /// one big number with a grey caption ("78%  约45分钟", "92%  chrome"), else the subject and a grey line; its button opens where
     /// it is dealt with (Windows Settings, Task Manager) — a copied address, files or an image get theirs from the bar.
     /// </summary>
+    /// <summary>The copy card lists at most this many files (user 10-11: thousands of rows would choke the card).</summary>
+    public const int MostFiles = 200;
+
     private static CardSheet SystemCard(ActivityState s, LanguageStrings text, IReadOnlyList<SheetButton> close, string? browser)
     {
+        if (s.Glyph == NoticeGlyphs.Files && s.Files is { Count: > 0 } copied)
+        {
+            // copied files as the transit station's list (user 10-11): ✕ takes one (or the picked ones) off the clipboard, a row
+            // drags out, "加入中转站" keeps the rest
+            return Sheet(s.AppName ?? text.CardSystem, s.Words, SheetTone.Plain, null, null, [], [new(SheetAction.Keep, text.CardAddToTransit), .. close]) with
+            {
+                Layout = SheetLayout.Files,
+                FileGone = text.CardFileGone,
+                FileRemove = text.CardRemoveFromClipboard,
+                FilesDragged = (text.NoticeTransitFiles, text.NoticeTransitFolders, text.NoticeTransitItems),
+                Files = [.. copied.Take(MostFiles).Select(p => new SheetFile(p, TransitShelf.NameOf(p), false))],
+                FilesMore = copied.Count > MostFiles ? Fill(text.CardMoreFiles, (copied.Count - MostFiles).ToString(CultureInfo.InvariantCulture)) : null,
+            };
+        }
+
         IReadOnlyList<SheetButton> buttons = s.Open switch
         {
             null when s.Glyph is NoticeGlyphs.Files or NoticeGlyphs.Image => [new(SheetAction.Keep, text.CardAddToTransit), .. close],

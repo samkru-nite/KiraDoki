@@ -105,7 +105,7 @@ internal sealed class LiftWindow : Window
     public Action<SheetAction>? Act { get; set; }
 
     /// <summary>The transit list's ✕ / a row dragged out (the file's path).</summary>
-    public Action<string>? RemoveFile { get; set; }
+    public Action<IReadOnlyList<string>>? RemoveFile { get; set; }
     public Action<IReadOnlyList<string>>? FileDragged { get; set; }
     public Action<IReadOnlyList<string>>? FileDragStarting { get; set; }
 

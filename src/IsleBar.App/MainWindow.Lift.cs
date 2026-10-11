@@ -99,10 +99,23 @@ public sealed partial class MainWindow
             _lift.Closing = () => _ = Dim(1, LiftMotion.Close, cells: false);
             _lift.KeepsPress = OnTaskCell;
             _lift.Act = OnSheetAction;
-            _lift.RemoveFile = p => _feed.Watchers?.Transit?.Remove([p]);
-            // copied / moved → said on the card, moved away → out of the list (the drag began moments ago: a copy is made after that)
-            _lift.FileDragged = p => _ = AfterDragOut([.. p], DateTimeOffset.UtcNow - TimeSpan.FromSeconds(30));
-            _lift.FileDragStarting = p => _feed.Watchers?.Transit?.Snap(p);
+            _lift.RemoveFile = RemoveListed;
+            // copied / moved → said on the card, moved away → out of the list (the drag began moments ago: a copy is made after that);
+            // the copy card's rows just go where they're dropped (user 10-11)
+            _lift.FileDragged = p =>
+            {
+                if (_lift?.OpenKey == TransitKey)
+                {
+                    _ = AfterDragOut([.. p], DateTimeOffset.UtcNow - TimeSpan.FromSeconds(30));
+                }
+            };
+            _lift.FileDragStarting = p =>
+            {
+                if (_lift?.OpenKey == TransitKey)
+                {
+                    _feed.Watchers?.Transit?.Snap(p);
+                }
+            };
             _lift.Landed = () =>
             {
                 // the card lands back in the pill: after a click on the pill, the pill (kept down since) springs up now; after a
@@ -312,6 +325,25 @@ public sealed partial class MainWindow
         var key = CardStack.KeyOf(kept);
         TaskbarHost.Log($"lift: temporary {key} put down — closed");
         CloseCard(_cards.Cards.FirstOrDefault(c => c.Key == key));
+    }
+
+    /// <summary>
+    /// A file list's ✕: out of the transit station, or off the clipboard (the copy card, user 10-11 — the file itself stays); the last
+    /// one off the clipboard empties it and the copy card goes.
+    /// </summary>
+    private void RemoveListed(IReadOnlyList<string> paths)
+    {
+        if (_lift?.OpenKey == TransitKey)
+        {
+            _feed.Watchers?.Transit?.Remove(paths);
+            return;
+        }
+
+        if (_feed.Watchers?.Clipboard is { } clipboard && clipboard.Remove(paths) == 0 && _shownCard is { } card)
+        {
+            _lift?.Collapse();
+            CloseCard(card);
+        }
     }
 
     /// <summary>The lifted card's icon: as on the big pill — a timer's dial turning on its own, an agent's logo in its own colours.</summary>

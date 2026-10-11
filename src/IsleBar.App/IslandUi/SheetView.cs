@@ -56,7 +56,7 @@ internal sealed class SheetView
     public Action<SheetAction>? Act { get; set; }
 
     /// <summary>A file list's ✕ (the transit station): the file's path.</summary>
-    public Action<string>? RemoveFile { get; set; }
+    public Action<IReadOnlyList<string>>? RemoveFile { get; set; }
 
     /// <summary>A file list's row was dragged out and dropped somewhere: the file's path.</summary>
     public Action<IReadOnlyList<string>>? FileDragged { get; set; }
@@ -444,7 +444,18 @@ internal sealed class SheetView
         var stack = new StackPanel { Spacing = FileRowGap };
         foreach (var file in sheet.Files)
         {
-            stack.Children.Add(FileRowFor(file, sheet.FileGone ?? string.Empty));
+            stack.Children.Add(FileRowFor(file, sheet.FileGone ?? string.Empty, sheet.FileRemove));
+        }
+
+        if (sheet.FilesMore is { } more)
+        {
+            // "还有 1800 个" under a list cut short, lined up with the names
+            var note = Note();
+            note.Text = more;
+            note.FontFamily = Fonts(more).Normal;
+            note.Foreground = Brush(_palette.Hint);
+            note.Margin = new Thickness(FileInset + FileGlyph + 8, 0, 0, 0);
+            stack.Children.Add(note);
         }
 
         var box = Faded(stack, out scroll);
@@ -462,7 +473,7 @@ internal sealed class SheetView
         return box;
     }
 
-    private Border FileRowFor(SheetFile file, string goneWords)
+    private Border FileRowFor(SheetFile file, string goneWords, string? removeTip)
     {
         var grid = new Grid { ColumnSpacing = 8 };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -519,10 +530,18 @@ internal sealed class SheetView
         };
         close.PointerEntered += (_, _) => close.Background = Brush(ButtonFill(1));
         close.PointerExited += (_, _) => close.Background = Brush(Microsoft.UI.Colors.Transparent);
+        if (removeTip is not null)
+        {
+            ToolTipService.SetToolTip(close, removeTip);
+        }
+
         close.Tapped += (_, e) =>
         {
             e.Handled = true;
-            RemoveFile?.Invoke(file.Path);
+            // ✕ on a picked row takes all the picked ones (user 10-11), else just its own
+            RemoveFile?.Invoke(_picked.Contains(file.Path) && _picked.Count > 1
+                ? _fileRows.Where(r => _picked.Contains(r.Path)).Select(r => r.Path).ToArray()
+                : [file.Path]);
         };
         Grid.SetColumn(close, 3);
         grid.Children.Add(close);
@@ -587,15 +606,8 @@ internal sealed class SheetView
                         r.Opacity = paths.Contains(path, StringComparer.OrdinalIgnoreCase) ? DraggedOpacity : 1;
                     }
 
-                    var items = new List<Windows.Storage.IStorageItem>();
-                    foreach (var path in paths)
-                    {
-                        items.Add(Directory.Exists(path)
-                            ? await Windows.Storage.StorageFolder.GetFolderFromPathAsync(path)
-                            : await Windows.Storage.StorageFile.GetFileFromPathAsync(path));
-                    }
-
-                    e.Data.SetStorageItems(items);
+                    // a shortcut can't be a WinUI storage item: then as Explorer's own list (10-11)
+                    Interop.DragFiles.Put(e.Data, await Interop.DragFiles.PrepareAsync(paths));
                     e.AllowedOperations = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy
                         | Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
                 }

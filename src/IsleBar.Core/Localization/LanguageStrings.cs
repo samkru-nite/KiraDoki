@@ -436,6 +436,12 @@ public sealed class LanguageStrings
     /// <summary>What was copied when it is an image.</summary>
     public required string CardImage { get; init; }
 
+    /// <summary>Under a list cut at 200 files: how many more there are (the copy card, 10-11).</summary>
+    public required string CardMoreFiles { get; init; }
+
+    /// <summary>The tooltip of a copied file's ✕: it leaves the clipboard, the file isn't deleted.</summary>
+    public required string CardRemoveFromClipboard { get; init; }
+
     /// <summary>Source names on the card's top row.</summary>
     public required string CardMusic { get; init; }
     public required string CardSystem { get; init; }

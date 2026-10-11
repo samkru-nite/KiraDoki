@@ -225,11 +225,27 @@ public sealed class CardSheetTests
         Assert.Equal(["https://github.com/x"], sheet.Body);
         Assert.Equal([(SheetAction.Open, "用 Microsoft Edge 打开")], sheet.Buttons.Select(b => (b.Action, b.Label)));
 
-        var files = SystemWatch.SystemNotice.Make("已复制 · 3个文件", SystemWatch.NoticeGlyphs.Files, Now);
-        (files.AppName, files.Words, files.Subject, files.Note) = ("剪贴板", "已复制", "a.png +2", @"C:\pics");
-        sheet = CardSheets.Build(Card(CardType.Temporary, files), Now, Zh);
-        Assert.Equal("a.png +2", sheet.Title);
+        var image = SystemWatch.SystemNotice.Make("已复制图片", SystemWatch.NoticeGlyphs.Image, Now);
+        (image.AppName, image.Words, image.Subject) = ("剪贴板", "已复制", "图片");
+        sheet = CardSheets.Build(Card(CardType.Temporary, image), Now, Zh);
+        Assert.Equal("图片", sheet.Title);   // an image: no list (user 10-11)
         Assert.Equal([SheetAction.Keep], sheet.Buttons.Select(b => b.Action));
+    }
+
+    [Fact]
+    public void Copied_files_are_a_list_like_the_transit_station_cut_at_200()
+    {
+        var files = SystemWatch.SystemNotice.Make("已复制 · 203个文件", SystemWatch.NoticeGlyphs.Files, Now);
+        (files.AppName, files.Words, files.Subject) = ("剪贴板", "已复制", "f0.png +202");
+        files.Files = [.. Enumerable.Range(0, 203).Select(i => $@"C:\pics\f{i}.png")];
+        var sheet = CardSheets.Build(Card(CardType.Temporary, files), Now, Zh);
+
+        Assert.Equal(SheetLayout.Files, sheet.Layout);
+        Assert.Equal(200, sheet.Files.Count);
+        Assert.Equal(new SheetFile(@"C:\pics\f0.png", "f0.png", false), sheet.Files[0]);
+        Assert.Equal("还有3个", sheet.FilesMore);
+        Assert.Equal("从剪贴板移除（文件不会被删除）", sheet.FileRemove);
+        Assert.Equal([(SheetAction.Keep, "加入中转站")], sheet.Buttons.Select(b => (b.Action, b.Label)));
     }
 
     [Fact]

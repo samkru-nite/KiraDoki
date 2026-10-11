@@ -181,7 +181,7 @@ public sealed partial class MainWindow
     }
 
     /// <summary>What a drag out of the station needs, got ready as the big pill is pressed (<see cref="DragReady"/>).</summary>
-    private Task<(List<Windows.Storage.IStorageItem> Items, (Windows.Graphics.Imaging.SoftwareBitmap Bitmap, double Scale)? Picture)>? _dragReady;
+    private Task<(DragFiles.Ready Items, (Windows.Graphics.Imaging.SoftwareBitmap Bitmap, double Scale)? Picture)>? _dragReady;
 
     /// <summary>
     /// The big pill pressed while it shows the transit station: the files, the pill's picture and the drop window (shown off-screen)
@@ -200,24 +200,9 @@ public sealed partial class MainWindow
         _dragReady = ReadyDragOut(transit);
     }
 
-    private async Task<(List<Windows.Storage.IStorageItem>, (Windows.Graphics.Imaging.SoftwareBitmap Bitmap, double Scale)?)> ReadyDragOut(
+    private async Task<(DragFiles.Ready Items, (Windows.Graphics.Imaging.SoftwareBitmap Bitmap, double Scale)? Picture)> ReadyDragOut(
         SystemWatch.TransitWatcher transit)
-    {
-        var items = new List<Windows.Storage.IStorageItem>();
-        foreach (var path in transit.Paths)
-        {
-            if (File.Exists(path))
-            {
-                items.Add(await Windows.Storage.StorageFile.GetFileFromPathAsync(path));
-            }
-            else if (Directory.Exists(path))
-            {
-                items.Add(await Windows.Storage.StorageFolder.GetFolderFromPathAsync(path));
-            }
-        }
-
-        return (items, await PillPicture());
-    }
+        => (await DragFiles.PrepareAsync(transit.Paths), await PillPicture());   // a shortcut among them: as Explorer's list (10-11)
 
     /// <summary>The station's drag began: it is lifted off the pills, the card under it comes up.</summary>
     private void PickUp(string[] paths)

@@ -45,7 +45,12 @@ internal sealed class ClipboardWatcher : NoticeWatcher
     private Thread? _thread;
     private uint _threadId;
     private WndProc? _proc;   // keep a reference so the GC doesn't collect it while native code calls it
-    private uint _lastSequence;
+    private volatile uint _lastSequence;
+    private IntPtr _hwnd;
+
+    // the last copy of files (TODO ⑤, user 10-11): its card, to take files off it; Explorer's "Preferred DropEffect" as it was
+    private Core.Island.ActivityState? _card;
+    private byte[]? _effect;
 
     public ClipboardWatcher(Func<Core.Localization.LanguageStrings> strings)
         : base(strings)
@@ -96,6 +101,8 @@ internal sealed class ClipboardWatcher : NoticeWatcher
             UnregisterClass(className, hInstance);
             return;
         }
+
+        _hwnd = hwnd;
 
         try
         {
@@ -156,8 +163,108 @@ internal sealed class ClipboardWatcher : NoticeWatcher
         var card = SystemNotice.Make(notice.Title, notice.Glyph, now, open: notice.Link);
         // the lifted card (TODO ⑤ 掀起卡片适配, user 10-11): "剪贴板", "已复制 / 已剪切" on the right, what it is, a grey line
         (card.AppName, card.Words, card.Subject, card.Note) = (Text.CardClipboard, notice.Words, notice.Subject ?? string.Empty, notice.Note);
+        card.Files = notice.Glyph == NoticeGlyphs.Files ? _files : null;   // the lifted card lists them (user 10-11)
+        _card = card;
         Board.Flash(Key, card, ClipboardRules.ShowFor(notice.Long), now);
     }
+
+    /// <summary>
+    /// Takes <paramref name="paths"/> off the copied files (the copy card's ✕, user 10-11): the clipboard is written again with the
+    /// rest — as a file list, with Explorer's cut mark kept so a paste still moves — and the card says the new count. The files
+    /// themselves stay. Returns how many are left (0: the clipboard is emptied).
+    /// </summary>
+    public int Remove(IReadOnlyCollection<string> paths)
+    {
+        var gone = new HashSet<string>(paths, StringComparer.OrdinalIgnoreCase);
+        var files = _files;
+        var left = files.Where(f => !gone.Contains(f)).ToArray();
+        if (left.Length == files.Length)
+        {
+            return left.Length;
+        }
+
+        if (!Write(left))
+        {
+            Interop.TaskbarHost.Log("clipboard: taking files off failed — the clipboard is someone else's just now");
+            return files.Length;
+        }
+
+        _files = left;
+        if (_card is { } card && left.Length > 0)
+        {
+            var cut = _effect is { Length: >= 4 } e && (BitConverter.ToUInt32(e, 0) & 2) != 0 && (BitConverter.ToUInt32(e, 0) & 1) == 0;
+            card.Title = NoticeText.CopiedFiles(Text, left.Length, cut);   // the pill: "已复制 · 3个文件"
+            card.Files = left;
+        }
+
+        Interop.TaskbarHost.Log($"clipboard: took {files.Length - left.Length} file(s) off, {left.Length} left");
+        return left.Length;
+    }
+
+    /// <summary>The clipboard holds just these files now (none: empty). Our own write: no new copy card for it.</summary>
+    private bool Write(string[] files)
+    {
+        var opened = false;
+        for (var i = 0; i < 5 && !opened; i++)
+        {
+            opened = OpenClipboard(_hwnd);
+            if (!opened)
+            {
+                Thread.Sleep(30);
+            }
+        }
+
+        if (!opened)
+        {
+            return false;
+        }
+
+        try
+        {
+            EmptyClipboard();
+            if (files.Length > 0)
+            {
+                // DROPFILES (20 bytes: where the names start, a point, two flags — wide), then the names, each ending in \0, and one more \0
+                var names = System.Text.Encoding.Unicode.GetBytes(string.Join('\0', files) + "\0\0");
+                var drop = new byte[20 + names.Length];
+                BitConverter.GetBytes(20).CopyTo(drop, 0);
+                BitConverter.GetBytes(1).CopyTo(drop, 16);
+                names.CopyTo(drop, 20);
+                Put(CfHdrop, drop);
+                if (_effect is { } effect && _formatDropEffect != 0)
+                {
+                    Put(_formatDropEffect, effect);
+                }
+            }
+        }
+        finally
+        {
+            CloseClipboard();
+            _lastSequence = GetClipboardSequenceNumber();
+        }
+
+        return true;
+    }
+
+    /// <summary>Hands the clipboard a copy of <paramref name="data"/> (it owns the memory once taken).</summary>
+    private static void Put(uint format, byte[] data)
+    {
+        var handle = GlobalAlloc(GmemMoveable, (UIntPtr)data.Length);
+        if (handle == IntPtr.Zero)
+        {
+            return;
+        }
+
+        var at = GlobalLock(handle);
+        Marshal.Copy(data, 0, at, data.Length);
+        GlobalUnlock(handle);
+        if (SetClipboardData(format, handle) == IntPtr.Zero)
+        {
+            GlobalFree(handle);
+        }
+    }
+
+    private const uint GmemMoveable = 0x0002;
 
     /// <summary>The longest copied text the lifted card shows (a few lines; the pill shows far less).</summary>
     private const int LiftedText = 280;
@@ -200,6 +307,7 @@ internal sealed class ClipboardWatcher : NoticeWatcher
                 var count = (int)DragQueryFile(drop, 0xFFFF_FFFF, null, 0);
                 _files = FilesOf(drop, count);
                 var cut = IsCut();
+                _effect = _formatDropEffect != 0 && IsClipboardFormatAvailable(_formatDropEffect) ? Bytes(GetClipboardData(_formatDropEffect)) : null;
                 var first = _files.FirstOrDefault();
                 // the first file's name ("+2" for the rest), its folder grey under it
                 return count > 0
@@ -544,6 +652,18 @@ internal sealed class ClipboardWatcher : NoticeWatcher
 
     [DllImport("user32.dll")]
     private static extern bool CloseClipboard();
+
+    [DllImport("user32.dll")]
+    private static extern bool EmptyClipboard();
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SetClipboardData(uint format, IntPtr data);
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GlobalAlloc(uint flags, UIntPtr bytes);
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GlobalFree(IntPtr handle);
 
     [DllImport("user32.dll")]
     private static extern bool IsClipboardFormatAvailable(uint format);
