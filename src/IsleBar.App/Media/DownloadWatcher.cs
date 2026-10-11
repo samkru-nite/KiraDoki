@@ -10,7 +10,7 @@ namespace IsleBar.App.Media;
 /// Baidu Netdisk <c>.baiduyun.p.downloading</c>, so we check the download folders every second (the system Downloads folder, or
 /// the ones set in settings): downloading → speed + flowing bar, several at once → one item (<see cref="DownloadTracker"/>),
 /// stopped growing → paused; when the partial file disappears and the finished file appears → done (clicking shows it in Explorer).
-/// Explorer's copy/unzip/compress (<see cref="FileOperationWatcher"/>) runs on the same thread.
+/// Explorer's copy/unzip/compress (<see cref="FileOperationWatcher"/>) and WinRAR's (<see cref="ArchiverWatcher"/>) run on the same thread.
 /// Nothing is written to disk; memory only.
 /// </summary>
 internal sealed partial class DownloadWatcher : IDisposable
@@ -25,6 +25,7 @@ internal sealed partial class DownloadWatcher : IDisposable
     private readonly CancellationTokenSource _stop = new();
     private readonly DownloadTracker _tracker = new();
     private readonly FileOperationWatcher _fileOps;
+    private readonly ArchiverWatcher _archivers;
     private readonly List<ActivityState> _finished = [];
     /// <summary>Files finished since the merged card started; told together when the last one is through.</summary>
     private readonly List<string> _batch = [];
@@ -41,6 +42,7 @@ internal sealed partial class DownloadWatcher : IDisposable
     {
         _settingFolders = folders;
         _fileOps = new FileOperationWatcher(text);
+        _archivers = new ArchiverWatcher(text);
     }
 
     /// <summary>Downloads and file operations to show now (in progress + just finished). Safe to read from any thread.</summary>
@@ -93,6 +95,7 @@ internal sealed partial class DownloadWatcher : IDisposable
             try
             {
                 items.AddRange(_fileOps.Scan(now));
+                items.AddRange(_archivers.Scan(now));   // WinRAR (TODO 四, 10-11)
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException
                                            or System.ComponentModel.Win32Exception or DllNotFoundException or EntryPointNotFoundException)
@@ -105,13 +108,15 @@ internal sealed partial class DownloadWatcher : IDisposable
                 // while Explorer's progress window is up it's looked at 4 times a second: its last words before closing
                 // ("cancelling", how many are left) come and go within a second (user's tests 10-10)
                 var waited = TimeSpan.Zero;
-                while (_fileOps.Busy && waited + Glance < PollInterval)
+                while ((_fileOps.Busy || _archivers.Busy) && waited + Glance < PollInterval)
                 {
                     await Task.Delay(Glance, _stop.Token);
                     waited += Glance;
                     try
                     {
-                        _fileOps.Glance(DateTimeOffset.UtcNow);
+                        var glance = DateTimeOffset.UtcNow;
+                        _fileOps.Glance(glance);
+                        _archivers.Glance(glance);
                     }
                     catch (Exception ex) when (ex is InvalidOperationException or System.Runtime.InteropServices.COMException)
                     {
