@@ -42,7 +42,7 @@ public static class TextFit
     }
 
     /// <summary>
-    /// A <see cref="Fit"/> that returns the prefix (e.g. song title + " · ") and the name (e.g. artist) separately.
+    /// A <see cref="Fit"/> that returns the prefix (e.g. song title + a break) and the name (e.g. artist) separately.
     /// If the prefix plus the first character of the name + "…" fits, only the name is shortened. <b>If the prefix alone overflows, the prefix is
     /// shortened to end in "…" and the name is dropped</b> — previously only the name was shortened and long song titles were cut off abruptly at the edge (user feedback 09-30: apply the ellipsis to the song too).
     /// </summary>
@@ -58,8 +58,8 @@ public static class TextFit
             return (prefix, fitted[prefix.Length..]);
         }
 
-        // trim with joiners like " · " removed
-        var head = TextElements(prefix.TrimEnd().TrimEnd('·').TrimEnd());
+        // trim with the break at its end removed
+        var head = TextElements(prefix.TrimEnd().TrimEnd(Ui.TextGap.Mark).TrimEnd());
         while (head.Count > 1 && measure.Measure(string.Concat(head) + Ellipsis) > maxWidth)
         {
             head.RemoveAt(head.Count - 1);

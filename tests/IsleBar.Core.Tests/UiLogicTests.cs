@@ -77,6 +77,35 @@ public sealed class UiLogicTests
     }
 
     [Fact]
+    public void The_grey_follows_the_pill_and_stays_readable()
+    {
+        // Windows' own taskbars: the grey is what it was before (#C5C5C5 dark, #5C5D5F light), give or take a step of rounding
+        var dark = ThemePalette.ForBackground(PillPalette.For(new Rgb(0x20, 0x20, 0x20)).Rest, new Rgb(0, 0x78, 0xD4));
+        Assert.InRange(ThemePalette.Brightness(dark.Hint), 0xC5 - 2, 0xC5 + 2);
+        var light = ThemePalette.ForBackground(PillPalette.For(new Rgb(0xDF, 0xE6, 0xF3)).Rest, new Rgb(0, 0x78, 0xD4));
+        Assert.InRange(ThemePalette.Brightness(light.Hint), 0x5D - 2, 0x5D + 2);
+
+        // any taskbar colour (the user's red-brown, saturated accents, mid greys): the main text is the clearer of white / near-black
+        // (a mid-tone pill like #C25C4D gets neither to 4.5: white 4.4, black 4.0), the grey reaches 4.5 — or the main colour itself
+        // when even that can't — and is never louder than the main text
+        Rgb[] taskbars =
+        [
+            new(0x40, 0x1A, 0x15), new(0x20, 0x20, 0x20), new(0xDF, 0xE6, 0xF3), new(0x00, 0x78, 0xD4), new(0xC4, 0x2B, 0x1C),
+            new(0x10, 0x7C, 0x10), new(0xFF, 0xB9, 0x00), new(0x80, 0x80, 0x80), new(0x5C, 0x2D, 0x91), new(0x00, 0x99, 0xBC),
+            new(0xE8, 0x11, 0x23), new(0x6B, 0x69, 0xD6), new(0xF7, 0x63, 0x0C), new(0x2D, 0x7D, 0x9A), new(0xFF, 0xFF, 0xFF),
+        ];
+        foreach (var taskbar in taskbars)
+        {
+            var pill = PillPalette.For(taskbar).Rest;
+            var set = ThemePalette.ForBackground(pill, new Rgb(0, 0x78, 0xD4));
+            var main = ThemePalette.Contrast(set.Foreground, pill);
+            Assert.Equal(Math.Max(ThemePalette.Contrast(ThemePalette.LightText, pill), ThemePalette.Contrast(ThemePalette.DarkText, pill)), main);
+            Assert.True(ThemePalette.Contrast(set.Hint, pill) >= Math.Min(ThemePalette.HintContrast, main) - 0.05, $"grey {set.Hint} on {pill}");
+            Assert.True(ThemePalette.Contrast(set.Hint, pill) <= ThemePalette.Contrast(set.Foreground, pill), $"grey louder than main on {pill}");
+        }
+    }
+
+    [Fact]
     public void Accent_colour_is_read_as_reversed_ABGR()
     {
         // 0xFFD47800 → B=0x00, G=0x78, R=0xD4

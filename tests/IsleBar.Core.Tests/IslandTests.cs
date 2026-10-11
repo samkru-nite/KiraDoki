@@ -1,5 +1,6 @@
 using IsleBar.Core.Island;
 using IsleBar.Core.Localization;
+using IsleBar.Core.Ui;
 using Xunit;
 
 namespace IsleBar.Core.Tests;
@@ -282,11 +283,23 @@ public sealed class IslandTests
 
     [Fact]
     public void Title_alone_overflowing_truncates_title_and_drops_artist()
-        => Assert.Equal(("MIDNIGHT…", ""), TextFit.FitParts("MIDNIGHT (long) · ", "Artist", 10, new FakeMeasure()));
+        => Assert.Equal(("MIDNIGHT…", ""), TextFit.FitParts("MIDNIGHT (long)" + TextGap.Break, "Artist", 10, new FakeMeasure()));
 
     [Fact]
     public void Title_fits_so_only_artist_is_truncated()
-        => Assert.Equal(("Deja Vu · ", "RE…"), TextFit.FitParts("Deja Vu · ", "RESCENE", 14, new FakeMeasure()));
+        => Assert.Equal(("Deja Vu" + TextGap.Break, "RE…"), TextFit.FitParts("Deja Vu" + TextGap.Break, "RESCENE", 12, new FakeMeasure()));
+
+    [Fact]
+    public void Text_gap_joins_parts_and_reads_translation_dots()
+    {
+        Assert.Equal("充电中\u001F78%", TextGap.FromDots("充电中 · 78%"));
+        Assert.Equal("已复制", TextGap.FromDots("已复制 · "));
+        Assert.Equal("a\u001Fb", TextGap.Join("a", " ", null, "b "));
+        Assert.Equal("a b", TextGap.Plain("a\u001Fb"));
+        Assert.Equal("ab", TextGap.Letters("a\u001Fb"));
+        Assert.Equal(1, TextGap.Count("a\u001Fb"));
+        Assert.Equal(286, TextGap.Spacing(14));   // 4 dip after a character at 14
+    }
 
     [Fact]
     public void Fits_entirely_left_as_is()

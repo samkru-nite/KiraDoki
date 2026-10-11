@@ -84,7 +84,8 @@ public static class NoticeText
         {
             <= 0 => clock,
             1 => s.NoticeEventTomorrow.Replace("{t}", clock, StringComparison.Ordinal),
-            _ => local.ToString("ddd", culture) + " " + clock,
+            // "周三8:00": no space between Han characters and a number in Chinese (user 10-11)
+            _ => local.ToString("ddd", culture) + (culture.TwoLetterISOLanguageName == "zh" ? string.Empty : " ") + clock,
         };
     }
 

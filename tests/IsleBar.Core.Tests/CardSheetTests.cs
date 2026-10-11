@@ -41,7 +41,7 @@ public sealed class CardSheetTests
         Assert.Equal("Claude Code", sheet.Source);
         Assert.Equal("完成", sheet.State);
         Assert.Equal(SheetTone.Ok, sheet.Tone);
-        Assert.Equal("2 分钟前", sheet.Time);
+        Assert.Equal("2分钟前", sheet.Time);
         Assert.Equal("修复滚动条", sheet.Title);
         Assert.Equal([SheetAction.OpenChat, SheetAction.Close], sheet.Buttons.Select(b => b.Action));
         Assert.True(sheet.Adaptive);
@@ -57,7 +57,7 @@ public sealed class CardSheetTests
 
         Assert.Equal("Codex", sheet.Source);
         Assert.Equal(SheetTone.Plain, sheet.Tone);   // nobody is waiting on it
-        Assert.Equal("已运行 3 分钟", sheet.Time);
+        Assert.Equal("已运行3分钟", sheet.Time);
         Assert.Equal([SheetAction.OpenChat], sheet.Buttons.Select(b => b.Action));
         Assert.True(sheet.Adaptive);   // user 10-09: what it says shouldn't be cut
     }
@@ -82,7 +82,7 @@ public sealed class CardSheetTests
     public void Time_reads_just_now_then_minutes_then_the_clock()
     {
         Assert.Equal("刚刚", CardSheets.Ago(Now.AddSeconds(-20), Now, Zh));
-        Assert.Equal("59 分钟前", CardSheets.Ago(Now.AddMinutes(-59), Now, Zh));
+        Assert.Equal("59分钟前", CardSheets.Ago(Now.AddMinutes(-59), Now, Zh));
         Assert.Equal(Now.AddMinutes(-61).ToLocalTime().ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture), CardSheets.Ago(Now.AddMinutes(-61), Now, Zh));
     }
 
@@ -96,7 +96,7 @@ public sealed class CardSheetTests
         Assert.Equal("18:42", sheet.Number);
         Assert.Equal("剩余", sheet.NumberCaption);
         Assert.Equal("进行中", sheet.State);
-        Assert.Equal("25 分钟", sheet.Time);
+        Assert.Equal("25分钟", sheet.Time);
         Assert.StartsWith(start.ToLocalTime().ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture), sheet.Progress!.Left, StringComparison.Ordinal);
         Assert.EndsWith("结束", sheet.Progress.Right, StringComparison.Ordinal);
         Assert.Equal([SheetAction.TimerPause, SheetAction.TimerCancel], sheet.Buttons.Select(b => b.Action));
@@ -127,7 +127,7 @@ public sealed class CardSheetTests
 
         Assert.Null(sheet.Progress);
         Assert.Equal("下载", sheet.Source);
-        Assert.Equal(["已下载 13.0 MB · 3.0 MB/s"], sheet.Body);
+        Assert.Equal(["已下载 13.0 MB\u001F3.0 MB/s"], sheet.Body);
         Assert.Equal([SheetAction.OpenFolder, SheetAction.Hide], sheet.Buttons.Select(b => b.Action));
     }
 
@@ -220,8 +220,8 @@ public sealed class CardSheetTests
         Assert.Null(sheet.Title);
         var blocks = CardMarkdown.Parse(sheet.Body[0]);
         Assert.Equal(
-            [(MdKind.Heading, "Edge · 3.0 MB/s"), (MdKind.Bullet, "report.pdf · 已下载 13.0 MB"), (MdKind.Bullet, "已下载 1.0 MB"),
-             (MdKind.Heading, "百度网盘 · 已暂停"), (MdKind.Bullet, "my_*draft*.zip · 已下载 5.0 MB")],
+            [(MdKind.Heading, "Edge\u001F3.0 MB/s"), (MdKind.Bullet, "report.pdf\u001F已下载 13.0 MB"), (MdKind.Bullet, "已下载 1.0 MB"),
+             (MdKind.Heading, "百度网盘\u001F已暂停"), (MdKind.Bullet, "my_*draft*.zip\u001F已下载 5.0 MB")],
             blocks.Select(b => (b.Kind, b.Text)));
     }
 

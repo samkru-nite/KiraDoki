@@ -138,6 +138,6 @@ public class FileOperationsTests
         var text = FileOpText.Running(FileJob.Copy, 273, "DSC02622.ARW", Zh);
         Assert.Equal(("复制中", "DSC02622.ARW", 272), (text.Words, text.Detail, text.More));
         var moving = FileOpText.Running(FileJob.Move, 273, null, Zh);
-        Assert.Equal(("移动中", "273 个", 0), (moving.Words, moving.Detail, moving.More));
+        Assert.Equal(("移动中", "273个", 0), (moving.Words, moving.Detail, moving.More));
     }
 }

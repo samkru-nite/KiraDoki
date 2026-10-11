@@ -179,9 +179,9 @@ internal sealed class SheetView
             }
         }
 
-        if (_footnote is not null && _footnote.Text != (next.Footnote ?? string.Empty))
+        if (_footnote is not null && Words(_footnote) != (next.Footnote ?? string.Empty))
         {
-            _footnote.Text = next.Footnote ?? string.Empty;   // an agent's next step: in place, many a minute
+            SetWords(_footnote, next.Footnote ?? string.Empty);   // an agent's next step: in place, many a minute
         }
 
         if (_number is not null)
@@ -290,7 +290,7 @@ internal sealed class SheetView
         return row;
     }
 
-    /// <summary>"完成 · 2 分钟前": the state word bold in its colour, then the time in grey.</summary>
+    /// <summary>"完成 2分钟前": the state word bold in its colour, then the time in grey after the gap (<see cref="TextGap"/>).</summary>
     private void ShowState(CardSheet sheet)
     {
         _stateText.Inlines.Clear();
@@ -302,8 +302,10 @@ internal sealed class SheetView
 
         if (sheet.Time is { } time)
         {
-            _stateText.Inlines.Add(new Run { Text = sheet.State is null ? time : $" · {time}", FontFamily = normal, Foreground = Brush(_palette.Hint) });
+            _stateText.Inlines.Add(new Run { Text = sheet.State is null ? time : TextGap.Break + time, FontFamily = normal, Foreground = Brush(_palette.Hint) });
         }
+
+        GapRuns.Spread(_stateText.Inlines, _stateText.FontSize);
     }
 
     private FrameworkElement TextMiddle(CardSheet sheet, out ScrollViewer scroll)
@@ -571,8 +573,8 @@ internal sealed class SheetView
     private TextBlock MdNote(string text, Color color)
     {
         var t = Note();
-        t.Text = text;
         t.FontFamily = Fonts(text).Normal;
+        SetWords(t, text);
         t.Foreground = Brush(color);
         t.TextWrapping = TextWrapping.Wrap;
         t.VerticalAlignment = VerticalAlignment.Top;
@@ -927,7 +929,6 @@ internal sealed class SheetView
         var (normal, bold) = Fonts(text);
         var t = new TextBlock
         {
-            Text = text,
             FontFamily = strong ? bold : normal,
             FontWeight = strong ? FontWeights.Medium : FontWeights.Normal,
             FontSize = CardSheets.TextSize,
@@ -941,6 +942,10 @@ internal sealed class SheetView
         {
             SetWords(t, text);
         }
+        else
+        {
+            SetWords(t, text);   // "Chrome 已下载 12 MB": a break is a 4 dip gap
+        }
 
         return t;
     }
@@ -948,7 +953,10 @@ internal sealed class SheetView
     /// <summary>A strong text's words (its <c>Text</c> is split into runs, see <see cref="SetWords"/>).</summary>
     private sealed record StrongWords(string Text);
 
-    private static string Words(TextBlock t) => t.Tag is StrongWords s ? s.Text : t.Text;
+    /// <summary>A plain text's words as given (with its breaks — its <c>Text</c> reads without them).</summary>
+    private sealed record PlainWords(string Text);
+
+    private static string Words(TextBlock t) => t.Tag switch { StrongWords s => s.Text, PlainWords p => p.Text, _ => t.Text };
 
     /// <summary>
     /// Puts <paramref name="text"/> in <paramref name="t"/>. A strong one (a title) is split: Han characters, kana and full-width
@@ -960,7 +968,8 @@ internal sealed class SheetView
     {
         if (t.Tag is not StrongWords)
         {
-            t.Text = text;
+            t.Tag = new PlainWords(text);
+            GapRuns.Fill(t, text);
             return;
         }
 
@@ -981,6 +990,8 @@ internal sealed class SheetView
                 : new Run { Text = piece });
             start = i;
         }
+
+        GapRuns.Spread(t.Inlines, t.FontSize);
     }
 
     /// <summary>Drawn by a CJK font, not Pretendard (which has Latin, digits and Hangul): Han, kana, CJK and full-width marks.</summary>

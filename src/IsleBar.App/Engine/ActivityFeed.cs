@@ -532,7 +532,7 @@ internal sealed class ActivityFeed : IDisposable
             return;
         }
 
-        var notice = SystemNotice.Make("Claude Code · Codex", NoticeGlyphs.Bell, DateTimeOffset.UtcNow,
+        var notice = SystemNotice.Make("Claude Code / Codex", NoticeGlyphs.Bell, DateTimeOffset.UtcNow,
             msg: _text().ConnectAgentsCard, open: HookConnector.Command);
         notice.Stage = "expand";
         notice.Name = "IsleBar";

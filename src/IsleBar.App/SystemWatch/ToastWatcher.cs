@@ -185,7 +185,7 @@ internal sealed class ToastWatcher(Func<LanguageStrings> strings) : NoticeWatche
                 // Content first: the notice's own title (sender, subject) in bold, then the body and the app name dim —
                 // leading with the app name meant only "Windows PowerShell" showed before the notice was gone (user feedback 09-30)
                 notice,
-                NoticeLengths.ToRead(string.Join(" · ", new[] { notice.Title, notice.Msg, notice.Name }.Where(t => !string.IsNullOrWhiteSpace(t)))),   // as the pill writes it; until it has scrolled through once (6–10 s, user 10-10)
+                NoticeLengths.ToRead(Core.Ui.TextGap.Plain(Core.Ui.TextGap.Join(notice.Title, notice.Msg, notice.Name))),   // as the pill writes it; until it has scrolled through once (6–10 s, user 10-10)
                 now);
         }
 

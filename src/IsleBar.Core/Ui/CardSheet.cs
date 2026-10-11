@@ -160,7 +160,7 @@ public static class CardSheets
             // the newest notification, then the ones merged into the card before it, newest first (user 10-10: "+N" on the pill)
             ActivityKind.Notice when s.Stage == "expand" => Sheet(
                 s.Name ?? text.CardSystem, null, SheetTone.Plain, Ago(Start(s), now, text), s.Title,
-                [s.Msg, .. s.Earlier.Reverse().Select(e => string.Join(" · ", new[] { e.Title, e.Msg }.Where(t => !string.IsNullOrWhiteSpace(t))))],
+                [s.Msg, .. s.Earlier.Reverse().Select(e => TextGap.Join(e.Title, e.Msg))],
                 [new(SheetAction.Open, text.MenuOpen), .. close]),
             ActivityKind.Notice when s.Glyph == NoticeGlyphs.Drive => Drive(card, text),
             ActivityKind.Notice when s.Glyph == NoticeGlyphs.Transit => Transit(s, text),
@@ -169,11 +169,12 @@ public static class CardSheets
                 text.CardSystem, s.Title,
                 s.State == SystemWatch.SystemNotice.WaitState ? SheetTone.Waiting : s.RunState == ActivityRunState.Done ? SheetTone.Ok : SheetTone.Plain,
                 null, s.Msg ?? s.Title, [s.Name], close),
+            // "充电中 78%": a translation's " · " is a gap (TODO ⑤ 全岛排版)
             ActivityKind.Notice => Sheet(
-                text.CardSystem, null, SheetTone.Plain, Ago(Start(s), now, text), s.Title, [s.Msg, s.Name], close),
+                text.CardSystem, null, SheetTone.Plain, Ago(Start(s), now, text), TextGap.FromDots(s.Title), [s.Msg, s.Name], close),
             _ => Sheet(
                 text.CardSystem, s.RunState == ActivityRunState.Error ? text.Fail : null, SheetTone.Bad, Ago(Start(s), now, text),
-                s.Title ?? s.Name, [s.Msg], close),
+                s.Title is null ? s.Name : TextGap.FromDots(s.Title), [s.Msg], close),
         };
     }
 
@@ -273,8 +274,7 @@ public static class CardSheets
         {
             // one download: where from, how much came, how fast (F2b: the source, 10-09)
             var source = s.Downloads is [{ } only] ? only.Source ?? text.CardBrowser : null;
-            lines.Add((source is null ? string.Empty : source + " · ") + Fill(text.CardDownloaded, Bytes(bytes))
-                      + (s.Speed is { } speed ? $" · {Bytes((long)speed)}/s" : string.Empty));
+            lines.Add(TextGap.Join(source, Fill(text.CardDownloaded, Bytes(bytes)), s.Speed is { } speed ? $"{Bytes((long)speed)}/s" : null));
         }
 
         SheetProgress? bar = s.Fraction is { } f && running ? new SheetProgress(f, null, $"{f * 100:0}%") : null;
@@ -300,11 +300,11 @@ public static class CardSheets
         {
             var speeds = group.Where(d => d.Speed is not null).Select(d => d.Speed!.Value).ToList();
             var how = group.All(d => d.Paused) ? text.Paused : speeds.Count > 0 ? $"{Bytes((long)speeds.Sum())}/s" : null;
-            md.Append("## ").Append(Escape(group.Key)).Append(how is null ? string.Empty : " · " + how).Append('\n');
+            md.Append("## ").Append(TextGap.Join(Escape(group.Key), how)).Append('\n');
             foreach (var d in group)
             {
-                md.Append("- ").Append(d.Name is { } n ? Escape(n) + " · " : string.Empty).Append(Fill(text.CardDownloaded, Bytes(d.Size)))
-                  .Append(d.Paused && !group.All(x => x.Paused) ? " · " + text.Paused : string.Empty).Append('\n');
+                md.Append("- ").Append(TextGap.Join(d.Name is { } n ? Escape(n) : null, Fill(text.CardDownloaded, Bytes(d.Size)),
+                    d.Paused && !group.All(x => x.Paused) ? text.Paused : null)).Append('\n');
             }
 
             md.Append('\n');

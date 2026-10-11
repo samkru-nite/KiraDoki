@@ -142,7 +142,6 @@ public sealed partial class PillView : UserControl
         ShowLeadPause(state.Kind == ActivityKind.Music && state.Stage == "paused");
         SetEqualizer(state.Kind == ActivityKind.Music && state.Stage != "paused");
         var now = DateTimeOffset.UtcNow;
-        _join = " · ";
         // An agent card shows just the session's name (user 10-10). Without a name, "Claude done"
         var name = state.Name;
         if (state.Kind == ActivityKind.Timer)
@@ -155,28 +154,26 @@ public sealed partial class PillView : UserControl
         }
         else if (state is { Kind: ActivityKind.Notice, Look: not null })
         {
-            // the calendar (user 10-10): "Ended Maths" — the words first, the event's name grey after a gap, no " · " (its time is
-            // on the lifted card only)
-            _join = Gap;
-            ShowIslandText(state, (state.Title ?? string.Empty) + (string.IsNullOrWhiteSpace(state.Msg) ? string.Empty : Gap), state.Msg ?? string.Empty);
+            // the calendar (user 10-10): "Ended Maths" — the words first, the event's name grey after a gap (its time is on the
+            // lifted card only)
+            ShowIslandText(state, Head(state.Title, state.Msg), state.Msg ?? string.Empty);
         }
         else if (state is { Kind: ActivityKind.Transfer, Words: { } words })
         {
-            // Explorer's copies (10-10): "复制 DSC02580.ARW +271", "已复制 5 个 跳过 149 个" — the state first, the rest grey after a gap
-            _join = Gap;
-            ShowIslandText(state, words + (string.IsNullOrEmpty(name) ? string.Empty : Gap), name ?? string.Empty,
-                state.MoreCount > 0 ? $" +{state.MoreCount}" : string.Empty);
+            // Explorer's copies (10-10): "复制中 DSC02580.ARW +271" — the state first, the rest grey after a gap
+            ShowIslandText(state, Head(words, name), name ?? string.Empty, More(state));
         }
         else if (state.Kind == ActivityKind.Notice)
         {
-            // brief notice: "Charging · 78%" — title is the key part (bold), description dimmed
-            var tail = string.Join(" · ", new[] { state.Msg, state.Name }.Where(t => !string.IsNullOrWhiteSpace(t)));
-            ShowIslandText(state, (state.Title ?? string.Empty) + (tail.Length == 0 ? string.Empty : " · "), tail);
+            // brief notice: "充电中 78%" — the title is the key part (bold), the rest dimmed after a gap; a translation's " · " is a
+            // break too ("Charging · {p}%")
+            var tail = TextGap.Join(state.Msg, state.Name);
+            ShowIslandText(state, Head(TextGap.FromDots(state.Title), tail), tail);
         }
         else if (state.Kind == ActivityKind.Music)
         {
-            // music: title is the key part (bold), artist dimmed — "title · artist"
-            ShowIslandText(state, state.Msg is null ? string.Empty : (name ?? string.Empty) + " · ", state.Msg ?? name ?? string.Empty);
+            // music: title is the key part, artist dimmed after a gap
+            ShowIslandText(state, state.Msg is null ? string.Empty : Head(name, state.Msg), state.Msg ?? name ?? string.Empty);
         }
         else if (state.Kind == ActivityKind.AgentWorking)
         {
@@ -193,7 +190,7 @@ public sealed partial class PillView : UserControl
         {
             // a download whose name the browser hasn't given yet ("Unconfirmed 123"), or Explorer's progress window (it names no file)
             name ??= state.Kind != ActivityKind.Transfer ? null : state.Stage == "copy" ? Host.Text.FileTransfer : Host.Text.Downloading;
-            ShowIslandText(state, PrefixFor(state, now), name ?? string.Empty, state.MoreCount > 0 ? $"  +{state.MoreCount}" : string.Empty);
+            ShowIslandText(state, PrefixFor(state, now), name ?? string.Empty, More(state));
         }
         IslandText.Foreground = BrushOf(ForegroundFor(state));
     }
@@ -601,56 +598,31 @@ public sealed partial class PillView : UserControl
     }
 
     /// <summary>
-    /// Island text is painted two ways: the key part (e.g. "42%", "Claude done", "18:42", track title) bold,
-    /// the rest (e.g. "· 12s", "· session name", file name) dimmed — the same look as the desktop mockup.
-    /// If the prefix contains " · ", everything before it is the key part. Without a prefix (music), the whole name is the key part.
+    /// Island text is painted two ways: the key part (e.g. "42%", "Claude done", "已复制", track title) bold, the rest (e.g. "6s",
+    /// the session's name, the file's name) dimmed, <see cref="TextGap.Width"/> between parts — no " · " (TODO ⑤ 全岛排版, user
+    /// 10-11). The prefix's first part is the key part; without a prefix (agent names, a done card's sentence) the whole rest is.
     /// </summary>
     private void SetStyledText(TextBlock block, string prefix, string rest)
     {
-        // "45% · 6s  " + name → bold "45%" / dimmed " · 6s · name";  "Claude done · " + name → "Claude done" / " · name"
-        var head = prefix.Trim().TrimEnd('·').TrimEnd();
-        string main, hint;
-        if (head.Length == 0)
-        {
-            (main, hint) = (rest, string.Empty);   // music: the whole title is the key part
-        }
-        else
-        {
-            var dot = head.IndexOf(" · ", StringComparison.Ordinal);
-            main = dot >= 0 ? head[..dot] : head;
-            var parts = new List<string>();
-            if (dot >= 0)
-            {
-                parts.Add(head[(dot + 3)..]);
-            }
-
-            if (rest.Trim().Length > 0)
-            {
-                parts.Add(rest.Trim());
-            }
-
-            hint = parts.Count > 0 ? _join + string.Join(_join, parts) : string.Empty;
-        }
-
+        // "45%␟6s␟" + name → bold "45%" / dimmed "6s", "name";  "" + name → bold "name"
+        var head = prefix.Trim().Trim(TextGap.Mark).Trim();
+        var whole = head.Length == 0;
+        var text = whole ? rest.Trim() : TextGap.Join([.. TextGap.Parts(head), .. TextGap.Parts(rest)]);
         block.Inlines.Clear();
-        block.Inlines.Add(_islandStrong
-            ? new Microsoft.UI.Xaml.Documents.Run { Text = main, FontFamily = _islandBold, FontWeight = Microsoft.UI.Text.FontWeights.Medium }
-            : new Microsoft.UI.Xaml.Documents.Run { Text = main });
-        if (hint.Trim().Length > 0)
-        {
-            block.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run
-            {
-                Text = hint,
-                Foreground = BrushOf(Host.Theme.Hint),
-            });
-        }
+        GapRuns.Add(block.Inlines, text, block.FontSize, (i, words) => whole || i == 0
+            ? _islandStrong
+                ? new Microsoft.UI.Xaml.Documents.Run { Text = words, FontFamily = _islandBold, FontWeight = Microsoft.UI.Text.FontWeights.Medium }
+                : new Microsoft.UI.Xaml.Documents.Run { Text = words }
+            : new Microsoft.UI.Xaml.Documents.Run { Text = words, Foreground = BrushOf(Host.Theme.Hint) });
     }
 
-    /// <summary>Between the key part and the rest: " · ", or <see cref="Gap"/> on a calendar card (set by <see cref="Render"/>).</summary>
-    private string _join = " · ";
+    /// <summary>The key part, followed by a break when something comes after it.</summary>
+    private static string Head(string? key, string? after)
+        => string.IsNullOrWhiteSpace(after) ? key ?? string.Empty : (key ?? string.Empty) + TextGap.Break;
 
-    /// <summary>One space — the gap between a calendar card's words and the event's name (user 10-10: no " · "; two spaces, 9 dip of ink to ink, was too wide — one is about 5).</summary>
-    private const string Gap = " ";
+    /// <summary>"+3" more downloads / files after the name, after a gap; empty when there are none.</summary>
+    private static string More(ActivityState state)
+        => state.MoreCount > 0 ? TextGap.Break + "+" + state.MoreCount.ToString(System.Globalization.CultureInfo.InvariantCulture) : string.Empty;
 
     /// <summary>
     /// Resting look: end with "…" so text isn't chopped off abruptly at the edge of the slot (user feedback 09-30: suggested using an ellipsis).
@@ -677,11 +649,10 @@ public sealed partial class PillView : UserControl
         var left = TimerParser.Elapsed(state, now) ?? TimerRemaining(state, now);   // a stopwatch counts up
         var running = TimerParser.IsStopwatch(state) || (left is { } l && l > TimeSpan.Zero);
         IslandText.Inlines.Clear();
-        IslandText.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run { Text = label, FontFamily = _islandBold, FontWeight = Microsoft.UI.Text.FontWeights.Medium });
-        if (!running)
-        {
-            IslandText.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run { Text = "  " + Host.Text.Done });
-        }
+        // "计时器 完成": the label bold, a gap, the word
+        GapRuns.Add(IslandText.Inlines, running ? label : TextGap.Join(label, Host.Text.Done), IslandText.FontSize, (i, words) => i == 0
+            ? new Microsoft.UI.Xaml.Documents.Run { Text = words, FontFamily = _islandBold, FontWeight = Microsoft.UI.Text.FontWeights.Medium }
+            : new Microsoft.UI.Xaml.Documents.Run { Text = words });
         ShowClockDigits(running ? FormatClock(left!.Value) : null);
         IslandText.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
         PlaceText();
@@ -1340,8 +1311,8 @@ public sealed partial class PillView : UserControl
     internal string PrefixFor(ActivityState state, DateTimeOffset now) => state.Kind switch
     {
         ActivityKind.Timer => TimerRemaining(state, now) is { } left && left > TimeSpan.Zero
-            ? $"{FormatClock(left)}  "   // paused shows as the left ⏸ icon + dimmed text (no emoji, it renders as a blue box)
-            : $"{Host.Text.Done}  ",
+            ? FormatClock(left) + TextGap.Break   // paused shows as the left ⏸ icon + dimmed text (no emoji, it renders as a blue box)
+            : Host.Text.Done + TextGap.Break,
         ActivityKind.Music => "",   // paused shows as the left ⏸ icon + dimmed text
         // Just the session's name, every stage (user 10-10): "Claude done · " took ~90 of the ~106 dip and hid the name. The logo
         // says which agent, the border (and the button) which stage. No name: "Claude done" etc. as before.
@@ -1350,14 +1321,14 @@ public sealed partial class PillView : UserControl
         ActivityKind.AgentWorking => string.IsNullOrEmpty(state.Name) ? $"{state.AgentLabel} {Host.Text.Working}" : "",
         _ => state.RunState switch
         {
-            ActivityRunState.Done => $"{Host.Text.Done}  ",
-            ActivityRunState.Error => $"{Host.Text.Fail}  ",
-            _ when state.IsPausedTransfer => $"{Host.Text.Paused}  ",
+            ActivityRunState.Done => Host.Text.Done + TextGap.Break,
+            ActivityRunState.Error => Host.Text.Fail + TextGap.Break,
+            _ when state.IsPausedTransfer => Host.Text.Paused + TextGap.Break,
             // browser download: speed (summed over all of them); the bar shows how far, when the total is known. The amount
             // received said little without a total, so the first second just shows the name
-            _ when state.Stage is "download" or "copy" => state.Speed is { } speed ? $"{FormatBytes((long)speed)}/s  " : "",
-            _ when state.IsIndeterminate => $"{(state.IsFinishing ? Host.Text.Finishing : Host.Text.Prep)}  ",
-            _ => $"{state.Fraction * 100:0}%{TransferEta(state, now)}  ",
+            _ when state.Stage is "download" or "copy" => state.Speed is { } speed ? $"{FormatBytes((long)speed)}/s" + TextGap.Break : "",
+            _ when state.IsIndeterminate => (state.IsFinishing ? Host.Text.Finishing : Host.Text.Prep) + TextGap.Break,
+            _ => $"{state.Fraction * 100:0}%{TransferEta(state, now)}" + TextGap.Break,
         },
     };
 
@@ -1375,7 +1346,7 @@ public sealed partial class PillView : UserControl
     private readonly List<(DateTimeOffset At, long Done)> _speedSamples = [];
 
     /// <summary>
-    /// Transfer remaining time " · 1m 20s". Speed is measured from the amount moved in the last 5 seconds (same as the Python version).
+    /// Transfer remaining time "1m 20s" after a break. Speed is measured from the amount moved in the last 5 seconds (same as the Python version).
     /// Empty text if the speed isn't known yet.
     /// </summary>
     private string TransferEta(ActivityState state, DateTimeOffset now)
@@ -1404,7 +1375,7 @@ public sealed partial class PillView : UserControl
 
         var seconds = (_speedSamples[^1].At - _speedSamples[0].At).TotalSeconds;
         var speed = seconds > 0 ? (_speedSamples[^1].Done - _speedSamples[0].Done) / seconds : 0;
-        return speed > 0 ? $" · {Host.Text.FormatDuration((state.Total.Value - done) / speed)}" : string.Empty;
+        return speed > 0 ? TextGap.Break + Host.Text.FormatDuration((state.Total.Value - done) / speed) : string.Empty;
     }
 
     /// <summary>Timer bar: fraction of time elapsed (stops in place when paused).</summary>

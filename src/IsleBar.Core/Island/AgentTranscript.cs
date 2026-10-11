@@ -142,7 +142,7 @@ public static class AgentTranscript
         var detail = Str(input, "description")
                      ?? FileName(Str(input, "file_path") ?? Str(input, "notebook_path"))
                      ?? Str(input, "pattern") ?? Str(input, "command") ?? Str(input, "url") ?? Str(input, "query");
-        return Cut(detail is null ? name : $"{name} · {FirstLine(detail)}");
+        return Cut(detail is null ? name : Ui.TextGap.Join(name, FirstLine(detail)));   // "Bash  ls -la": a gap, no " · "
     }
 
     private static void Codex(JsonElement root, ref string? answer, ref string? step)

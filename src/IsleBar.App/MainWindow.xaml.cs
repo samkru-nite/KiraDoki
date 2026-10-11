@@ -2178,9 +2178,9 @@ public sealed partial class MainWindow : Window
             ActivityKind.Music => (s.Name, s.Stage == "paused" ? _text.Paused : s.Msg),
             ActivityKind.Timer => (s.Name ?? _text.Timer, Big.PrefixFor(s, now).Trim()),
             ActivityKind.Transfer => (s.Name ?? (s.Stage == "copy" ? _text.FileTransfer : _text.Downloading), Big.PrefixFor(s, now).Trim()),
-            _ => (s.Title, s.Name ?? s.Msg),
+            _ => (TextGap.FromDots(s.Title), s.Name ?? s.Msg),
         };
-        var line = string.Join(" · ", new[] { name, state }.Where(t => !string.IsNullOrWhiteSpace(t)));
+        var line = TextGap.Plain(TextGap.Join(name, state));   // a menu draws plain text: a break is a space
         return line.Length <= 48 ? line : line[..47] + "…";
     }
 

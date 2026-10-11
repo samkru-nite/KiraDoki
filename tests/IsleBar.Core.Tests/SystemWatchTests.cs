@@ -93,8 +93,8 @@ public sealed class SystemWatchTests
         Assert.Equal("배터리 · 76%", NoticeText.OnBattery(Ko, 76));
         Assert.Equal("배터리 20% · 약 45분", NoticeText.BatteryLow(Ko, 20, TimeSpan.FromMinutes(45)));
         Assert.Equal("배터리 10% · 약 1시간 20분", NoticeText.BatteryLow(Ko, 10, TimeSpan.FromMinutes(80.5)));
-        Assert.Equal("에어팟 · 연결됨", NoticeText.Connected(Ko, "에어팟"));
-        Assert.Equal("에어팟 · 연결 끊김", NoticeText.Disconnected(Ko, "에어팟"));
+        Assert.Equal("연결됨 · 에어팟", NoticeText.Connected(Ko, "에어팟"));
+        Assert.Equal("연결 끊김 · 에어팟", NoticeText.Disconnected(Ko, "에어팟"));
         Assert.Equal("복사됨 · 안녕", NoticeText.Copied(Ko, "안녕"));
         Assert.Equal("파일 복사됨", NoticeText.CopiedFiles(Ko, 1));
         Assert.Equal("파일 3개 복사됨", NoticeText.CopiedFiles(Ko, 3));
@@ -710,11 +710,11 @@ public sealed class SystemWatchTests
         DateTimeOffset noon = new DateTime(2026, 10, 12, 12, 0, 0, DateTimeKind.Local);   // a Monday
         string Clock(int hour) => new DateTime(2026, 10, 12, hour, 0, 0).ToString("t", culture);   // "08:00" in zh-CN
 
-        Assert.Equal("10 分钟后", NoticeText.EventWhen(zh, noon.AddMinutes(10), noon, culture));
-        Assert.Equal("60 分钟后", NoticeText.EventWhen(zh, noon.AddHours(1), noon, culture));
+        Assert.Equal("10分钟后", NoticeText.EventWhen(zh, noon.AddMinutes(10), noon, culture));
+        Assert.Equal("60分钟后", NoticeText.EventWhen(zh, noon.AddHours(1), noon, culture));
         Assert.Equal(Clock(14), NoticeText.EventWhen(zh, noon.AddHours(2), noon, culture));
-        Assert.Equal("明天 " + Clock(8), NoticeText.EventWhen(zh, noon.AddHours(20), noon, culture));
-        Assert.Equal("周三 " + Clock(8), NoticeText.EventWhen(zh, noon.AddHours(44), noon, culture));
+        Assert.Equal("明天" + Clock(8), NoticeText.EventWhen(zh, noon.AddHours(20), noon, culture));
+        Assert.Equal("周三" + Clock(8), NoticeText.EventWhen(zh, noon.AddHours(44), noon, culture));
     }
 
     [Fact]

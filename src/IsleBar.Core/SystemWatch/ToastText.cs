@@ -101,10 +101,10 @@ public static class ToastText
         }
     }
 
-    /// <summary>The single line shown on the island: joins multiple texts with " · " and cuts it if too long.</summary>
+    /// <summary>The single line shown on the island: joins multiple texts with a gap (<see cref="Ui.TextGap"/>, no " · ") and cuts it if too long.</summary>
     public static string Line(IReadOnlyList<string> texts, int max = 120)
     {
-        var line = string.Join(" · ", texts);
+        var line = Ui.TextGap.Join([.. texts]);
         return line.Length <= max ? line : line[..max].TrimEnd() + "…";
     }
 }

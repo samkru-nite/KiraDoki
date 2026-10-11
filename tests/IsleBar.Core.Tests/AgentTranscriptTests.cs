@@ -25,7 +25,7 @@ public class AgentTranscriptTests
         var tail = AgentTranscript.FromTail(text, AgentKind.Claude);
 
         Assert.Equal("改好了。\n\n构建通过。", tail.Answer);
-        Assert.Equal("Edit · CardSheet.cs", tail.Step);
+        Assert.Equal("Edit\u001FCardSheet.cs", tail.Step);
     }
 
     [Fact]
@@ -38,7 +38,7 @@ public class AgentTranscriptTests
 
         var tail = AgentTranscript.FromTail(text, AgentKind.Claude);
 
-        Assert.Equal("PowerShell · Build the app", tail.Step);
+        Assert.Equal("PowerShell\u001FBuild the app", tail.Step);
         Assert.Null(tail.Answer);
     }
 
