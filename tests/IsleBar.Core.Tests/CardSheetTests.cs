@@ -174,6 +174,18 @@ public sealed class CardSheetTests
     }
 
     [Fact]
+    public void A_notification_with_nothing_to_open_has_no_open_button()
+    {
+        ActivityState Toast(string? open) => new()
+        {
+            RawKind = ActivityState.KindNotice, Stage = "expand", Name = "QQ", Title = "张伟", Msg = "在吗", Open = open, T0 = Unix(Now),
+        };
+
+        Assert.DoesNotContain(CardSheets.Build(Card(CardType.Temporary, Toast(null)), Now, Zh).Buttons, b => b.Action == SheetAction.Open);   // QQ (TODO 四, 10-11)
+        Assert.Contains(CardSheets.Build(Card(CardType.Temporary, Toast("ms-actioncenter:")), Now, Zh).Buttons, b => b.Action == SheetAction.Open);
+    }
+
+    [Fact]
     public void The_mic_card_lists_every_program_using_it()
     {
         ActivityState Mic(params string[] apps) => new()

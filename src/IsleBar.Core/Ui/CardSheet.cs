@@ -164,7 +164,7 @@ public static class CardSheets
             ActivityKind.Notice when s.Stage == "expand" => Sheet(
                 s.Name ?? text.CardSystem, null, SheetTone.Plain, Ago(Start(s), now, text), s.Title,
                 [s.Msg, .. s.Earlier.Reverse().Select(e => TextGap.Join(e.Title, e.Msg))],
-                [new(SheetAction.Open, text.MenuOpen), .. close]),
+                s.Open is null ? close : [new(SheetAction.Open, text.MenuOpen), .. close]),   // nothing to open (QQ, TODO 四): no button that does nothing
             ActivityKind.Notice when s.Glyph == NoticeGlyphs.Drive => Drive(card, text),
             ActivityKind.Notice when s.Glyph == NoticeGlyphs.Transit => Transit(s, text),
             // the calendar (10-10): the event's name, its state in the card's colour, its time "8:00 – 9:35"

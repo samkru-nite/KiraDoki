@@ -1439,6 +1439,7 @@ public sealed partial class MainWindow : Window
         NextStep.Reveal => _text.CardOpenFolder,
         NextStep.Drive => _text.MenuOpen,
         NextStep.Keep => _text.CardAddToTransit,
+        NextStep.App => _text.OpenWith.Replace("{a}", card.State.Name ?? Interop.ChatWindows.QqApp, StringComparison.Ordinal),   // "用 QQ 打开"
         _ => _text.OpenWith.Replace("{a}", card.State.AgentLabel, StringComparison.Ordinal),
     };
 
@@ -1473,6 +1474,11 @@ public sealed partial class MainWindow : Window
                 : NextStep.None;
         }
 
+        if (s.AppId == Interop.ChatWindows.QqApp && Interop.ChatWindows.CanOpenQq())
+        {
+            return NextStep.App;   // a QQ message (TODO 四, user 10-11): its main window, from the taskbar or the tray
+        }
+
         if (SystemWatch.DriveWatcher.Owns(s) && card.Type == CardType.Status && s.Open is { } root && Directory.Exists(root))
         {
             return NextStep.Drive;   // a USB drive plugged in (TODO ④, 10-10): open it
@@ -1503,6 +1509,9 @@ public sealed partial class MainWindow : Window
                 break;
             case NextStep.Keep:
                 _ = KeepCopied(card);
+                break;
+            case NextStep.App:
+                Interop.ChatWindows.OpenQq();
                 break;
         }
     }
@@ -1550,6 +1559,7 @@ public sealed partial class MainWindow : Window
         Reveal,
         Drive,
         Keep,
+        App,
     }
 
     /// <summary>

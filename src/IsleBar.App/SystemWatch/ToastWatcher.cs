@@ -176,7 +176,9 @@ internal sealed class ToastWatcher(Func<LanguageStrings> strings) : NoticeWatche
             var now = DateTimeOffset.UtcNow;
             now = _lastStamp is { } last && now <= last ? last.AddTicks(1) : now;
             _lastStamp = now;
-            var notice = Expandable(SystemNotice.Make(texts[0], NoticeGlyphs.Bell, now, msg: ToastText.Line([.. texts.Skip(1)]), open: ToastText.LaunchProtocol(row.Payload) ?? AppLaunch(row.AppId)), AppName(row.AppId), row.AppId);
+            // QQ opens no link from outside (TODO 四, 10-11): its card has no "open" — the pill's ↗ brings QQ's window up instead
+            var open = row.AppId == Interop.ChatWindows.QqApp ? null : ToastText.LaunchProtocol(row.Payload) ?? AppLaunch(row.AppId);
+            var notice = Expandable(SystemNotice.Make(texts[0], NoticeGlyphs.Bell, now, msg: ToastText.Line([.. texts.Skip(1)]), open: open), AppName(row.AppId), row.AppId);
             // one card per app (user 10-10: its notifications in a row merge, "+N"); each kept on the board under its own id, so two
             // read in one go both reach the island
             notice.SourcePath = SystemNotice.SourcePrefix + "toast:" + row.AppId;
