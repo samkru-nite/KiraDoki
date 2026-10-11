@@ -1020,7 +1020,7 @@ internal sealed class SheetView
         var row = new Grid { ColumnSpacing = 12, VerticalAlignment = VerticalAlignment.Center };
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        var art = new Border { Width = size, Height = size, CornerRadius = new CornerRadius(6) };
+        var art = new Border { Width = size, Height = size, CornerRadius = new CornerRadius(ArtRound) };
         FillArt(art, cover);
         _art = art;
 
@@ -1045,6 +1045,29 @@ internal sealed class SheetView
         Grid.SetColumn(words, 1);
         row.Children.Add(words);
         return row;
+    }
+
+    /// <summary>The cover's corner radius on the card.</summary>
+    internal const double ArtRound = 6;
+
+    /// <summary>A song's cover on this card (null for other cards): it rides down into the cell when the card closes into one.</summary>
+    internal Border? Art => _art;
+
+    /// <summary>The cover once more (same picture, or the note on grey), for riding down; sized by whoever holds it.</summary>
+    internal Border ArtCopy()
+    {
+        var copy = new Border { CornerRadius = new CornerRadius(ArtRound), IsHitTestVisible = false };
+        FillArt(copy, (_art?.Background as ImageBrush)?.ImageSource);
+        if (copy.Child is FontIcon note && _art is { } art)
+        {
+            // no cover: the note on grey shrinks with its box, as one picture
+            copy.Child = null;
+            var face = new Grid { Width = art.Width, Height = art.Height };
+            face.Children.Add(note);
+            copy.Child = new Viewbox { Child = face, Stretch = Stretch.Uniform };
+        }
+
+        return copy;
     }
 
     private void FillArt(Border art, ImageSource? cover)

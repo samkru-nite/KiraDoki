@@ -149,7 +149,7 @@ public sealed partial class MainWindow
             Animations.On,
             SheetColors(),
             LiftIcon(card),   // as on the big pill: an agent's logo in its makers' colours, a timer's turning dial (user 10-08)
-            new LiftRider(LiftIcon(card), HasBigLook(look) ? CellContent(card, look, DateTimeOffset.UtcNow) : null),
+            new LiftRider(LiftIcon(card), RidesDifferent(card, look) ? CellContent(card, look, DateTimeOffset.UtcNow) : null),
             SheetFor(card),
             CoverOf(card)?.Large,
             _language,
@@ -345,6 +345,14 @@ public sealed partial class MainWindow
             CloseCard(card);
         }
     }
+
+    /// <summary>
+    /// The icon riding down into the cell must turn into the cell's look on the way when the two differ: an agent's logo / a
+    /// coloured icon (big pill's look), and the app's own icon in the source row of a transfer, whose cell shows the
+    /// plain glyph. A song always has one: its cover rides instead of the icon and becomes the cell's look (user 10-12, LiftWindow).
+    /// </summary>
+    private bool RidesDifferent(Card card, TaskIcon look)
+        => HasBigLook(look) || look.Cover || card.State.Tool is { Length: > 0 } || card.State.Kind == IsleBar.Core.Island.ActivityKind.Music;
 
     /// <summary>The lifted card's icon: as on the big pill — a timer's dial turning on its own, an agent's logo in its own colours.</summary>
     private Microsoft.UI.Xaml.UIElement LiftIcon(Card card)

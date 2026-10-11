@@ -95,8 +95,18 @@ internal sealed class LiftWindow : Window
     private bool _followBounce;
 
     /// <summary>The card's icon riding down into its cell (not tilted, not faded with the card), from where it sat on the card.</summary>
-    private readonly Grid _rider = new() { Width = 24, Height = 24, IsHitTestVisible = false, Visibility = Visibility.Collapsed };
+    private readonly Grid _rider = new() { Width = RiderBox, Height = RiderBox, IsHitTestVisible = false, Visibility = Visibility.Collapsed };
+    private const double RiderBox = 24;
     private Windows.Foundation.Point _riderFrom;
+
+    /// <summary>
+    /// A song rides down as its cover, not its app's icon (user 10-12): the card's cover leaves the card and shrinks from its size
+    /// (<see cref="_artFrom"/>) into the cell's round cover, its corners rounding on the way; the app's icon stays on the card and
+    /// fades with it. Null for every other card (their icon rides).
+    /// </summary>
+    private Border? _riderArt;
+    private UIElement? _riderArtHome;
+    private double _artFrom;
 
     /// <summary>A press there is the bar's own (a task cell: its swap closes the card itself) — it doesn't close the card.</summary>
     public Func<int, int, bool>? KeepsPress { get; set; }
@@ -163,6 +173,9 @@ internal sealed class LiftWindow : Window
         _follow = null;
         _rider.Children.Clear();
         _rider.Visibility = Visibility.Collapsed;
+        _rider.Width = _rider.Height = RiderBox;
+        _riderArt = null;
+        _riderArtHome = null;
         _firstFrameChecked = false;
         _growFrom = null;
         _glassShare = 0;
@@ -231,8 +244,29 @@ internal sealed class LiftWindow : Window
         Closing?.Invoke();
         _follow = follow;
         _followBounce = bounce;
-        if (_follow is not null && _request.Icon is FrameworkElement icon && icon.ActualWidth > 0)
+        if (_follow is not null && _view?.Art is { ActualWidth: > 0 } art && _request.Rider.Cell is FrameworkElement cellLook)
         {
+            // a song: its cover rides, the cell's look (round cover, pause bars) coming in over it, both scaled to the rider
+            var box = art.TransformToVisual(_root).TransformBounds(new Windows.Foundation.Rect(0, 0, art.ActualWidth, art.ActualHeight));
+            _riderFrom = new Windows.Foundation.Point(box.X + (box.Width / 2), box.Y + (box.Height / 2));
+            _artFrom = box.Width;
+            _riderArt = _view.ArtCopy();
+            _riderArtHome = art;
+            art.Opacity = 0;
+            _rider.Children.Clear();
+            _rider.Children.Add(_riderArt);
+            cellLook.HorizontalAlignment = HorizontalAlignment.Center;
+            cellLook.VerticalAlignment = VerticalAlignment.Center;
+            cellLook.Opacity = 0;
+            if (cellLook.Parent is null)
+            {
+                _rider.Children.Add(new Viewbox { Child = cellLook, Stretch = Stretch.Uniform });
+            }
+        }
+        else if (_follow is not null && _request.Icon is FrameworkElement icon && icon.ActualWidth > 0)
+        {
+            _riderArt = null;
+            _rider.Width = _rider.Height = RiderBox;
             // the icon leaves the card (which fades) and rides down on its own, turning into the cell's look on the way
             var at = icon.TransformToVisual(_root).TransformPoint(new Windows.Foundation.Point(icon.ActualWidth / 2, icon.ActualHeight / 2));
             _riderFrom = at;
@@ -538,17 +572,32 @@ internal sealed class LiftWindow : Window
         {
             _rider.Visibility = Visibility.Collapsed;
             r.Icon.Opacity = 1;
+            if (_riderArtHome is { } home)
+            {
+                home.Opacity = 1;
+            }
+
             return;
         }
 
         var s = DpiSetup.Scale;
         var p = 1 - q;
+        if (_riderArt is { } artCopy && r.Rider.Cell is FrameworkElement look)
+        {
+            // from the card's cover to the cell's (18 round; 16 for the note without one): size, then corners as a share of it
+            var size = Math.Max(1, SwapMotion.Lerp(_artFrom, look.Width > 0 ? look.Width : 16, p));
+            _rider.Width = _rider.Height = size;
+            artCopy.CornerRadius = new CornerRadius(size * SwapMotion.Lerp(SheetView.ArtRound / Math.Max(1, _artFrom), 0.5, p));
+            artCopy.Opacity = 1 - SwapMotion.BigLookOut(p);
+            look.Opacity = SwapMotion.CellLookIn(p);
+        }
+
         var x = SwapMotion.Lerp(_riderFrom.X, (to.X - lay.Window.Left) / s, p);
         var y = SwapMotion.Lerp(_riderFrom.Y, (to.Y - lay.Window.Top) / s, p);
         Canvas.SetLeft(_rider, x - (_rider.Width / 2));
         Canvas.SetTop(_rider, y - (_rider.Height / 2));
         _rider.Visibility = Visibility.Visible;
-        if (r.Rider.Cell is { } cell)
+        if (_riderArt is null && r.Rider.Cell is { } cell)
         {
             r.Rider.Big.Opacity = 1 - SwapMotion.BigLookOut(p);
             cell.Opacity = SwapMotion.CellLookIn(p);
