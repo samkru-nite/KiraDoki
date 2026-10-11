@@ -277,10 +277,16 @@ public sealed class LanguageStrings
     /// <summary>The tooltip on the round "open" button of a done / interrupted card (user 10-10): "Open in {a}" — {a} = the app.</summary>
     public required string OpenWith { get; init; }
 
-    /// <summary>Right-click on the big pill: keep its card in the small pill (甲⑤).</summary>
+    /// <summary>Right-click on the big pill: keep its card in the small pill (甲⑤; "收起", was "固定" till 10-11).</summary>
+    public required string Tuck { get; init; }
+
+    /// <summary>Right-click on a tucked card: let it follow the usual rules again.</summary>
+    public required string Untuck { get; init; }
+
+    /// <summary>Right-click on a card: it stays on the big pill for as long as it lasts ("置顶", user 10-11).</summary>
     public required string Pin { get; init; }
 
-    /// <summary>Right-click on a pinned card: let it follow the usual rules again.</summary>
+    /// <summary>Right-click on a card pinned to the big pill: it follows the usual rules again.</summary>
     public required string Unpin { get; init; }
 
 

@@ -2041,6 +2041,8 @@ public sealed partial class MainWindow : Window
     private const int MenuClose = 2;   // close the card the menu is about
     private const int MenuTuck = 3;    // keep the big pill's card in the small pill (甲⑤)
     private const int MenuUntuck = 4;
+    private const int MenuPin = 5;     // the card holds the big pill for its whole life ("置顶", user 10-11)
+    private const int MenuUnpin = 6;
     private const int MenuQuickBase = 20;   // quick timers (from settings, up to 6)
     private const int MenuPomodoro = 13;
     private const int MenuStopwatch = 14;
@@ -2128,16 +2130,27 @@ public sealed partial class MainWindow : Window
             items.Add(new MenuItem(0, CardMenuTitle(card), Header: true));
         }
 
-        // "Pin" keeps the big pill's card in the small pill (user 10-10; a temporary one has no cell); a pinned card — on its icon,
-        // or on the big pill while clicked up — offers "Unpin" (user 10-09)
+        // "置顶" holds the big pill for the card's whole life, on the big pill or its icon (user 10-11; a temporary one is gone in
+        // seconds anyway)
+        if (_cards.IsPinned(card.Key))
+        {
+            items.Add(new MenuItem(MenuUnpin, _text.Unpin));
+        }
+        else if (card.Type != CardType.Temporary)
+        {
+            items.Add(new MenuItem(MenuPin, _text.Pin));
+        }
+
+        // "收起" keeps the big pill's card in the small pill (user 10-10, named "固定" till 10-11; a temporary one has no cell); a
+        // tucked card — on its icon, or on the big pill while clicked up — offers "取消收起" (user 10-09)
         var tucked = _cards.IsTucked(card.Key);
         if (tucked)
         {
-            items.Add(new MenuItem(MenuUntuck, _text.Unpin));
+            items.Add(new MenuItem(MenuUntuck, _text.Untuck));
         }
         else if (!header && card.Type != CardType.Temporary)
         {
-            items.Add(new MenuItem(MenuTuck, _text.Pin));
+            items.Add(new MenuItem(MenuTuck, _text.Tuck));
         }
 
         items.Add(new MenuItem(MenuClose, _text.CloseCard));
@@ -2152,13 +2165,23 @@ public sealed partial class MainWindow : Window
                     CloseCard(_cards.Cards.FirstOrDefault(c => c.Key == card.Key));
                     break;
                 case MenuTuck:
-                    TaskbarHost.Log($"card: {card.Key} pinned to the small pill");
+                    TaskbarHost.Log($"card: {card.Key} tucked into the small pill");
                     _cards.Tuck(card.Key, DateTimeOffset.UtcNow);
                     Restack();
                     break;
                 case MenuUntuck:
-                    TaskbarHost.Log($"card: {card.Key} unpinned");
+                    TaskbarHost.Log($"card: {card.Key} untucked");
                     _cards.Untuck(card.Key, DateTimeOffset.UtcNow);
+                    Restack();
+                    break;
+                case MenuPin:
+                    TaskbarHost.Log($"card: {card.Key} pinned to the big pill");
+                    _cards.Pin(card.Key, DateTimeOffset.UtcNow);
+                    Restack();
+                    break;
+                case MenuUnpin:
+                    TaskbarHost.Log($"card: {card.Key} unpinned from the big pill");
+                    _cards.Unpin(card.Key, DateTimeOffset.UtcNow);
                     Restack();
                     break;
             }

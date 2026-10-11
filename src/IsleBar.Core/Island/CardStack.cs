@@ -28,12 +28,16 @@ public sealed record Card(string Key, CardType Type, bool Pinned, ActivityState 
 /// <summary>
 /// The new design's card rules (TODO 7.2 / 7.3, user 10-05): every item is a card in one ordered stack; the big pill shows one.
 /// <list type="bullet">
-/// <item>Order: pinned cards first — temporary, then pending, then inform; newest first within a type. Then the status cards in the
-/// order they arrived (oldest first: a new one waits at the back). A card that changes type counts as newly arrived.</item>
-/// <item>Clicking a task icon chooses the card to show, and the choice stays — it never deletes anything. (No scrolling: 10-07.)</item>
+/// <item>Order: the card pinned by hand (<see cref="Pin"/>), then pinned cards — temporary, then pending, then inform; newest first
+/// within a type. Then the status cards, <b>last touched first</b> (user 10-11, replacing 10-05 "oldest first"): touched = came,
+/// changed its type or look (a stage of its own — a change is itself a reminder), or was clicked on the small pill.</item>
+/// <item>Clicking a task icon shows that card; a status card clicked is touched, so it stays up — it never deletes anything.</item>
 /// <item>While the mouse is on either pill and for <see cref="HoldAfterLeave"/> after it leaves, the shown card
-/// doesn't change, even when a pinned card arrives. After that: a pinned card there → the top one shows; none → the chosen card
-/// (the top card if nothing was chosen or it ended).</item>
+/// doesn't change, even when a pinned card arrives. After that: the card pinned by hand; else a pinned card there → the top one
+/// shows; none → the status card touched last.</item>
+/// <item><b>Pinned by hand</b> ("置顶", user 10-11): one card at a time holds the big pill for its whole life (the same key through all
+/// its stages, a download's "done" included). Debuts and temporary cards still take their turn over it; a card that becomes pinned
+/// by itself (needs you, done) debuts <see cref="PinnedDebutLength"/> then goes back down, its icon still in colour.</item>
 /// <item>"Close" on a status card hides it until it ends (its key drops out of the list).</item>
 /// <item><b>Debut</b> (user 10-07, replacing 10-06 "status cards never go on top first; send a separate temporary card"): a card
 /// that becomes a status card — new, or another type before (permission answered, a new turn after "done") — shows on the big pill
@@ -62,6 +66,9 @@ public sealed class CardStack
 
     /// <summary>A debut's length when an AI card that was done / waiting starts working again in the same chat (user 10-10: 2 s was too short to notice).</summary>
     public static readonly TimeSpan ResumeDebutLength = TimeSpan.FromSeconds(6);
+
+    /// <summary>A card that becomes pinned by itself (needs you, done) while another is pinned by hand: up this long, then back down (user 10-11).</summary>
+    public static readonly TimeSpan PinnedDebutLength = TimeSpan.FromSeconds(6);
 
     /// <summary>No debuts this soon after the first update: what is there when the bar starts doesn't parade.</summary>
     public static readonly TimeSpan StartQuiet = TimeSpan.FromSeconds(2);
@@ -135,7 +142,9 @@ public sealed class CardStack
     private readonly HashSet<string> _hidden = new(StringComparer.Ordinal);
     private IReadOnlyList<ActivityState> _items = [];
     private IReadOnlySet<ActivityKind> _neverPin = new HashSet<ActivityKind>();
-    private string? _chosenKey;
+    private readonly Dictionary<string, DateTimeOffset> _touched = new(StringComparer.Ordinal);   // status cards: last came / changed / clicked
+    private string? _pinnedKey;   // pinned by hand ("置顶")
+    private readonly HashSet<string> _pinDebuts = new(StringComparer.Ordinal);   // pinned cards debuting over the one pinned by hand
     private string? _shownKey;
     private bool _hovering;
     private DateTimeOffset _leftAt = DateTimeOffset.MinValue;
@@ -158,9 +167,9 @@ public sealed class CardStack
     public void Tuck(string key, DateTimeOffset now)
     {
         _tucked.Add(key);
-        if (_chosenKey == key)
+        if (_pinnedKey == key)
         {
-            _chosenKey = null;
+            _pinnedKey = null;
         }
 
         _debutQueue.Remove(key);
@@ -185,8 +194,27 @@ public sealed class CardStack
     /// <summary>The card is kept in the small pill (<see cref="Tuck"/>).</summary>
     public bool IsTucked(string key) => _tucked.Contains(key);
 
-    /// <summary>The status card last chosen, if it is still there.</summary>
-    public string? ChosenKey => _chosenKey;
+    /// <summary>"置顶" (user 10-11): this card holds the big pill until it ends — one at a time, a second one replaces it.</summary>
+    public void Pin(string key, DateTimeOffset now)
+    {
+        _pinnedKey = key;
+        _tucked.Remove(key);
+        _shownKey = key;   // up now, even with the mouse there (the menu was opened on it)
+        Rebuild(now);
+    }
+
+    /// <summary>"取消置顶": the card follows the usual rules again.</summary>
+    public void Unpin(string key, DateTimeOffset now)
+    {
+        if (_pinnedKey == key)
+        {
+            _pinnedKey = null;
+            Rebuild(now);
+        }
+    }
+
+    /// <summary>The card is pinned to the big pill by hand (<see cref="Pin"/>).</summary>
+    public bool IsPinned(string key) => _pinnedKey == key;
 
     /// <summary>The type of an item. A timer is status until it reaches zero, then an inform "time's up".</summary>
     public static CardType TypeOf(ActivityState state, DateTimeOffset now) => state.Kind switch
@@ -241,8 +269,8 @@ public sealed class CardStack
     }
 
     /// <summary>
-    /// A task icon on the small pill was clicked: that card goes on the big pill (TODO 7.3, 10-07). A status card stays chosen —
-    /// after the hold it comes back whenever no pinned card is waiting.
+    /// A task icon on the small pill was clicked: that card goes on the big pill (TODO 7.3, 10-07). A status card is touched — it is
+    /// the one up whenever no pinned card is waiting, till another is touched (user 10-11).
     /// </summary>
     public void Choose(string key, DateTimeOffset now)
     {
@@ -273,9 +301,9 @@ public sealed class CardStack
             _debutSince = now;
             picked.Up ??= now;
         }
-        if (!card.Pinned && !_tucked.Contains(card.Key))   // a tucked card shows while looked at, then goes back down
+        if (card.Type == CardType.Status && !_tucked.Contains(card.Key))   // a tucked card shows while looked at, then goes back down
         {
-            _chosenKey = card.Key;   // a pinned card shows by itself anyway — the choice to come back to is the status card
+            _touched[card.Key] = now;   // clicked = put in front by hand: it stays up (user 10-11)
         }
 
         _shownKey = card.Key;
@@ -391,6 +419,7 @@ public sealed class CardStack
                 if (TaskRules.Debuts(state) && !_hidden.Contains(key) && !_tucked.Contains(key))
                 {
                     fresh.Add((key, state.UpdatedAt));
+                    _touched[key] = now;   // came, or a stage of its own: in front of the other status cards (user 10-11)
                     if (resumed)
                     {
                         _resumed.Add(key);
@@ -402,9 +431,17 @@ public sealed class CardStack
                 }
             }
 
+            // pinned by itself (needs you, done) while another card is pinned by hand: a debut, then that card again (user 10-11, A)
+            if (changed && pinned && _pinnedKey is { } byHand && byHand != key && !_hidden.Contains(key) && !_tucked.Contains(key))
+            {
+                fresh.Add((key, state.UpdatedAt));
+                _pinDebuts.Add(key);
+            }
+
             if (!_hidden.Contains(key))
             {
-                cards.Add((new Card(key, type, pinned, state), seen.Since, state.UpdatedAt));
+                var since = type == CardType.Status && _touched.TryGetValue(key, out var touched) ? touched : seen.Since;
+                cards.Add((new Card(key, type, pinned, state), since, state.UpdatedAt));
             }
         }
 
@@ -413,6 +450,7 @@ public sealed class CardStack
         {
             _arrived.Remove(gone);
             _looks.Remove(gone);
+            _touched.Remove(gone);
         }
 
         _hidden.RemoveWhere(k => !present.Contains(k));
@@ -424,8 +462,20 @@ public sealed class CardStack
             cards.Add((new Card(t.Key, CardType.Temporary, !_neverPin.Contains(t.State.Kind), t.State), t.Arrived, t.Arrived));
         }
 
+        // pinned by hand: its whole life — the same key, its temporary "done" included (user 10-11); gone with it
+        if (_pinnedKey is { } mine && !present.Contains(mine) && !_temps.ContainsKey(mine))
+        {
+            _notes.Add($"{mine} ended: no longer pinned");
+            _pinnedKey = null;
+        }
+
         cards.Sort((a, b) =>
         {
+            if ((a.Card.Key == _pinnedKey) != (b.Card.Key == _pinnedKey))
+            {
+                return a.Card.Key == _pinnedKey ? -1 : 1;
+            }
+
             if (a.Card.Pinned != b.Card.Pinned)
             {
                 return a.Card.Pinned ? -1 : 1;
@@ -444,16 +494,12 @@ public sealed class CardStack
                 return byNew != 0 ? byNew : string.CompareOrdinal(a.Card.Key, b.Card.Key);
             }
 
-            var byArrival = a.Since.CompareTo(b.Since);   // oldest first: a new status card waits at the back
-            return byArrival != 0 ? byArrival : string.CompareOrdinal(a.Card.Key, b.Card.Key);
+            var byTouch = b.Since.CompareTo(a.Since);   // last touched first (user 10-11)
+            return byTouch != 0 ? byTouch : string.CompareOrdinal(a.Card.Key, b.Card.Key);
         });
 
         var ordered = cards.Select(c => c.Card).ToList();
         Cards = ordered;
-        if (_chosenKey is not null && ordered.FindIndex(c => c.Key == _chosenKey) < 0)
-        {
-            _chosenKey = null;
-        }
 
         UpdateDebut(ordered, fresh, now);
         if (ordered.RemoveAll(c => c.Type == CardType.Temporary && !_temps.ContainsKey(c.Key)) > 0)
@@ -514,7 +560,14 @@ public sealed class CardStack
             }
 
             _temps[key] = new Waiting(key, state, taken, now);
-            _debutQueue.Add(key);
+            if (key == _pinnedKey)
+            {
+                _debutQueue.Insert(0, key);   // the card pinned by hand ending ("已完成"): next up, not at the back
+            }
+            else
+            {
+                _debutQueue.Add(key);
+            }
             _notes.Add($"{key} came (temporary), waits its turn ({_debutQueue.Count} in the line{(_debutKey is null ? string.Empty : $", {_debutKey} up")})");
         }
 
@@ -575,8 +628,9 @@ public sealed class CardStack
     {
         // a debut a look asked for lasts while the card still shows that look
         bool Present(string? key) => key is not null
-            && (_temps.TryGetValue(key, out var t) ? !t.Down : cards.Any(c => c.Key == key && c.Type == CardType.Status
-                && (!_lookDebuts.TryGetValue(key, out var d) || c.State.Look == d.Look)));
+            && (_temps.TryGetValue(key, out var t) ? !t.Down : cards.Any(c => c.Key == key
+                && (_pinDebuts.Contains(key) ? c.Pinned
+                    : c.Type == CardType.Status && (!_lookDebuts.TryGetValue(key, out var d) || c.State.Look == d.Look))));
         if (_hovering || now - _leftAt < HoldAfterLeave)
         {
             foreach (var f in fresh)
@@ -623,6 +677,7 @@ public sealed class CardStack
 
         _debutQueue.RemoveAll(k => !Present(k));
         _resumed.RemoveWhere(k => k != _debutKey && !_debutQueue.Contains(k) && !fresh.Any(f => f.Key == k));
+        _pinDebuts.RemoveWhere(k => k != _debutKey && !_debutQueue.Contains(k) && !fresh.Any(f => f.Key == k));
         foreach (var k in _lookDebuts.Keys.Where(k => k != _debutKey && !_debutQueue.Contains(k) && !fresh.Any(f => f.Key == k)).ToList())
         {
             _lookDebuts.Remove(k);
@@ -659,6 +714,7 @@ public sealed class CardStack
         {
             _notes.Add($"debut of {_debutKey} over");
             _resumed.Remove(_debutKey);
+            _pinDebuts.Remove(_debutKey);
             _lookDebuts.Remove(_debutKey);
             _debutKey = null;   // its turn is over: the next in the line
         }
@@ -683,6 +739,7 @@ public sealed class CardStack
     /// <summary>How long the card <paramref name="key"/>'s debut lasts: its look's own length, else the usual ones.</summary>
     private TimeSpan LengthOf(string key)
         => _lookDebuts.TryGetValue(key, out var d) ? d.Length
+            : _pinDebuts.Contains(key) ? PinnedDebutLength
             : _debutQueue.Count > 0 ? DebutAtLeast
             : _resumed.Contains(key) ? ResumeDebutLength
             : DebutLength;
@@ -710,13 +767,7 @@ public sealed class CardStack
 
         // tucked cards wait on the small pill (Tuck): the rest as if they weren't there; all tucked → none on the big pill.
         // A temporary card goes up only by its turn in the line (UpdateDebut): waiting, or back down after its cap, it is in its cell
-        var top = cards.FindIndex(c => !_tucked.Contains(c.Key) && c.Type != CardType.Temporary);
-        if (top >= 0 && cards[top].Pinned)
-        {
-            return top;   // someone is waiting for you
-        }
-
-        var chosen = _chosenKey is null ? -1 : cards.FindIndex(c => c.Key == _chosenKey);
-        return chosen >= 0 ? chosen : top;
+        // the card pinned by hand, then someone waiting for you, then the status card touched last — the order of Cards (Rebuild)
+        return cards.FindIndex(c => !_tucked.Contains(c.Key) && c.Type != CardType.Temporary);
     }
 }

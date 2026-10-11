@@ -131,29 +131,32 @@ public sealed class CardStackTests
     }
 
     [Fact]
-    public void A_new_status_card_waits_at_the_back()
+    public void A_new_status_card_goes_in_front_and_stays_up()
     {
+        // user 10-11: the newest is the most likely to be looked at (it used to wait at the back)
         var stack = new CardStack();
         stack.Update([Item(ActivityKind.Music, "m")], T0);
         stack.Update([Item(ActivityKind.Music, "m"), Item(ActivityKind.Transfer, "download:a")], T0.AddSeconds(1));
 
-        Assert.Equal(["m", "download"], Keys(stack));
-        Assert.Equal("m", stack.Shown!.Key);
+        Assert.Equal(["download", "m"], Keys(stack));
+        Assert.Equal("download", stack.Shown!.Key);
+        stack.Update([Item(ActivityKind.Music, "m"), Item(ActivityKind.Transfer, "download:a")], T0.AddMinutes(5));
+        Assert.Equal("download", stack.Shown!.Key);   // no going back to the older one
     }
 
     [Fact]
-    public void Working_turning_done_comes_to_the_front_and_working_again_goes_to_the_back()
+    public void Working_turning_done_comes_to_the_front_and_working_again_is_the_newest_status_card()
     {
         var stack = new CardStack();
         stack.Update([Item(ActivityKind.AgentWorking, "s")], T0);
         stack.Update([Item(ActivityKind.AgentWorking, "s"), Item(ActivityKind.Music, "m")], T0.AddSeconds(1));
-        Assert.Equal(["s", "m"], Keys(stack));
+        Assert.Equal(["m", "s"], Keys(stack));
 
         stack.Update([Item(ActivityKind.AgentDone, "s", 2, "done"), Item(ActivityKind.Music, "m")], T0.AddSeconds(2));
         Assert.True(stack.Cards[0].Pinned);
 
         stack.Update([Item(ActivityKind.AgentWorking, "s", 4), Item(ActivityKind.Music, "m")], T0.AddSeconds(4));
-        Assert.Equal(["m", "s"], Keys(stack));
+        Assert.Equal(["s", "m"], Keys(stack));   // a stage of its own is a reminder (user 10-11)
     }
 
     [Fact]
@@ -164,8 +167,8 @@ public sealed class CardStackTests
         stack.Update([Item(ActivityKind.Music, "m"), Item(ActivityKind.AgentDone, "d", 1, "done")], T0.AddSeconds(1),
             new HashSet<ActivityKind> { ActivityKind.AgentDone });
 
-        Assert.Equal(["m", "d"], Keys(stack));
-        Assert.False(stack.Cards[1].Pinned);
+        Assert.Equal(["d", "m"], Keys(stack));
+        Assert.False(stack.Cards[0].Pinned);
     }
 
     // ---------------- Choosing ----------------
@@ -198,7 +201,7 @@ public sealed class CardStackTests
     }
 
     [Fact]
-    public void The_chosen_card_stays_after_the_mouse_leaves_when_nothing_is_pinned()
+    public void A_clicked_card_stays_after_the_mouse_leaves_when_nothing_is_pinned()
     {
         var stack = ThreeStatusCards();
         stack.SetHover(true, T0.AddSeconds(3));
@@ -207,7 +210,7 @@ public sealed class CardStackTests
 
         stack.Update(Three, T0.AddMinutes(10));
         Assert.Equal("w", stack.Shown!.Key);
-        Assert.Equal("w", stack.ChosenKey);
+        Assert.Equal("w", stack.Cards[0].Key);   // clicked = put in front (user 10-11)
     }
 
     [Fact]
@@ -228,10 +231,10 @@ public sealed class CardStackTests
         Assert.Equal("w", stack.Shown!.Key);
         stack.Update(withAsk, left.AddSeconds(2));
         Assert.Equal("ask", stack.Shown!.Key);
-        Assert.Equal(["ask", "m", "w", "download"], Keys(stack));   // the order is unchanged
+        Assert.Equal(["ask", "w", "download", "m"], Keys(stack));   // w in front: it was clicked last
 
         stack.Update(Three, left.AddSeconds(10));   // answered
-        Assert.Equal("w", stack.Shown!.Key);   // back to the chosen card
+        Assert.Equal("w", stack.Shown!.Key);   // back to the card clicked last
     }
 
     [Fact]
@@ -243,7 +246,7 @@ public sealed class CardStackTests
     }
 
     [Fact]
-    public void Choosing_a_pinned_card_doesnt_change_the_chosen_status_card()
+    public void Choosing_a_pinned_card_doesnt_change_the_status_cards_order()
     {
         var stack = ThreeStatusCards();
         stack.SetHover(true, T0.AddSeconds(3));
@@ -251,11 +254,11 @@ public sealed class CardStackTests
         stack.Update([.. Three, Item(ActivityKind.AgentDone, "d", 4, "done")], T0.AddSeconds(4));   // d is on top now; download still shown
         stack.Choose("d", T0.AddSeconds(5));
         Assert.Equal("d", stack.Shown!.Key);
-        Assert.Equal("download", stack.ChosenKey);
+        Assert.Equal("download", stack.Cards.First(c => !c.Pinned).Key);
     }
 
     [Fact]
-    public void When_the_chosen_card_ends_the_top_card_shows()
+    public void When_the_clicked_card_ends_the_one_touched_before_it_shows()
     {
         var stack = ThreeStatusCards();
         stack.SetHover(true, T0.AddSeconds(3));
@@ -263,8 +266,7 @@ public sealed class CardStackTests
         stack.SetHover(false, T0.AddSeconds(4));
 
         stack.Update(Three[..2], T0.AddMinutes(1));   // the download finished and went away
-        Assert.Equal("m", stack.Shown!.Key);
-        Assert.Null(stack.ChosenKey);
+        Assert.Equal("w", stack.Shown!.Key);   // w came after the music
     }
 
     [Fact]
@@ -272,9 +274,9 @@ public sealed class CardStackTests
     {
         var stack = ThreeStatusCards();
         stack.SetHover(true, T0.AddSeconds(3));
-        stack.Choose("download", T0.AddSeconds(3));   // place 2
+        stack.Choose("download", T0.AddSeconds(3));   // place 0: clicked last
 
-        stack.Update(Three[1..], T0.AddSeconds(5));   // the music stopped
+        stack.Update([.. Three, Item(ActivityKind.AgentPermission, "ask", 5)], T0.AddSeconds(5));   // a question comes first
         Assert.Equal("download", stack.Shown!.Key);
         Assert.Equal(1, stack.ShownIndex);
     }
@@ -286,14 +288,14 @@ public sealed class CardStackTests
     {
         var stack = ThreeStatusCards();
         stack.Hide("m", T0.AddSeconds(3));
-        Assert.Equal(["w", "download"], Keys(stack));
+        Assert.Equal(["download", "w"], Keys(stack));
 
         stack.Update(Three, T0.AddSeconds(4));   // a new song is still the music card — still hidden
         Assert.DoesNotContain("m", Keys(stack));
 
         stack.Update(Three[1..], T0.AddSeconds(5));   // music stopped
         stack.Update(Three, T0.AddSeconds(6));
-        Assert.Equal(["w", "download", "m"], Keys(stack));
+        Assert.Equal(["m", "download", "w"], Keys(stack));   // back = new: in front
     }
 
     [Fact]
@@ -313,7 +315,7 @@ public sealed class CardStackTests
     private static string? ShownKey(CardStack stack) => stack.Shown?.Key;
 
     [Fact]
-    public void A_new_status_card_shows_for_two_seconds_then_goes_back()
+    public void A_new_status_card_debuts_for_two_seconds_and_stays_up_when_nothing_is_pinned()
     {
         var music = Item(ActivityKind.Music, "m");
         var stack = Started(music);
@@ -323,7 +325,8 @@ public sealed class CardStackTests
         stack.Update([music, work], T0.AddSeconds(7.9));
         Assert.Equal("w", ShownKey(stack));
         stack.Update([music, work], T0.AddSeconds(8));
-        Assert.Equal("m", ShownKey(stack));
+        Assert.Equal("w", ShownKey(stack));   // user 10-11: no going back to the older card
+        Assert.Null(stack.DebutKey);
     }
 
     [Fact]
@@ -332,7 +335,8 @@ public sealed class CardStackTests
         var stack = new CardStack();
         stack.Update([Item(ActivityKind.Music, "m")], T0);
         stack.Update([Item(ActivityKind.Music, "m"), Item(ActivityKind.AgentWorking, "w", 1)], T0.AddSeconds(1));
-        Assert.Equal("m", ShownKey(stack));
+        Assert.Null(stack.DebutKey);
+        Assert.Equal("w", ShownKey(stack));   // still the newest
     }
 
     [Fact]
@@ -349,7 +353,7 @@ public sealed class CardStackTests
         stack.Update([music, a, b], T0.AddSeconds(9.4));
         Assert.Equal("b", ShownKey(stack));   // nobody waits: b gets its 2 s
         stack.Update([music, a, b], T0.AddSeconds(9.5));
-        Assert.Equal("m", ShownKey(stack));
+        Assert.Equal("a", ShownKey(stack));   // a and b came together, newer than the music: the first by name
     }
 
     [Fact]
@@ -368,7 +372,8 @@ public sealed class CardStackTests
         other.Update([music, Item(ActivityKind.AgentWorking, "w", 6)], T0.AddSeconds(6));
         other.SetHover(false, T0.AddSeconds(7));
         other.Update([music, Item(ActivityKind.AgentWorking, "w", 6)], T0.AddSeconds(11));
-        Assert.Equal("m", ShownKey(other));
+        Assert.Null(other.DebutKey);   // no debut under the mouse…
+        Assert.Equal("w", ShownKey(other));   // …but once it has gone, the newest is up
     }
 
     [Fact]
@@ -385,7 +390,7 @@ public sealed class CardStackTests
         stack.Update([music, work], T0.AddSeconds(12.9));
         Assert.Equal("s", ShownKey(stack));   // working again in the same chat: 6 s (user 10-10)
         stack.Update([music, work], T0.AddSeconds(13));
-        Assert.Equal("m", ShownKey(stack));
+        Assert.Equal("s", ShownKey(stack));   // and stays: its new stage made it the newest
     }
 
     [Fact]
@@ -400,7 +405,8 @@ public sealed class CardStackTests
         stack.Update([music, work], T0.AddSeconds(11.9));
         Assert.Equal("s", ShownKey(stack));
         stack.Update([music, work], T0.AddSeconds(12));
-        Assert.Equal("m", ShownKey(stack));
+        Assert.Equal("s", ShownKey(stack));
+        Assert.Null(stack.DebutKey);
     }
 
     // ---------------- The line (user 10-10): first come first, the waiting ones in cells ----------------
@@ -434,7 +440,7 @@ public sealed class CardStackTests
         stack.Update([music, work], T0.AddSeconds(13.9));
         Assert.Equal("copied", ShownKey(stack));   // its 6 s from going up, not from coming
         stack.Update([music, work], T0.AddSeconds(14));
-        Assert.Equal("m", ShownKey(stack));
+        Assert.Equal("w", ShownKey(stack));
         Assert.DoesNotContain("copied", Keys(stack));
     }
 
@@ -591,5 +597,73 @@ public sealed class CardStackTests
         stack.Untuck("w", T0.AddSeconds(1));
         Assert.False(stack.IsTucked("w"));
         Assert.Equal("w", ShownKey(stack));   // a done card comes up by itself again
+    }
+
+    // ---------------- Pinned by hand ("置顶", user 10-11) ----------------
+
+    [Fact]
+    public void A_card_pinned_by_hand_stays_up_over_newer_status_cards_after_their_debut()
+    {
+        var music = Item(ActivityKind.Music, "m");
+        var stack = Started(music);
+        stack.Pin("m", T0.AddSeconds(5));
+        var work = Item(ActivityKind.AgentWorking, "w", 6);
+        stack.Update([music, work], T0.AddSeconds(6));
+        Assert.Equal("w", ShownKey(stack));   // its debut
+        stack.Update([music, work], T0.AddSeconds(8));
+        Assert.Equal("m", ShownKey(stack));   // then the pinned one again
+        Assert.True(stack.IsPinned("m"));
+    }
+
+    [Fact]
+    public void A_card_turning_pinned_by_itself_debuts_six_seconds_over_the_one_pinned_by_hand()
+    {
+        var music = Item(ActivityKind.Music, "m");
+        var work = Item(ActivityKind.AgentWorking, "s");
+        var stack = Started(music, work);
+        stack.Pin("m", T0.AddSeconds(5));
+        var done = Item(ActivityKind.AgentDone, "s", 6, "done");
+        stack.Update([music, done], T0.AddSeconds(6));
+        Assert.Equal("s", ShownKey(stack));
+        stack.Update([music, done], T0.AddSeconds(11.9));
+        Assert.Equal("s", ShownKey(stack));
+        stack.Update([music, done], T0.AddSeconds(12));
+        Assert.Equal("m", ShownKey(stack));   // back down (A, user 10-11); its icon stays in colour
+        Assert.Equal("m", stack.Cards[0].Key);
+    }
+
+    [Fact]
+    public void Pinned_by_hand_lasts_the_cards_whole_life_its_done_included()
+    {
+        var music = Item(ActivityKind.Music, "m");
+        var loading = Item(ActivityKind.Transfer, "download:a.zip");
+        var stack = Started(music, loading);
+        stack.Pin("download", T0.AddSeconds(5));
+        Assert.Equal("download", ShownKey(stack));
+
+        var done = Item(ActivityKind.Transfer, "download:a.zip", 6, "done");
+        stack.Update([music, done], T0.AddSeconds(6));
+        Assert.Equal("download", ShownKey(stack));   // its "done" goes up at once
+        Assert.True(stack.IsPinned("download"));
+        stack.Update([music], T0.AddSeconds(12));
+        Assert.Equal("m", ShownKey(stack));
+        stack.Update([music], T0.AddSeconds(12.25));
+        Assert.False(stack.IsPinned("download"));   // gone with the card (the next tick)
+    }
+
+    [Fact]
+    public void One_card_pinned_at_a_time_and_pinning_untucks()
+    {
+        var music = Item(ActivityKind.Music, "m");
+        var work = Item(ActivityKind.AgentWorking, "w");
+        var stack = Started(music, work);
+        stack.Tuck("w", T0.AddSeconds(5));
+        stack.Pin("m", T0.AddSeconds(5));
+        stack.Pin("w", T0.AddSeconds(5));
+        Assert.False(stack.IsPinned("m"));
+        Assert.False(stack.IsTucked("w"));
+        Assert.Equal("w", ShownKey(stack));
+        stack.Tuck("w", T0.AddSeconds(6));
+        Assert.False(stack.IsPinned("w"));
     }
 }
