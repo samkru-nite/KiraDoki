@@ -931,7 +931,7 @@ public sealed partial class PillView : UserControl
             return;   // every stage of an agent's card shows its logo (user 10-07), its notices too
         }
 
-        var codex = state.AgentLabel == "Codex";
+        var codex = state.AgentLabel == "ChatGPT";
         if ((codex ? Host.CodexLogo : Host.ClaudeLogo) is null)
         {
             return;   // no mark on this PC → keep ✓/🔔

@@ -140,7 +140,7 @@ public class AgentHookTests
 
         Assert.Equal("codex_019a77ff", action.Id);
         Assert.Equal(ActivityKind.AgentDone, action.Write!.Kind);
-        Assert.Equal("Codex", action.Write.AgentLabel);
+        Assert.Equal("ChatGPT", action.Write.AgentLabel);
         Assert.Equal("proj", action.Write.Name);
     }
 

@@ -10,8 +10,8 @@ public sealed class AgentFieldTests
     [Fact]
     public void Island_shows_which_agent()
     {
-        Assert.Equal("Codex", new ActivityState { Agent = "codex" }.AgentLabel);
-        Assert.Equal("Codex", new ActivityState { Agent = "CODEX" }.AgentLabel);
+        Assert.Equal("ChatGPT", new ActivityState { Agent = "codex" }.AgentLabel);
+        Assert.Equal("ChatGPT", new ActivityState { Agent = "CODEX" }.AgentLabel);
         Assert.Equal("Claude", new ActivityState { Agent = "claude" }.AgentLabel);
         Assert.Equal("Claude", new ActivityState().AgentLabel);   // no field → Claude
     }
@@ -40,7 +40,7 @@ public sealed class AgentFieldTests
 
         var back = store.Read(DateTimeOffset.UtcNow).Single();
         Assert.Equal(AgentKind.Codex, back.Agent);
-        Assert.Equal("Codex", back.AgentLabel);
+        Assert.Equal("ChatGPT", back.AgentLabel);
         Assert.Equal(ActivityKind.AgentDone, back.Kind);
     }
 }

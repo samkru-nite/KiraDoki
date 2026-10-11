@@ -557,7 +557,7 @@ public static class CardSheets
 
     private static SheetButton Chat(LanguageStrings text) => new(SheetAction.OpenChat, text.CardOpenChat);
 
-    private static string Maker(ActivityState s) => s.AgentLabel == "Codex" ? "Codex" : "Claude Code";
+    private static string Maker(ActivityState s) => s.AgentLabel == "ChatGPT" ? "ChatGPT" : "Claude Code";
 
     private static DateTimeOffset Start(ActivityState s)
         => s.T0 is { } t0 ? DateTimeOffset.FromUnixTimeMilliseconds((long)(t0 * 1000)) : s.UpdatedAt;

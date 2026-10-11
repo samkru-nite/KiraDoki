@@ -18,8 +18,25 @@ internal static class HookConnector
     /// <summary>One connect/disconnect at a time: two scripts editing the same JSON at once lose one of the edits.</summary>
     private static readonly SemaphoreSlim OneAtATime = new(1, 1);
 
-    /// <summary>Whether Claude Code's or Codex's settings already call IsleBar (a Codex-only user counts too). Never throws.</summary>
-    public static bool IsConnected => Calls(ClaudeSettings) || Calls(CodexHooks);
+    /// <summary>
+    /// Whether Claude Code's settings already call IsleBar. Never throws. Codex has no hooks any more (10-11): the ChatGPT app
+    /// runs them only once the person approves them, and the bar reads its session records instead (<c>CodexWatcher</c>).
+    /// </summary>
+    public static bool IsConnected => Calls(ClaudeSettings);
+
+    /// <summary>
+    /// Takes out the Codex hooks older builds added — unapproved, they only kept a "review hooks" dialog coming up in the ChatGPT
+    /// app (user 10-11). Once per start, in the background, and only when there are some: the script also brings Claude's
+    /// hooks up to date when they are connected, and leaves them out when they aren't.
+    /// </summary>
+    public static void TidyCodex() => Task.Run(() =>
+    {
+        if (Calls(CodexHooks))
+        {
+            AppLog.Write("hooks: taking out the old Codex hooks");
+            Set(IsConnected);
+        }
+    });
 
     private static bool Calls(string file)
     {

@@ -55,7 +55,7 @@ public sealed class CardSheetTests
             RawKind = ActivityState.KindAgentWorking, Agent = "codex", Name = "重写下载卡片", T0 = Unix(Now.AddMinutes(-3)),
         }), Now, Zh);
 
-        Assert.Equal("Codex", sheet.Source);
+        Assert.Equal("ChatGPT", sheet.Source);
         Assert.Equal(SheetTone.Plain, sheet.Tone);   // nobody is waiting on it
         Assert.Equal("已运行3分钟", sheet.Time);
         Assert.Equal([SheetAction.OpenChat], sheet.Buttons.Select(b => b.Action));

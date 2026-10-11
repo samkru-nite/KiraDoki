@@ -83,6 +83,6 @@ public static class TaskIcons
         };
         var agent = s.Kind is ActivityKind.AgentWorking or ActivityKind.AgentPermission or ActivityKind.AgentDone
                     || (s.Kind == ActivityKind.Notice && s.Agent is not null);
-        return agent ? icon with { Logo = s.AgentLabel == "Codex" ? "codex" : "claude" } : icon;
+        return agent ? icon with { Logo = s.AgentLabel == "ChatGPT" ? "codex" : "claude" } : icon;
     }
 }

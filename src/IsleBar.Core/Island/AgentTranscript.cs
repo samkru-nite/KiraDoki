@@ -175,6 +175,10 @@ public static class AgentTranscript
 
     private static readonly Regex CmdInScript = new(@"cmd:\s*""((?:[^""\\]|\\.)*)""", RegexOptions.CultureInvariant);
 
+    // the ChatGPT app asking for permission: tools.request_permissions({permissions:{…},"reason":"…"}) — the reason is the step (10-11)
+    private static readonly Regex ReasonInScript = new(@"request_permissions\(.*?""?reason""?\s*:\s*""((?:[^""\\]|\\.)*)""",
+        RegexOptions.CultureInvariant | RegexOptions.Singleline);
+
     /// <summary>The command a Codex tool call runs (its first line), else the tool's name.</summary>
     private static string? CodexStep(JsonElement payload)
     {
@@ -191,7 +195,8 @@ public static class AgentTranscript
             {
             }
         }
-        else if (Str(payload, "input") is { } script && CmdInScript.Match(script) is { Success: true } m)
+        else if (Str(payload, "input") is { } script
+                 && (ReasonInScript.Match(script) is { Success: true } r ? r : CmdInScript.Match(script)) is { Success: true } m)
         {
             try
             {

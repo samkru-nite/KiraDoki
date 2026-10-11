@@ -4,14 +4,10 @@ using IsleBar.Core.Launch;
 namespace IsleBar.App.SystemWatch;
 
 /// <summary>
-/// Follows the session record of each running agent session, for what no hook reports:
-/// <list type="bullet">
-/// <item>Codex fires no hook when a turn fails (user 10-03) — on the usage limit the pill used to keep saying "working" — but its
-/// record says so (<c>task_complete</c> with an error) and records the plan's usage windows (<c>token_count</c>). A failed turn
-/// replaces the session's item with the red usage-limit or "stopped" notice (the usage windows say when the limit lifts).</item>
-/// <item>Claude Code fires no Stop hook when the user interrupts it (Esc) — the pill said "working" for hours (review 10-03). Its
-/// transcript gets "[Request interrupted by user]"; the session's item is then cleared.</item>
-/// </list>
+/// Follows the session record of each running Claude Code session, for what no hook reports: Claude Code fires no Stop hook when
+/// the user interrupts it (Esc) — the pill said "working" for hours (review 10-03). Its transcript gets "[Request interrupted by
+/// user]"; the session's item is then cleared. (Codex's failed turns were read here too until 10-11 — its cards come from its
+/// records altogether now, <see cref="CodexWatcher"/>.)
 /// A session is followed while its item is "working" or "needs you". Only new bytes are read (records only grow); the first
 /// read takes the end of the record, and from it only lines written after the current turn began count — an old failure or
 /// interrupt further up used to come back on the next prompt (review 10-03). No slack: the turn's start, the state file and
@@ -32,7 +28,6 @@ internal sealed class AgentRecordWatcher : NoticeWatcher
         public long Offset;
         public byte[] Pending = [];          // the end of the last read that isn't a whole line yet (bytes: a UTF-8 character may be split)
         public bool DropFirstLine;           // started mid-file: the first piece is the tail of a line
-        public IReadOnlyList<UsageWindow>? Windows;
     }
 
     public AgentRecordWatcher(Func<Core.Localization.LanguageStrings> strings)
@@ -62,9 +57,9 @@ internal sealed class AgentRecordWatcher : NoticeWatcher
             {
                 var id = Path.GetFileNameWithoutExtension(file);
                 var written = File.GetLastWriteTimeUtc(file);   // before reading it — a hook rewriting it after this is noticed below
-                if (!(id.StartsWith("codex_", StringComparison.OrdinalIgnoreCase) || id.StartsWith("claude_", StringComparison.OrdinalIgnoreCase))
+                if (!id.StartsWith("claude_", StringComparison.OrdinalIgnoreCase)
                     || store.ReadById(id) is not { Transcript: { Length: > 0 } record } state
-                    || state.Agent is not (AgentKind.Codex or AgentKind.Claude)
+                    || state.Agent != AgentKind.Claude
                     || state.Kind is not (ActivityKind.AgentWorking or ActivityKind.AgentPermission)
                     || !File.Exists(record))
                 {
@@ -76,7 +71,7 @@ internal sealed class AgentRecordWatcher : NoticeWatcher
                 {
                     // the turn's start: its own time, else when the state file was written (a permission state carries no t0)
                     var since = state.T0 is { } t0 ? DateTimeOffset.FromUnixTimeMilliseconds((long)(t0 * 1000)) : new DateTimeOffset(written, TimeSpan.Zero);
-                    Follow(store, id, record, state.Agent, since, () => File.GetLastWriteTimeUtc(file) == written);
+                    Follow(store, id, record, since, () => File.GetLastWriteTimeUtc(file) == written);
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
@@ -95,7 +90,7 @@ internal sealed class AgentRecordWatcher : NoticeWatcher
         }
     }
 
-    private void Follow(ActivityStore store, string id, string record, string agent, DateTimeOffset since, Func<bool> unchanged)
+    private void Follow(ActivityStore store, string id, string record, DateTimeOffset since, Func<bool> unchanged)
     {
         using var stream = new FileStream(record, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         var end = stream.Length;
@@ -136,49 +131,24 @@ internal sealed class AgentRecordWatcher : NoticeWatcher
         var lines = System.Text.Encoding.UTF8.GetString(bytes, 0, lastNewline).Split('\n');
         var first = followed.DropFirstLine ? 1 : 0;
         followed.DropFirstLine = false;
-        var now = DateTimeOffset.UtcNow;
-        if (agent == AgentKind.Claude)
-        {
-            // the last interrupt of this turn with no prompt after it: stopped by the user, nothing is running any more
-            var interrupted = false;
-            for (var i = first; i < lines.Length; i++)
-            {
-                if (AgentRecord.IsClaudeInterrupt(lines[i]))
-                {
-                    interrupted = AgentRecord.LineTime(lines[i]) is { } at && at > since;
-                }
-                else if (interrupted && AgentRecord.IsClaudePrompt(lines[i]))
-                {
-                    interrupted = false;   // a new prompt right after — the interrupt belonged to the turn before
-                }
-            }
-
-            if (interrupted && unchanged())
-            {
-                store.Remove(id);
-                Interop.TaskbarHost.Log("claude: turn interrupted");
-            }
-
-            return;
-        }
-
+        // the last interrupt of this turn with no prompt after it: stopped by the user, nothing is running any more
+        var interrupted = false;
         for (var i = first; i < lines.Length; i++)
         {
-            var line = lines[i];
+            if (AgentRecord.IsClaudeInterrupt(lines[i]))
+            {
+                interrupted = AgentRecord.LineTime(lines[i]) is { } at && at > since;
+            }
+            else if (interrupted && AgentRecord.IsClaudePrompt(lines[i]))
+            {
+                interrupted = false;   // a new prompt right after — the interrupt belonged to the turn before
+            }
+        }
 
-            if (AgentUsage.FromCodexLine(line) is { } windows)
-            {
-                followed.Windows = windows;   // kept for when a hit limit lifts (the "at 90%" warning went 10-10)
-            }
-            else if (AgentUsage.CodexFailureFrom(line) is { } failure && (AgentRecord.LineTime(line) is not { } at || at > since) && unchanged())
-            {
-                var notice = failure.UsageLimit
-                    ? AgentNotices.UsageLimit(AgentKind.Codex, AgentUsage.ResetOfFullest(followed.Windows), Text, now)
-                    : AgentNotices.Stopped(AgentKind.Codex, failure.Reason, Text, now);
-                store.Write(id, notice);   // replaces "working" — the next prompt turns it back into "working"
-                Interop.TaskbarHost.Log($"codex: turn failed ({(failure.UsageLimit ? "usage limit" : failure.Reason.ToString())})");
-                return;
-            }
+        if (interrupted && unchanged())
+        {
+            store.Remove(id);
+            Interop.TaskbarHost.Log("claude: turn interrupted");
         }
     }
 }

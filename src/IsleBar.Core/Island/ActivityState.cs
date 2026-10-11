@@ -243,7 +243,7 @@ public sealed class ActivityState
 
     /// <summary>Agent name shown on the island. Claude if absent.</summary>
     [JsonIgnore]
-    public string AgentLabel => string.Equals(Agent, "codex", StringComparison.OrdinalIgnoreCase) ? "Codex" : "Claude";
+    public string AgentLabel => string.Equals(Agent, "codex", StringComparison.OrdinalIgnoreCase) ? "ChatGPT" : "Claude";
 
     /// <summary>Whether this is the "finish" stage — shown as "finishing".</summary>
     [JsonIgnore]

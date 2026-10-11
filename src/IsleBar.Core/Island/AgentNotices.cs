@@ -14,7 +14,7 @@ public static class AgentNotices
     private const string Clock = "";      // Segoe Fluent Icons: clock ("wait until")
     private const string Warning = "";    // Segoe Fluent Icons: warning
 
-    public static string Name(string agent) => agent == AgentKind.Codex ? "Codex" : "Claude";
+    public static string Name(string agent) => agent == AgentKind.Codex ? "ChatGPT" : "Claude";
 
     /// <summary>The plan's usage limit stopped the turn. Stays until <paramref name="resetsAt"/> (an hour if unknown).</summary>
     public static ActivityState UsageLimit(string agent, DateTimeOffset? resetsAt, LanguageStrings? text, DateTimeOffset now)

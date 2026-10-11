@@ -1585,10 +1585,11 @@ public sealed partial class MainWindow : Window
 
     /// <summary>
     /// A Claude card whose chat the app can show: done / interrupted (user 10-10: only then "open" — a button does what it says;
-    /// Codex, terminal sessions, timers and failures keep "Close"), and waiting for you (TODO ④, 10-10: the answer is given in Claude).
+    /// terminal sessions, timers and failures keep "Close"), and waiting for you (TODO ④, 10-10: the answer is given in Claude). The
+    /// ChatGPT app's too (user 10-11: its conversations open with codex://threads/…).
     /// </summary>
     private bool OpensChat(Card card)
-        => card.State is { Agent: IsleBar.Core.Launch.AgentKind.Claude } s
+        => card.State is { Agent: IsleBar.Core.Launch.AgentKind.Claude or IsleBar.Core.Launch.AgentKind.Codex } s
            && (s.Kind is ActivityKind.AgentDone or ActivityKind.AgentPermission || s is { Kind: ActivityKind.Notice, Stage: "interrupted" })
            && Engine.ChatOpener.CanOpen(s, _feed.Tails.RecordPath(s));
 

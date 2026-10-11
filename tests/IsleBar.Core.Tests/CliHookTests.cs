@@ -127,7 +127,7 @@ public class CliHookTests
         using var dir = new TempDir();
         Hook("", "--agent", "codex", "--dir", dir.Path, """{"type":"agent-turn-complete","thread-id":"t9","cwd":"/w/proj"}""");
         var state = Assert.Single(new ActivityStore(dir.Path).Read(DateTimeOffset.UtcNow));
-        Assert.Equal("Codex", state.AgentLabel);
+        Assert.Equal("ChatGPT", state.AgentLabel);
         Assert.Equal("proj", state.Name);
     }
 

@@ -28,7 +28,8 @@ internal sealed class SystemWatchers : IDisposable
     private PrivacyWatcher? _privacy;
     private ToastWatcher? _toasts;
     private ChatFlashWatcher? _flashes;   // WeChat's messages (it only flashes its button), with the notifications' switch
-    private AgentRecordWatcher? _codex;   // always on: a Codex turn that fails and a Claude turn interrupted with Esc fire no hook (10-03)
+    private AgentRecordWatcher? _records;   // always on: a Claude turn interrupted with Esc fires no hook (10-03)
+    private CodexWatcher? _codex;   // always on: the ChatGPT app's cards come from its session records (10-11)
     private DriveWatcher? _drives;   // always on for now (TODO ④, 10-10: no setting until it proves itself)
     private TransitWatcher? _transit;   // always on (TODO ④ transit station, 10-10)
     private bool? _hidingBanners;   // null until the first Apply (which also cleans up after a crash with the option off)
@@ -64,7 +65,8 @@ internal sealed class SystemWatchers : IDisposable
             Toggle(ref _privacy, options.Privacy, () => new PrivacyWatcher(_strings));
             Toggle(ref _toasts, options.Toasts, () => new ToastWatcher(_strings) { HealthChanged = OnToastHealth });
             Toggle(ref _flashes, options.Toasts, () => new ChatFlashWatcher(_strings));
-            Toggle(ref _codex, true, () => new AgentRecordWatcher(_strings));
+            Toggle(ref _records, true, () => new AgentRecordWatcher(_strings));
+            Toggle(ref _codex, true, () => new CodexWatcher(_strings));
             Toggle(ref _drives, true, () => new DriveWatcher(_strings));
             Toggle(ref _transit, true, () => new TransitWatcher(_strings));
             if (_toasts is not null)
@@ -178,7 +180,7 @@ internal sealed class SystemWatchers : IDisposable
             NoticeWatcher?[] watchers;
             lock (_gate)
             {
-                watchers = [_power, _bluetooth, _network, _focus, _clipboard, _load, _calendar, _privacy, _toasts, _flashes, _codex, _drives, _transit];
+                watchers = [_power, _bluetooth, _network, _focus, _clipboard, _load, _calendar, _privacy, _toasts, _flashes, _records, _codex, _drives, _transit];
             }
 
             List<ActivityState>? all = null;
@@ -226,6 +228,7 @@ internal sealed class SystemWatchers : IDisposable
             Toggle(ref _privacy, false, null!);
             Toggle(ref _toasts, false, null!);
             Toggle(ref _flashes, false, null!);
+            Toggle(ref _records, false, null!);
             Toggle(ref _codex, false, null!);
             Toggle(ref _drives, false, null!);
             Toggle(ref _transit, false, null!);

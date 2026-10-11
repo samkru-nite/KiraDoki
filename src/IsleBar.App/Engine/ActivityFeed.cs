@@ -52,6 +52,7 @@ internal sealed class ActivityFeed : IDisposable
         Downloads.Start();
         Watchers = new SystemWatchers(_text);
         Watchers.Start(WatchOptions(_settings()));
+        HookConnector.TidyCodex();   // older builds' Codex hooks only kept a "review hooks" dialog coming up (10-11)
     }
 
     /// <summary>Settings changed: pass the notice switches on to the watchers.</summary>
@@ -532,7 +533,7 @@ internal sealed class ActivityFeed : IDisposable
             return;
         }
 
-        var notice = SystemNotice.Make("Claude Code / Codex", NoticeGlyphs.Bell, DateTimeOffset.UtcNow,
+        var notice = SystemNotice.Make("Claude Code", NoticeGlyphs.Bell, DateTimeOffset.UtcNow,
             msg: _text().ConnectAgentsCard, open: HookConnector.Command);
         notice.Stage = "expand";
         notice.Name = "IsleBar";

@@ -19,24 +19,35 @@ internal static class ChatOpener
     /// True when <see cref="Open"/> would land on the chat itself (a Claude app session found), not just bring the app up — the done
     /// card's round "open" button shows only then (user 10-10: a button does what it says).
     /// </summary>
-    public static bool CanOpen(ActivityState s, string? record) => s.Agent == AgentKind.Claude && Desk(s, record).Desk is not null;
+    public static bool CanOpen(ActivityState s, string? record)
+        => s.Agent == AgentKind.Codex ? Thread(record) is not null : s.Agent == AgentKind.Claude && Desk(s, record).Desk is not null;
 
-    /// <summary>Asks the Claude app to show the chat. True when the chat itself was asked for and the request went out.</summary>
+    /// <summary>Asks the Claude / ChatGPT app to show the chat. True when the chat itself was asked for and the request went out.</summary>
     public static bool Open(ActivityState s, string? record)
     {
-        if (s.Agent != AgentKind.Claude)
+        string url;
+        bool exact;
+        if (s.Agent == AgentKind.Codex)
         {
-            TaskbarHost.Log($"open chat: {s.Agent} — only the Claude app for now");
+            var thread = Thread(record);
+            (url, exact) = (thread is not null ? $"codex://threads/{thread}" : "codex://", thread is not null);
+            TaskbarHost.Log($"open chat: ChatGPT thread {thread ?? "-"} · {url}");
+        }
+        else if (s.Agent == AgentKind.Claude)
+        {
+            var (id, desk) = Desk(s, record);
+            (url, exact) = (desk is not null ? $"claude://code/continue?session={desk}" : "claude://", desk is not null);
+            TaskbarHost.Log($"open chat: session {id ?? "-"} → {desk ?? "no desktop session (terminal?) — bring the app up"} · {url}");
+        }
+        else
+        {
             return false;
         }
 
-        var (id, desk) = Desk(s, record);
-        var url = desk is not null ? $"claude://code/continue?session={desk}" : "claude://";
-        TaskbarHost.Log($"open chat: session {id ?? "-"} → {desk ?? "no desktop session (terminal?) — bring the app up"} · {url}");
         try
         {
             Process.Start(new ProcessStartInfo(url) { UseShellExecute = true })?.Dispose();
-            return desk is not null;
+            return exact;
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
         {
@@ -68,6 +79,16 @@ internal static class ChatOpener
         Known[id] = (desk, now);
         return (id, desk);
     }
+
+    private static readonly System.Text.RegularExpressions.Regex ThreadId = new(
+        "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    /// <summary>
+    /// The ChatGPT app's conversation behind a Codex record: the id at the end of its name (<c>rollout-…-{id}.jsonl</c>), shown with
+    /// <c>codex://threads/{id}</c> — found in the app's own code and tried 10-11.
+    /// </summary>
+    private static string? Thread(string? record)
+        => record is not null && ThreadId.Match(Path.GetFileNameWithoutExtension(record)) is { Success: true } m ? m.Value : null;
 
     private static readonly TimeSpan MissFor = TimeSpan.FromSeconds(30);
 

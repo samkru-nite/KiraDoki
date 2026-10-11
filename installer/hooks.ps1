@@ -1,4 +1,4 @@
-﻿# Connects Claude Code (and Codex, if it's set up) to IsleBar: every hook calls `islebar.exe hook`, which updates the pill.
+﻿# Connects Claude Code to IsleBar: every hook calls `islebar.exe hook`, which updates the pill. (Codex: older builds added hooks — taken out again, see below.)
 # Run by the installer (optional task "Connect Claude Code notifications") and by the uninstaller (-Revert).
 #
 #   hooks.ps1 -Apply     add IsleBar's hooks (others are left alone; settings.json is backed up first)
@@ -80,40 +80,17 @@ if (Test-Path (Split-Path $SettingsPath -Parent)) {
 }
 catch { $failed = $true; "claude: left unchanged — $($_.Exception.Message)" }
 
-# ---- Codex (0.15x+): lifecycle hooks in hooks.json next to config.toml — working · needs an answer · done, like Claude.
-# Codex asks the person to trust new hooks once (/hooks in Codex). The legacy notify line (done only) is removed so a finished
-# turn doesn't ring twice; -Revert takes our hooks out again and leaves everyone else's.
+# ---- Codex: no hooks any more (10-11). The ChatGPT app (the old Codex app) runs hooks only after the person approves them in
+# a "review hooks" dialog — ours sat there unapproved for days and never ran — and the bar reads its session records instead.
+# -Apply and -Revert both take out the hooks older builds added (everyone else's stay); the legacy notify line goes too.
 $codexDir = Split-Path $CodexConfig -Parent
 $codexHooks = Join-Path $codexDir 'hooks.json'
-# Codex on Windows runs hook commands through PowerShell: a quoted path needs the call operator (&), and PowerShell doesn't
-# hand its stdin to a native program on its own — read it and pipe it in, as UTF-8 so Korean folder names survive (10-01).
-# Read stdin as UTF-8 too: PowerShell decodes it with the console code page (949 on Korean Windows), which mangled Korean
-# prompts/folders and broke the JSON — the pill silently stayed dark (code review 10-01).
-$codexCommand = '[Console]::InputEncoding = [Text.UTF8Encoding]::new($false); $d = [Console]::In.ReadToEnd(); $OutputEncoding = [Text.UTF8Encoding]::new($false); $d | & "' + $Exe + '" hook --agent codex'
-$codexEvents = @('UserPromptSubmit', 'PermissionRequest', 'PostToolUse', 'Stop', 'SessionEnd')
 try {
 if (Test-Path $codexDir) {
     $hj = if (Test-Path $codexHooks) { Get-Content $codexHooks -Raw -Encoding UTF8 | ConvertFrom-Json } else { [pscustomobject]@{} }
     if ($null -eq $hj) { $hj = [pscustomobject]@{} }
     if (-not $hj.PSObject.Properties['hooks']) { $hj | Add-Member -NotePropertyName hooks -NotePropertyValue ([pscustomobject]@{}) }
-    if ($Apply) {
-        foreach ($e in $codexEvents) {
-            $groups = @($hj.hooks.$e) | Where-Object { $_ }
-            $has = $false
-            # Codex caps SessionEnd hooks at 3 s and prints a warning on every start if a hook asks for more
-            $timeout = if ($e -eq 'SessionEnd') { 3 } else { 10 }
-            # already there → update it in place: the first build's command read stdin in the console code page, and a
-            # reinstall that kept it left Korean prompts dark (found reinstalling 10-01). Codex asks to trust the changed hook once.
-            foreach ($g in $groups) { foreach ($h in @($g.hooks)) { if (Is-Ours $h) { $has = $true; $h | Add-Member -NotePropertyName command -NotePropertyValue $codexCommand -Force; $h | Add-Member -NotePropertyName timeout -NotePropertyValue $timeout -Force } } }
-            if ($has) { continue }
-            $entry = [pscustomobject]@{ hooks = @([pscustomobject]@{ type = 'command'; command = $codexCommand; timeout = $timeout }) }
-            if ($hj.hooks.PSObject.Properties[$e]) { $hj.hooks.$e = @($groups) + $entry }
-            else { $hj.hooks | Add-Member -NotePropertyName $e -NotePropertyValue @($entry) }
-        }
-        Save-Json $hj $codexHooks
-        "codex: hooks connected (trust them once with /hooks in Codex)"
-    }
-    elseif ($Revert -and (Test-Path $codexHooks)) {
+    if (($Apply -or $Revert) -and (Test-Path $codexHooks) -and ((Get-Content $codexHooks -Raw -Encoding UTF8) -like '*islebar.exe*')) {
         Remove-OurHooks $hj.hooks
         if (@($hj.hooks.PSObject.Properties).Count -eq 0 -and @($hj.PSObject.Properties).Count -eq 1) { Remove-Item $codexHooks -Force }
         else { Save-Json $hj $codexHooks }
