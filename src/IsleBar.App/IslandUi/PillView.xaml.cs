@@ -132,13 +132,16 @@ public sealed partial class PillView : UserControl
         MoreLabel.Visibility = more > 0 ? Visibility.Visible : Visibility.Collapsed;
         MoreLabel.Text = more > 0 ? "+" + more.ToString(System.Globalization.CultureInfo.InvariantCulture) : string.Empty;
         MoreLabel.Foreground = BrushOf(Host.Theme.Hint);
-        // 8 before the bars or the "+N"; the button's 8 is its own (the gap is clickable, user 10-10)
-        IslandContent.Margin = new Thickness(0, 0, card is { Type: CardType.Inform } ? 0 : playing || more > 0 ? 8 : 12, 0);
+        _shownState = state;
+        _inform = card is { Type: CardType.Inform };
+        _tailGap = playing || more > 0;
+        PlaceRight();
         // compressing: the document outline gets zipper teeth (the drop hint uses the same outline without them)
         ZipTeeth.Opacity = state.Stage == "copy" && state.RunState == ActivityRunState.Running
                            && state.Glyph == FileOperationWatcher.CompressGlyph ? 1 : 0;
         ShowAgentMark(state);
         ShowAlbumArt(state.Kind == ActivityKind.Music);
+        ShowAppMark(state);
         ShowLeadPause(state.Kind == ActivityKind.Music && state.Stage == "paused");
         SetEqualizer(state.Kind == ActivityKind.Music && state.Stage != "paused");
         var now = DateTimeOffset.UtcNow;
@@ -167,7 +170,8 @@ public sealed partial class PillView : UserControl
         {
             // brief notice: "充电中 78%" — the title is the key part (bold), the rest dimmed after a gap; a translation's " · " is a
             // break too ("Charging · {p}%")
-            var tail = TextGap.Join(state.Msg, state.Name);
+            // a notification of an app's: "张伟 在吗" — its icon names the app (user 10-11: "… QQ" went)
+            var tail = state.Stage == "expand" ? state.Msg ?? string.Empty : TextGap.Join(state.Msg, state.Name);
             ShowIslandText(state, Head(TextGap.FromDots(state.Title), tail), tail);
         }
         else if (state.Kind == ActivityKind.Music)
@@ -559,7 +563,8 @@ public sealed partial class PillView : UserControl
             // something on the right too (the button, the now-playing bars): the text area's middle — 8 to each side, so halfway
             // between them (108.5 beside the ↗, 86.5 beside "Close", 111 between cover and bars); else the pill's middle
             // (from the known sizes, not the area's ActualWidth — that lags a layout pass behind a change)
-            double? areaRight = CloseZone.Visibility == Visibility.Visible ? BaseWidth - CloseZone.Width
+            var more = MoreLabel.Visibility == Visibility.Visible ? MoreWidth() + 8 : 0;   // "+N" before the button too (10-11)
+            double? areaRight = CloseZone.Visibility == Visibility.Visible ? BaseWidth - CloseZone.Width - more
                 : Equalizer.Visibility == Visibility.Visible ? BaseWidth - Equalizer.Margin.Right - EqualizerWidth - 8
                 : MoreLabel.Visibility == Visibility.Visible ? BaseWidth - MoreLabel.Margin.Right - MoreWidth() - 8
                 : null;
@@ -941,6 +946,42 @@ public sealed partial class PillView : UserControl
         LeadIcon.Visibility = Visibility.Collapsed;
     }
 
+    /// <summary>
+    /// A notification's app icon (TODO 四, user 10-11: QQ's penguin, not the bell; every app's). Asked for when the app changes —
+    /// a source of this pill's own (<see cref="AppIcon"/>: one shared between windows brought the app down); the bell stays until it
+    /// has loaded, and for good for an app that has none.
+    /// </summary>
+    private void ShowAppMark(ActivityState state)
+    {
+        var app = state is { Kind: ActivityKind.Notice, Stage: "expand", AppId: { Length: > 0 } id } ? id : null;
+        if (app != _appMarkFor)
+        {
+            _appMarkFor = app;
+            AppMark.Source = null;
+            if (app is not null)
+            {
+                AppIcon.Resolve(app, source =>
+                {
+                    if (_appMarkFor == app)
+                    {
+                        AppMark.Source = source;
+                        ShowAppMark(_shownState ?? state);
+                    }
+                });
+            }
+        }
+
+        var shown = app is not null && AppMark.Source is not null;
+        AppMark.Visibility = shown ? Visibility.Visible : Visibility.Collapsed;
+        if (shown)
+        {
+            LeadIcon.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private string? _appMarkFor;
+    private ActivityState? _shownState;
+
     /// <summary>Turns the now-playing bars on/off. The animation is built once when turned on (the compositor runs it).</summary>
     private void SetEqualizer(bool on)
     {
@@ -1243,6 +1284,7 @@ public sealed partial class PillView : UserControl
         CloseZone.Width = ButtonGap + (open ? OpenChip : CloseChipWidth) + ButtonInset;
         CloseLabel.Visibility = open ? Visibility.Collapsed : Visibility.Visible;
         OpenIcon.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+        PlaceRight();
         if (button == PillButton.Close && _closeInkFor != CloseLabel.Text)
         {
             _closeInkFor = CloseLabel.Text;
@@ -1251,6 +1293,20 @@ public sealed partial class PillView : UserControl
     }
 
     private string? _closeInkFor;
+    private bool _inform;
+    private bool _tailGap;
+
+    /// <summary>
+    /// The right side's gaps (pill layout rules, user 10-10; "+N" beside the ↗ 10-11): 8 from the text to the bars or the "+N";
+    /// else none before a button (its zone starts with its own clickable 8); else 12 to the pill's edge. The "+N" is 12 from the
+    /// edge, or right against the button's zone — "text 8 +N 8 ↗".
+    /// </summary>
+    private void PlaceRight()
+    {
+        var button = CloseZone.Visibility == Visibility.Visible;
+        IslandContent.Margin = new Thickness(0, 0, _tailGap ? 8 : button || _inform ? 0 : 12, 0);
+        MoreLabel.Margin = new Thickness(0, 0, button ? 0 : 12, 0);
+    }
 
     /// <summary>
     /// The button's sizes (user 10-10): 8 from the text to the chip — the same 8 as icon to text — the chip 5 in from the pill's edge

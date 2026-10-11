@@ -48,6 +48,9 @@ public enum SheetAction
 /// <summary>A button: words, or (media) an icon from Segoe Fluent Icons.</summary>
 public sealed record SheetButton(SheetAction Action, string? Label, string? Glyph = null);
 
+/// <summary>One sender's messages on a notification card: the name, then what they sent, oldest first (TODO 四, user 10-11).</summary>
+public sealed record SheetGroup(string Name, IReadOnlyList<string> Lines);
+
 /// <summary>A row of a file list: where the file is, its name, and whether it is no longer there.</summary>
 public sealed record SheetFile(string Path, string Name, bool Gone);
 
@@ -79,6 +82,9 @@ public sealed record CardSheet(
 
     /// <summary>One grey 12 line under the body (an agent at work: its latest step, under what it last said — user 10-09).</summary>
     public string? Footnote { get; init; }
+
+    /// <summary>A notification card's messages by sender, the one who wrote last first (<see cref="CardSheets.BySender"/>).</summary>
+    public IReadOnlyList<SheetGroup> Groups { get; init; } = [];
 
     /// <summary>The rows of <see cref="SheetLayout.Files"/>.</summary>
     public IReadOnlyList<SheetFile> Files { get; init; } = [];
@@ -112,6 +118,13 @@ public static class CardSheets
     /// </summary>
     public const double TitleGap = 8;
     public const double ParagraphGap = 8;
+
+    /// <summary>
+    /// Messages by sender (user 10-11): name to its first message 2 (<see cref="TitleBodyGap"/>), 4 between one sender's messages
+    /// (tighter than paragraphs: a chat), 12 between senders (<see cref="Gap"/>). Names in the main colour, not bold (at most one
+    /// bold thing per zone), messages grey — as the pill writes "name message".
+    /// </summary>
+    public const double MessageGap = 4;
     public const double Fade = 16;
     public const double NoteSize = 12, NoteLine = 16;
     public const double TextSize = 14, TextLine = 20;
@@ -119,6 +132,35 @@ public static class CardSheets
 
     /// <summary>The cover beside a song: 56 when there's a progress zone (the middle is 58 high), 72 without (96).</summary>
     public static double CoverSize(bool progress) => progress ? 56 : 72;
+
+    /// <summary>
+    /// A notification card's messages by sender (TODO 四, user 10-11, as phones group a chat app's): each name once, its messages
+    /// oldest first as in the chat; the one who wrote last on top. The sender is the notification's title (QQ's: the nickname).
+    /// </summary>
+    public static IReadOnlyList<SheetGroup> BySender(ActivityState newest)
+    {
+        ArgumentNullException.ThrowIfNull(newest);
+        var groups = new List<(string Name, List<string> Lines)>();
+        foreach (var message in newest.Earlier.Append(newest))   // Earlier: as they came, oldest first
+        {
+            var name = message.Title ?? message.Name ?? string.Empty;
+            var at = groups.FindIndex(g => g.Name == name);
+            var group = at < 0 ? (name, new List<string>()) : groups[at];
+            if (at >= 0)
+            {
+                groups.RemoveAt(at);
+            }
+
+            if (!string.IsNullOrWhiteSpace(message.Msg))
+            {
+                group.Item2.Add(message.Msg);
+            }
+
+            groups.Insert(0, group);   // wrote just now: on top
+        }
+
+        return [.. groups.Select(g => new SheetGroup(g.Name, g.Lines))];
+    }
 
     /// <summary>The middle zone's height in a card <paramref name="height"/> high (dip).</summary>
     public static double MiddleHeight(CardSheet sheet, double height)
@@ -160,11 +202,10 @@ public static class CardSheets
             ActivityKind.Music => Music(s, text),
             ActivityKind.Transfer => Transfer(card, now, text, close),
             ActivityKind.Notice when s.Stage == "privacy" => Privacy(s, now, text),
-            // the newest notification, then the ones merged into the card before it, newest first (user 10-10: "+N" on the pill)
+            // an app's notifications, the ones merged into the card too ("+N" on the pill, user 10-10), by sender (user 10-11)
             ActivityKind.Notice when s.Stage == "expand" => Sheet(
-                s.Name ?? text.CardSystem, null, SheetTone.Plain, Ago(Start(s), now, text), s.Title,
-                [s.Msg, .. s.Earlier.Reverse().Select(e => TextGap.Join(e.Title, e.Msg))],
-                s.Open is null ? close : [new(SheetAction.Open, text.MenuOpen), .. close]),   // nothing to open (QQ, TODO 四): no button that does nothing
+                s.Name ?? text.CardSystem, null, SheetTone.Plain, Ago(Start(s), now, text), null, [],
+                s.Open is null ? close : [new(SheetAction.Open, text.MenuOpen), .. close]) with { Groups = BySender(s) },
             ActivityKind.Notice when s.Glyph == NoticeGlyphs.Drive => Drive(card, text),
             ActivityKind.Notice when s.Glyph == NoticeGlyphs.Transit => Transit(s, text),
             // the calendar (10-10): the event's name, its state in the card's colour, its time "8:00 – 9:35"

@@ -53,6 +53,8 @@
                 <Image x:Name="ClaudeGlyphImage" x:FieldModifier="internal" Width="20" Height="20" Margin="-2" Visibility="Collapsed" />
                 <!-- Codex mode: the mark from the user's own Codex extension for VS Code/Cursor (CodexMark) — IsleBar ships no OpenAI logo -->
                 <Image x:Name="CodexGlyph" x:FieldModifier="internal" Width="19" Height="19" Margin="-1.5" Visibility="Collapsed" />
+                <!-- A notification: its app's own icon in its own colours (QQ's penguin, user 10-11), as in its lifted card; the bell until it loads -->
+                <Image x:Name="AppMark" Width="16" Height="16" Stretch="Uniform" Visibility="Collapsed" />
                 <!-- Music: album art 22 centred on the icon spot (x 5–27), so the text still starts at 32 -->
                 <Border x:Name="AlbumArt" Width="22" Height="22" Margin="-3" CornerRadius="11" Visibility="Collapsed">
                     <Border.Background>

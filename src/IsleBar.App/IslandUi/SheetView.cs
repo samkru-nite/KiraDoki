@@ -225,7 +225,8 @@ internal sealed class SheetView
     private static string StructureKey(CardSheet s) => string.Join("\u0001",
         s.Layout, s.Source, s.Title is null, s.Body.Count, s.Raw is null, s.Progress is null,
         s.Progress is { Left: null, Right: null }, s.Buttons.Count, s.Markdown ? string.Join('\n', s.Body) : string.Empty, s.Footnote is null,
-        string.Join('\n', s.Files.Select(f => (f.Gone ? "-" : "+") + f.Path)));   // a file in or out, or gone: the list again
+        string.Join('\n', s.Files.Select(f => (f.Gone ? "-" : "+") + f.Path)),   // a file in or out, or gone: the list again
+        string.Join('\n', s.Groups.Select(g => g.Name + "\u0002" + string.Join('\u0002', g.Lines))));   // a message more: built again (it grows)
 
     /// <summary>
     /// Takes the source row's icon out, so a card built again can hold it (10-09: working → done while lifted rebuilt the card, and
@@ -333,6 +334,21 @@ internal sealed class SheetView
             p.Foreground = Brush(_palette.Hint);
             p.Margin = new Thickness(0, stack.Children.Count == 0 ? 0 : sheet.Title is not null && stack.Children.Count == 1 ? CardSheets.TitleGap : CardSheets.ParagraphGap, 0, 0);
             stack.Children.Add(p);
+        }
+
+        foreach (var group in sheet.Groups)
+        {
+            // a notification card's messages by sender (user 10-11): the name in the main colour, its messages grey under it
+            var name = Text(group.Name, strong: false);
+            name.Margin = new Thickness(0, stack.Children.Count == 0 ? 0 : CardSheets.Gap, 0, 0);
+            stack.Children.Add(name);
+            for (var i = 0; i < group.Lines.Count; i++)
+            {
+                var line = Text(group.Lines[i], strong: false);
+                line.Foreground = Brush(_palette.Hint);
+                line.Margin = new Thickness(0, i == 0 ? CardSheets.TitleBodyGap : CardSheets.MessageGap, 0, 0);
+                stack.Children.Add(line);
+            }
         }
 
         if (sheet.Footnote is { } footnote)

@@ -169,8 +169,25 @@ public sealed class CardSheetTests
 
         Assert.Equal("邮件", sheet.Source);
         Assert.Null(sheet.State);
-        Assert.Equal("张伟", sheet.Title);
-        Assert.Equal(["周五的评审改到下午三点了"], sheet.Body);
+        Assert.Null(sheet.Title);
+        Assert.Empty(sheet.Body);
+        var only = Assert.Single(sheet.Groups);
+        Assert.Equal("张伟", only.Name);
+        Assert.Equal(["周五的评审改到下午三点了"], only.Lines);
+    }
+
+    [Fact]
+    public void Merged_notifications_are_grouped_by_sender_the_last_writer_first()
+    {
+        ActivityState Msg(string who, string what) => new() { RawKind = ActivityState.KindNotice, Stage = "expand", Name = "QQ", Title = who, Msg = what, T0 = Unix(Now) };
+        var newest = Msg("秦鹏宇", "明天的实验报告交了没");
+        newest.Earlier = [Msg("六神花露水", "晚上吃什么"), Msg("秦鹏宇", "在吗"), Msg("六神花露水", "[动画表情]"), Msg("六神花露水", "[动画表情]")];
+
+        var groups = CardSheets.Build(Card(CardType.Temporary, newest), Now, Zh).Groups;
+
+        Assert.Equal(["秦鹏宇", "六神花露水"], groups.Select(g => g.Name));
+        Assert.Equal(["在吗", "明天的实验报告交了没"], groups[0].Lines);   // oldest first, as in the chat
+        Assert.Equal(["晚上吃什么", "[动画表情]", "[动画表情]"], groups[1].Lines);   // the same sticker twice is two messages (10-11: 4 showed as 2)
     }
 
     [Fact]

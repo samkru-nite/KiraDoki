@@ -176,18 +176,18 @@ internal sealed class ToastWatcher(Func<LanguageStrings> strings) : NoticeWatche
             var now = DateTimeOffset.UtcNow;
             now = _lastStamp is { } last && now <= last ? last.AddTicks(1) : now;
             _lastStamp = now;
-            // QQ opens no link from outside (TODO 四, 10-11): its card has no "open" — the pill's ↗ brings QQ's window up instead
-            var open = row.AppId == Interop.ChatWindows.QqApp ? null : ToastText.LaunchProtocol(row.Payload) ?? AppLaunch(row.AppId);
+            // QQ opens no link from outside (TODO 四, 10-11): its "open" brings QQ's main window up instead (MainWindow.OnSheetAction)
+            var open = row.AppId == Interop.ChatWindows.QqApp ? Interop.ChatWindows.QqApp : ToastText.LaunchProtocol(row.Payload) ?? AppLaunch(row.AppId);
             var notice = Expandable(SystemNotice.Make(texts[0], NoticeGlyphs.Bell, now, msg: ToastText.Line([.. texts.Skip(1)]), open: open), AppName(row.AppId), row.AppId);
             // one card per app (user 10-10: its notifications in a row merge, "+N"); each kept on the board under its own id, so two
             // read in one go both reach the island
             notice.SourcePath = SystemNotice.SourcePrefix + "toast:" + row.AppId;
             Board.Flash(
                 "toast:" + row.Id.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                // Content first: the notice's own title (sender, subject) in bold, then the body and the app name dim —
-                // leading with the app name meant only "Windows PowerShell" showed before the notice was gone (user feedback 09-30)
+                // Content first: the notice's own title (sender, subject), then the body dim — leading with the app name meant only
+                // "Windows PowerShell" showed before the notice was gone (user feedback 09-30); its icon names the app (user 10-11)
                 notice,
-                NoticeLengths.ToRead(Core.Ui.TextGap.Plain(Core.Ui.TextGap.Join(notice.Title, notice.Msg, notice.Name))),   // as the pill writes it; until it has scrolled through once (6–10 s, user 10-10)
+                NoticeLengths.ToRead(Core.Ui.TextGap.Plain(Core.Ui.TextGap.Join(notice.Title, notice.Msg))),   // as the pill writes it; until it has scrolled through once (6–10 s, user 10-10)
                 now);
         }
 

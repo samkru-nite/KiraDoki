@@ -498,6 +498,7 @@ public sealed partial class MainWindow : Window
     private UIElement CellContent(Card card, TaskIcon icon, DateTimeOffset now)
         => TimerDial.Of(card.State, card.Type == CardType.Inform, now) is { } dial
             ? DialContent(dial, ToneColor(icon.Tone), icon.Paused)
+            : NoticeApp(card) is { } app ? AppIconOver(IconContent(icon, null), app)   // in its own colours in the cell too (user 10-11)
             : IconContent(icon, CoverOf(card)?.Image);
 
     /// <summary>
@@ -639,6 +640,7 @@ public sealed partial class MainWindow : Window
         var cover = CoverOf(card)?.Image;
         return TimerDial.Of(card.State, card.Type == CardType.Inform, now) is { } dial
             ? DialContent(dial, _theme.Icon, card.State.IsPaused)
+            : NoticeApp(card) is { } app ? AppIconOver(BigIconContent(TaskIcons.For(card, false, now), null), app)
             : BigIconContent(TaskIcons.For(card, cover is not null, now), cover);
     }
 

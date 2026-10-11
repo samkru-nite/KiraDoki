@@ -188,6 +188,10 @@ public sealed partial class MainWindow
             case SheetAction.MediaNext:
                 _ = _feed.Media.SendAsync(MediaAction.Next, card.Key);
                 break;
+            case SheetAction.Open when state.AppId == ChatWindows.QqApp:
+                _lift?.Collapse();
+                ChatWindows.OpenQq();   // QQ's main window, as its ↗ (user 10-11: not each sender's chat)
+                break;
             case SheetAction.Open when state.Open is { } open:
                 _lift?.Collapse();
                 Engine.FileActions.Open(open, revealInFolder: false);
@@ -310,11 +314,20 @@ public sealed partial class MainWindow
             return plain;
         }
 
+        return AppIconOver(plain, app);
+    }
+
+    /// <summary>
+    /// An app's own icon (16) over <paramref name="plain"/>, which shows until it has loaded and for good if the app has none — a
+    /// source of its own each time (<see cref="AppIcon"/>).
+    /// </summary>
+    private static Microsoft.UI.Xaml.UIElement AppIconOver(Microsoft.UI.Xaml.UIElement plain, string app)
+    {
         var image = new Microsoft.UI.Xaml.Controls.Image
         {
             Width = 16, Height = 16, Stretch = Microsoft.UI.Xaml.Media.Stretch.Uniform, VerticalAlignment = Microsoft.UI.Xaml.VerticalAlignment.Center,
         };
-        var box = new Microsoft.UI.Xaml.Controls.Grid();
+        var box = new Microsoft.UI.Xaml.Controls.Grid { IsHitTestVisible = false };
         box.Children.Add(plain);
         box.Children.Add(image);
         AppIcon.Resolve(app, source =>
@@ -324,6 +337,10 @@ public sealed partial class MainWindow
         });
         return box;
     }
+
+    /// <summary>The app of a notification card (an app's own toast), whose icon it shows on the pills (TODO 四, user 10-11).</summary>
+    private static string? NoticeApp(Card card)
+        => card.State is { Kind: IsleBar.Core.Island.ActivityKind.Notice, Stage: "expand", AppId: { Length: > 0 } app } ? app : null;
 
     /// <summary>What the icon is drawn from; a new icon only when this changes.</summary>
     private string LiftIconKey(Card card)
