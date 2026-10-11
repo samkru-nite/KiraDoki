@@ -56,6 +56,19 @@ public class DownloadersTests
     }
 
     [Fact]
+    public void Nothing_in_a_recycle_bin_is_a_download()
+    {
+        // 10-11: a deleted .xltd's "$I" file read as "下载中 $ILST22V"; 夸克's and the browsers' keep their last extension too
+        const string bin = @"C:\$Recycle.Bin\S-1-5-21-3508739833-1328704635-630088532-1001\";
+        Assert.True(Downloaders.InRecycleBin(bin + "$ILST22V.xltd"));
+        Assert.True(Downloaders.InRecycleBin(bin + "$RLST22V.xltd"));
+        Assert.True(Downloaders.InRecycleBin(@"D:\$RECYCLE.BIN\S-1-5-21\$IAB12CD.qkdownloading"));
+        Assert.True(Downloaders.InRecycleBin(bin + "$I0K9ZQ1.crdownload"));
+        Assert.False(Downloaders.InRecycleBin(@"C:\Users\Kasumi\Desktop\Topaz.7z.xltd"));
+        Assert.False(Downloaders.InRecycleBin(@"C:\Users\Kasumi\Downloads\$money.zip.crdownload"));   // a "$" in a name is fine
+    }
+
+    [Fact]
     public void Thunder_held_open_is_not_paused_however_slow()
     {
         var tracker = new DownloadTracker();

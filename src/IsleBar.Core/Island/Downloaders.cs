@@ -18,6 +18,17 @@ public static partial class Downloaders
     /// <summary>夸克网盘: "X-c4d5541d929b.zip.qkdownloading" grows as it comes; done = renamed to "X.zip" (seen 10-11).</summary>
     public const string Quark = ".qkdownloading";
 
+    /// <summary>
+    /// In a recycle bin: never a download. Deleted, "X.7z.xltd" becomes "$R….xltd" (the file, its old write time) and "$I….xltd"
+    /// (where it came from — written that moment, so it read as a download just begun: "下载中 $ILST22V", 10-11). Only the last
+    /// extension stays, so 夸克's and the browsers' are hit too; Baidu's ".downloading" happens not to be.
+    /// </summary>
+    public static bool InRecycleBin(string path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        return path.Contains(@"\$Recycle.Bin\", StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary>The name a Quark download finishes under: its extension and the id before the file's own extension go.</summary>
     public static string QuarkFinalName(string partialName)
     {

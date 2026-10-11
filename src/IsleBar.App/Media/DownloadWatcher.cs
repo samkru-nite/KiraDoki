@@ -20,7 +20,7 @@ internal sealed partial class DownloadWatcher : IDisposable
 {
     private const string BaiduExtension = ".baiduyun.p.downloading";
     private static readonly string[] PartialExtensions = [BaiduExtension, Downloaders.Thunder, Downloaders.Quark, ".crdownload", ".part", ".opdownload", ".download"];
-    private const string Anywhere = "<ext:xltd;qkdownloading;crdownload;opdownload | endwith:.baiduyun.p.downloading> !\"$Recycle.Bin\"";
+    private const string Anywhere = "<ext:xltd;qkdownloading;crdownload;opdownload | endwith:.baiduyun.p.downloading> !path:$Recycle.Bin";   // the bin by its path (a name-only "!$Recycle.Bin" let "$I….xltd" through, 10-11); IsPartial checks again
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan Glance = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan FoldersEvery = TimeSpan.FromSeconds(30);
@@ -525,7 +525,8 @@ internal sealed partial class DownloadWatcher : IDisposable
         return names;
     }
 
-    private static bool IsPartial(string path) => PartialExtensions.Any(ext => path.EndsWith(ext, StringComparison.OrdinalIgnoreCase));
+    private static bool IsPartial(string path)
+        => PartialExtensions.Any(ext => path.EndsWith(ext, StringComparison.OrdinalIgnoreCase)) && !Downloaders.InRecycleBin(path);
 
     private static bool IsBaidu(string path) => path.EndsWith(BaiduExtension, StringComparison.OrdinalIgnoreCase);
 
