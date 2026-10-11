@@ -1,7 +1,12 @@
 # IsleBar 二次开发 — 项目上下文（交接文件）
 
 > 新会话先读本文件和 **TODO.md（10-09 整理的新版，只放现在要做的事和现行规则）**。旧 TODO 改名为 **`TODO-history.md`**（全部讨论和决定来历；**下文和代码注释里的 "TODO 7.9 …""TODO 4.5" 等都指它的章节号**）。源码已通读，地图见下方。
-> **最新交接（10-12，先看这条）：图标统一替换做完**（全岛字体图标 → 微软 Fluent UI System Icons Regular，用户看过对照表定的，对照全在 TODO ⑤ 图标条）。同一提交里还带了**小胶囊竖线后面加 4 dip**（`PillGeometry.SmallWidth / FirstCell`，用户嫌左右不对称，另一处改的、用户让一起提交）。构建 0 警告 0 错误，测试 770，界面文案 186。
+> **最新交接（10-12 深夜，先看这条）：设置页重写做完并提交**。构建 0 警告 0 错误，测试 771，界面文案 208。全部决定在 TODO ⑤"设置页重写"条（按时间顺序）。
+> - **做了什么**：`Options/SettingsWindow.cs` 整个重写 = Windows 11 原生风格，屏幕中间打开 680×560，内容延伸进标题栏（左上自己写"设置"，原来深色下是一条黑边），左栏 NavigationView 6 页（通用 / 提醒 / 日历 / 音乐 / 计时器 / 关于）+ 底部用户的头像 `Assets/mascot.png` +"退出"；右边卡片（`Card / Group / Row / Tall` 几个小部件，图标 20 号）；字体 = Segoe UI Variable + 语言自己的中文字体（Pretendard 会把全角标点画成韩文风格）。日历 = 粘贴地址"添加"，之后只显示日历名 + 状态（`CalendarWatcher.StatusOf` → `CalendarStatus`：几点同步、几个日程、连不上 / 不是日历），地址不再显示；下载文件夹 = 系统"下载"固定 + "添加文件夹"（系统选文件夹窗口），`DownloadWatcher.Folders` 改成系统下载永远看；番茄钟加**长休息前几轮**（设置 `pomo_rounds`，`PomodoroLengths.Rounds`，1–10）；快速计时器逐个删 / 加（最多 6）；关于 = 版本（csproj `<Version>0.1.0`）、**作者 无敌企鹅大王、Claude**（用户定：Claude 也是作者）、基于 IsleBar（ds3owl，链接）、诊断、第三方许可（记事本打开，csproj 把 THIRD-PARTY-NOTICES.md 复制进输出）。**圆球右键菜单拆平、去掉"退出"**（退出只在设置页）。`PopupPlacement.cs`、`AppFonts.Apply` 删了。图标包加到 77 个。
+> - **定下的**：软件以后改名 **KiraDoki**，只改用户看得见的（代码 / 数据文件夹 / `islebar` 命令都不动），设置页写完、发布前做；改名时第三方许可里加"IsleBar（ds3owl）"一行。**暂时不发 GitHub，先给朋友试用**；头像是网上找的表情包，公开发布前要换。
+> - **待真机**：提醒 / 音乐 / 日历添加后状态那一行、下载"添加文件夹"、深色下的顶栏（用户看了通用 / 计时器 / 关于页）。
+> - **这次学到的**：①WinUI `NumberBox` 的 `Compact` 箭头是弹出的浮层，会盖住旁边的字 → 设置里用 `Inline`；②`Grid` 不是 `Control`，没有 `FontFamily`，字体设在 NavigationView 上；③抠图别反复用脚本试（头发围住的白缝和脸上的白分不开），让用户用 PS 抠，我只去白边（透明度收 1 px + 边缘换成里面的颜色）。
+> **上一条交接（10-12）：图标统一替换做完**（全岛字体图标 → 微软 Fluent UI System Icons Regular，用户看过对照表定的，对照全在 TODO ⑤ 图标条）。同一提交里还带了**小胶囊竖线后面加 4 dip**（`PillGeometry.SmallWidth / FirstCell`，用户嫌左右不对称，另一处改的、用户让一起提交）。构建 0 警告 0 错误，测试 770，界面文案 186。
 > - **图标怎么来的**：`scripts/make-icons.py` 从官方字体抽出用到的 52 个 → `src/IsleBar.App/Assets/Fonts/IsleIcons.ttf`（12 KB，家族 "IsleBar Icons"，U+E000 起）+ `src/IsleBar.Core/Ui/Icons.cs`（常量，生成的，别手改）。代码里一律 `Icons.X`、字体 `AppFonts.IconFamily`（XAML 写 `ms-appx:///Assets/Fonts/IsleIcons.ttf#IsleBar Icons`）。**加图标**：下载官方 `fonts/FluentSystemIcons-Regular.ttf/.json`（jsdelivr gh/microsoft/fluentui-system-icons），列表末尾加一行，`pip install fonttools` 后跑脚本。计时器表盘仍是自画（MW `DialContent`，照 timer_16 轮廓）。
 > - **待真机**：掀起卡片里的图标（音乐按钮、中转站 ✕ / 文件夹、多选拖动 `stack`、↗ / +）没点开看过。
 > - **这次学到的**：①fonttools 抽字体会重算边界，Fluent 原文件左边距是 0 → 图标整体左偏 1.5 px；脚本把左边距设成真实墨迹左边（用 PIL 渲染对比墨迹列验证）。②工作区里出现不是自己改的文件 = 别处在改，先问用户再决定提交范围。③bash heredoc 吃反斜杠又踩了一次，补丁脚本一律写成文件。

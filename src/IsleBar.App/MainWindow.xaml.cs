@@ -1702,9 +1702,10 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        _settingsWindow = new Options.SettingsWindow(_settings, _text, OnSettingsChanged, OnLanguageChanged, () => _language, Diagnostics);
+        _settingsWindow = new Options.SettingsWindow(_settings, _text, OnSettingsChanged, OnLanguageChanged, () => _language, Diagnostics,
+            url => _feed.Watchers?.CalendarStatus(url), () => RequestExit(ExitCodes.UserQuit));   // Quit lives in settings (user 10-12)
         _settingsWindow.Closed += (_, _) => _settingsWindow = null;
-        _settingsWindow.ShowAbove(PopupAnchorX, TaskbarTop());
+        _settingsWindow.ShowCentered(PopupAnchorX, TaskbarTop());
     }
 
     private void OnSettingsChanged()
@@ -2073,7 +2074,6 @@ public sealed partial class MainWindow : Window
     [System.Runtime.InteropServices.DllImport("kernel32.dll")]
     private static extern ushort GetUserDefaultUILanguage();
 
-    private const int MenuQuit = 1;
     private const int MenuClose = 2;   // close the card the menu is about
     private const int MenuTuck = 3;    // keep the big pill's card in the small pill (甲⑤)
     private const int MenuUntuck = 4;
@@ -2243,36 +2243,27 @@ public sealed partial class MainWindow : Window
         return line.Length <= 48 ? line : line[..47] + "…";
     }
 
-    /// <summary>The circle's tools: timers (a submenu), all notifications, an available update, settings, quit.</summary>
+    /// <summary>
+    /// The circle's tools, all on one level (user 10-12: no submenu, the menu is short anyway): the quick timers, Pomodoro, the
+    /// stopwatch, then Settings. Quit moved into Settings.
+    /// </summary>
     private void ShowToolMenu()
     {
-        var timers = new List<MenuItem>();
+        var items = new List<MenuItem>();
         var quick = _settings.QuickTimers.Take(6).ToList();
         for (var q = 0; q < quick.Count; q++)
         {
-            timers.Add(new MenuItem(MenuQuickBase + q, string.Format(System.Globalization.CultureInfo.InvariantCulture, _text.Minutes, quick[q])));
+            items.Add(new MenuItem(MenuQuickBase + q, string.Format(System.Globalization.CultureInfo.InvariantCulture, _text.Minutes, quick[q])));
         }
 
-        if (timers.Count > 0)
-        {
-            timers.Add(MenuItem.Separator);
-        }
-
-        timers.Add(new MenuItem(MenuPomodoro, _text.Pomodoro));
-        timers.Add(new MenuItem(MenuStopwatch, _text.Stopwatch));
-
-        var items = new List<MenuItem> { new(0, _text.Timer, Sub: timers) };
+        items.Add(new MenuItem(MenuPomodoro, _text.Pomodoro));
+        items.Add(new MenuItem(MenuStopwatch, _text.Stopwatch));
         items.Add(MenuItem.Separator);
         items.Add(new MenuItem(MenuSettings, _text.Settings));
-        items.Add(new MenuItem(MenuQuit, _text.Quit));
 
         var chosen = RunMenu(items);
         var now = DateTimeOffset.UtcNow;
-        if (chosen == MenuQuit)
-        {
-            RequestExit(ExitCodes.UserQuit);
-        }
-        else if (chosen == MenuSettings)
+        if (chosen == MenuSettings)
         {
             ShowSettings();
         }

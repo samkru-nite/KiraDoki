@@ -38,7 +38,6 @@ public sealed class LanguageStrings
     public required string DownloadFoldersHint { get; init; }
     public required string Downloading { get; init; }
     public required string FileTransfer { get; init; }
-    public required string ResetDefaults { get; init; }
 
 
 
@@ -221,24 +220,15 @@ public sealed class LanguageStrings
     /// <summary>Store build's first-start card: "Show what Claude Code / Codex is doing here — click to connect".</summary>
     public required string ConnectAgentsCard { get; init; }
 
-    /// <summary>Title of the calendar addresses box (ICS links, one per line).</summary>
-    public required string CalendarIcs { get; init; }
-
-    /// <summary>Hint under the calendar addresses box.</summary>
-    public required string CalendarIcsHint { get; init; }
 
 
 
 
 
-    /// <summary>"Appearance" section in the settings window.</summary>
-    public required string StyleSection { get; init; }
 
     // Advanced/power options (10-01). Not required — an English default keeps every language compiling; the Korean catalog
     // overrides these. (A small power-options surface, so other languages fall back to English until translated.)
 
-    /// <summary>"Advanced" section heading in the settings window.</summary>
-    public string AdvancedSection { get; init; } = "Advanced";
 
 
     /// <summary>Pomodoro (right-click menu, island label).</summary>
@@ -255,12 +245,6 @@ public sealed class LanguageStrings
 
     /// <summary>"{0} min" — timer length in the right-click menu.</summary>
     public required string Minutes { get; init; }
-
-    /// <summary>Settings window: Pomodoro lengths row.</summary>
-    public required string PomodoroMinutes { get; init; }
-
-    /// <summary>Settings window: quick timer list.</summary>
-    public required string QuickTimersLabel { get; init; }
 
     /// <summary>Settings: where on the taskbar the bar sits (10-05).</summary>
     public required string PositionLabel { get; init; }
@@ -454,6 +438,68 @@ public sealed class LanguageStrings
     public required string CardBrowser { get; init; }
     public required string CardMicrophone { get; init; }
     public required string CardCamera { get; init; }
+
+    // ---- the settings window (10-12) ----
+    /// <summary>A button: pick a folder to add</summary>
+    public required string AddFolder { get; init; }
+    /// <summary>Settings → About: who made it</summary>
+    public required string Author { get; init; }
+    /// <summary>Settings → About: what it grew from</summary>
+    public required string BasedOn { get; init; }
+    /// <summary>The original project and its author</summary>
+    public required string BasedOnValue { get; init; }
+
+    // ---- the settings window (10-12) ----
+    /// <summary>Settings window: the General page</summary>
+    public required string NavGeneral { get; init; }
+    /// <summary>Settings window: the About page</summary>
+    public required string NavAbout { get; init; }
+    /// <summary>Under <see cref="ConnectAgents"/></summary>
+    public required string ConnectAgentsDesc { get; init; }
+    /// <summary>Under <see cref="NotifyToasts"/></summary>
+    public required string NotifyToastsDesc { get; init; }
+    /// <summary>Under <see cref="HideToastBanners"/></summary>
+    public required string HideToastBannersDesc { get; init; }
+    /// <summary>Settings: the calendar page's add card</summary>
+    public required string AddCalendar { get; init; }
+    /// <summary>Under <see cref="AddCalendar"/></summary>
+    public required string CalendarAddHint { get; init; }
+    /// <summary>A button: add</summary>
+    public required string Add { get; init; }
+    /// <summary>Settings: heading over the calendars added</summary>
+    public required string CalendarsAdded { get; init; }
+    /// <summary>A button: remove</summary>
+    public required string Remove { get; init; }
+    /// <summary>A calendar not read yet</summary>
+    public required string CalendarLoading { get; init; }
+    /// <summary>A calendar read: {0} = when, {1} = how many events</summary>
+    public required string CalendarSynced { get; init; }
+    /// <summary>A calendar that couldn't be reached</summary>
+    public required string CalendarOffline { get; init; }
+    /// <summary>An address that gives no calendar</summary>
+    public required string CalendarNotCalendar { get; init; }
+    /// <summary>Under the Pomodoro card: {0} = focus rounds</summary>
+    public required string PomodoroDesc { get; init; }
+    /// <summary>Pomodoro's long break</summary>
+    public required string LongBreak { get; init; }
+    /// <summary>Settings: focus rounds before the long break</summary>
+    public required string PomodoroRoundsLabel { get; init; }
+    /// <summary>After a number box of minutes</summary>
+    public required string MinutesUnit { get; init; }
+    /// <summary>After the rounds number box</summary>
+    public required string RoundsUnit { get; init; }
+    /// <summary>Settings: quick timers</summary>
+    public required string QuickTimers { get; init; }
+    /// <summary>Under <see cref="QuickTimers"/></summary>
+    public required string QuickTimersDesc { get; init; }
+    /// <summary>A button: delete</summary>
+    public required string Delete { get; init; }
+    /// <summary>Settings: the version</summary>
+    public required string Version { get; init; }
+    /// <summary>Settings: third-party licences</summary>
+    public required string Licenses { get; init; }
+    /// <summary>Under <see cref="Licenses"/></summary>
+    public required string LicensesDesc { get; init; }
 
     /// <summary>
     /// Remaining/elapsed time display. <see cref="MinSec"/> for 60 seconds or more, otherwise <see cref="Sec"/>.

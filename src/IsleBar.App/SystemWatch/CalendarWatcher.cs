@@ -35,6 +35,9 @@ internal sealed class CalendarWatcher : NoticeWatcher
     private readonly string?[] _names;
     private DateTime _testStamp;
     private readonly IReadOnlyList<IcsEvent>[] _events;
+
+    /// <summary>How each address's last fetch went, for the settings page (user 10-12); null until the first one ends.</summary>
+    private readonly CalendarStatus?[] _status;
     private readonly CancellationTokenSource _stop = new();
     private readonly object _gate = new();
     private readonly HashSet<string> _closed = new(StringComparer.Ordinal);
@@ -52,6 +55,17 @@ internal sealed class CalendarWatcher : NoticeWatcher
         _urls = Normalize(calendars);
         _events = [.. _urls.Select(_ => (IReadOnlyList<IcsEvent>)[])];   // + the test file's, kept apart
         _names = new string?[_urls.Length + 1];
+        _status = new CalendarStatus?[_urls.Length];
+    }
+
+    /// <summary>How the calendar at <paramref name="url"/> was last fetched; null while the first fetch runs (or not watched).</summary>
+    public CalendarStatus? StatusOf(string url)
+    {
+        var index = Array.IndexOf(_urls, NormalizeUrl(url));
+        lock (_gate)
+        {
+            return index >= 0 ? _status[index] : null;
+        }
     }
 
     /// <summary>The addresses this watcher uses, normalized and one per line (to compare whether the setting changed).</summary>
@@ -118,10 +132,15 @@ internal sealed class CalendarWatcher : NoticeWatcher
                         _events[index] = events;   // keep the previous events if the response is bogus (e.g. a login page)
                         _names[index] = IcsParser.CalendarName(text);
                         _expandedAt = DateTimeOffset.MinValue;
+                        _status[index] = new CalendarStatus(_names[index], DateTimeOffset.Now, events.Count, CalendarProblem.None);
                     }
 
                     Interop.AppLog.Write($"calendar: #{index + 1} fetched, {events.Count} events, "
                                          + $"{events.Count(e => e.Alarms.Count > 0)} with reminders");
+                }
+                else
+                {
+                    Failed(index, CalendarProblem.NotCalendar);
                 }
 
                 Guard(Tick);
@@ -134,12 +153,15 @@ internal sealed class CalendarWatcher : NoticeWatcher
             {
                 // Retry on the next round (timeouts arrive as OperationCanceledException)
                 Interop.AppLog.Write($"calendar: #{index + 1} fetch failed ({ex.GetType().Name}), keeps its last events");
+                Failed(index, ex is HttpRequestException { StatusCode: { } code } && (int)code is >= 400 and < 500
+                    ? CalendarProblem.NotCalendar : CalendarProblem.Offline);
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
                 // an unexpected parse failure (e.g. an RRULE UNTIL at year 9999) ended the loop silently — the calendar stopped
                 // refreshing until a restart (review 10-03). Keep the last events and try again next time.
                 Interop.AppLog.Write("calendar: refresh failed (" + ex.GetType().Name + ")");   // not the message: it can quote a calendar line
+                Failed(index, CalendarProblem.NotCalendar);
             }
 
             try
@@ -150,6 +172,16 @@ internal sealed class CalendarWatcher : NoticeWatcher
             {
                 return;
             }
+        }
+    }
+
+    /// <summary>A fetch failed: the status says so, keeping the name and count from the last good one.</summary>
+    private void Failed(int index, CalendarProblem problem)
+    {
+        lock (_gate)
+        {
+            var last = _status[index];
+            _status[index] = new CalendarStatus(last?.Name, last?.Synced, last?.Events ?? 0, problem);
         }
     }
 
@@ -290,3 +322,18 @@ internal sealed class CalendarWatcher : NoticeWatcher
         return client;
     }
 }
+
+/// <summary>What went wrong with a calendar's last fetch.</summary>
+internal enum CalendarProblem
+{
+    None,
+
+    /// <summary>No answer (offline, timed out): tried again in 10 minutes.</summary>
+    Offline,
+
+    /// <summary>An answer that isn't a calendar (a login page, a wrong or reset address).</summary>
+    NotCalendar,
+}
+
+/// <summary>A calendar's last fetch (settings page): its own name, when it last worked, how many events it had, what went wrong since.</summary>
+internal sealed record CalendarStatus(string? Name, DateTimeOffset? Synced, int Events, CalendarProblem Problem);

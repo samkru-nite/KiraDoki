@@ -22,6 +22,9 @@ public sealed class IsleBarSettings
 
     public int PomodoroLong { get; set; } = 15;
 
+    /// <summary>Focus rounds before the long break, 1–10 (user 10-12).</summary>
+    public int PomodoroRounds { get; set; } = Island.TimerParser.PomodoroRounds;
+
     /// <summary>Where on the taskbar the bar sits: "left" (default) · "center" · "tray" · "manual" (TODO 7.1, 10-05). See <see cref="Ui.BarSlot"/>.</summary>
     public string Position { get; set; } = "left";
 
@@ -91,6 +94,7 @@ public sealed class IsleBarSettings
         PomodoroFocus = PomodoroFocus,
         PomodoroBreak = PomodoroBreak,
         PomodoroLong = PomodoroLong,
+        PomodoroRounds = PomodoroRounds,
         QuickTimers = [.. QuickTimers],
         Position = Position,
         ManualOffset = ManualOffset,

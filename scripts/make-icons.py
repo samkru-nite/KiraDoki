@@ -57,7 +57,34 @@ ICONS = [
     ("Folder", "folder_16", "a folder"),
     ("MusicLarge", "music_note_2_24", "music without a cover, drawn at 24"),
     ("Video", "video_clip_16", "a video export whose app icon can't be found"),
-] + [("Battery%d" % n, "battery_%d_20" % n, "battery %d0%%" % n) for n in range(11)]
+] + [("Battery%d" % n, "battery_%d_20" % n, "battery %d0%%" % n) for n in range(11)] + [
+    # the settings window (10-12): 16 in the left column, 20 on the cards (as Windows' own Settings)
+    ("Settings", "settings_16", "settings: General"),
+    ("CardLanguage", "local_language_20", "settings card: language"),
+    ("CardPosition", "panel_bottom_20", "settings card: place on the taskbar"),
+    ("CardConnect", "plug_connected_20", "settings card: connect Claude Code"),
+    ("CardDownloads", "folder_20", "settings card: download folders"),
+    ("CardCharging", "battery_charge_20", "settings card: power"),
+    ("CardBluetooth", "bluetooth_20", "settings card: Bluetooth"),
+    ("CardWifi", "wifi_1_20", "settings card: network"),
+    ("CardFocus", "weather_moon_20", "settings card: focus"),
+    ("CardClipboard", "clipboard_paste_20", "settings card: clipboard"),
+    ("CardLoad", "desktop_pulse_20", "settings card: CPU / memory"),
+    ("CardMic", "mic_20", "settings card: microphone and camera"),
+    ("CardAlert", "alert_20", "settings card: Windows notifications"),
+    ("CardCalendarAdd", "calendar_add_20", "settings card: add a calendar"),
+    ("CardCalendar", "calendar_20", "settings card: a calendar"),
+    ("CardGlobe", "globe_20", "settings card: media in the browser"),
+    ("CardSound", "sound_wave_circle_20", "settings card: bars follow the sound"),
+    ("CardTimer", "timer_20", "settings card: Pomodoro"),
+    ("CardAlarm", "clock_alarm_20", "settings card: quick timers"),
+    ("CardMute", "speaker_mute_20", "settings card: quiet in full screen"),
+    ("CardInfo", "info_20", "settings card: version"),
+    ("CardDiagnose", "stethoscope_20", "settings card: diagnostics"),
+    ("CardLicense", "certificate_20", "settings card: third-party licences"),
+    ("CardPeople", "people_20", "settings card: authors"),
+    ("CardFork", "branch_fork_20", "settings card: based on IsleBar"),
+]
 
 FAMILY = "IsleBar Icons"
 FIRST = 0xE000

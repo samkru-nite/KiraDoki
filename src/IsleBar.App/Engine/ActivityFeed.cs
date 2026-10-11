@@ -194,7 +194,7 @@ internal sealed class ActivityFeed : IDisposable
     // ---------------- Timers ----------------
 
     public PomodoroLengths PomodoroLengths()
-        => IsleBar.Core.Island.PomodoroLengths.FromMinutes(_settings().PomodoroFocus, _settings().PomodoroBreak, _settings().PomodoroLong);
+        => IsleBar.Core.Island.PomodoroLengths.FromMinutes(_settings().PomodoroFocus, _settings().PomodoroBreak, _settings().PomodoroLong, _settings().PomodoroRounds);
 
     /// <summary>Starts a timer next to any that are running (each its own card).</summary>
     public void StartTimer(ActivityState next) => Store.Write(NewTimerSlot(), next);

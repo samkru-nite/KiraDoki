@@ -68,4 +68,25 @@ public sealed class PomodoroStopwatchTests
         var rest = TimerParser.AdvancePomodoro(focus, Now.AddMinutes(51), "f", "b", lengths)!;
         Assert.Equal(10 * 60, rest.Total);
     }
+
+    [Fact]
+    public void Runs_the_configured_rounds_with_the_long_break_after_the_last()
+    {
+        var lengths = PomodoroLengths.FromMinutes(25, 5, 15, rounds: 2);
+        var state = TimerParser.ToPomodoro(1, focus: true, Now, "f", "b", lengths);
+        var t = Now;
+        var names = new List<string>();
+        long? last = null;
+        while (state is not null)
+        {
+            names.Add(state.Name!);
+            last = state.Total;
+            t = t.Add(TimeSpan.FromSeconds(state.Total!.Value)).Add(TimerParser.PomodoroHandover);
+            state = TimerParser.AdvancePomodoro(state, t, "f", "b", lengths);
+        }
+
+        Assert.Equal(["f 1/2", "b 1/2", "f 2/2", "b 2/2"], names);
+        Assert.Equal(15 * 60, last);
+        Assert.Equal(TimerParser.MaxPomodoroRounds, PomodoroLengths.FromMinutes(25, 5, 15, rounds: 99).Rounds);
+    }
 }

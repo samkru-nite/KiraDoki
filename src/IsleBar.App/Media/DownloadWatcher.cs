@@ -102,7 +102,10 @@ internal sealed partial class DownloadWatcher : IDisposable
         return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
     }
 
-    /// <summary>The settings' folders (else Downloads), the desktop, and the folders the download programs save to by their own settings.</summary>
+    /// <summary>
+    /// Downloads always, the folders added in settings (10-12: added one by one, Downloads no longer dropped once one is),
+    /// the desktop, and the folders the download programs save to by their own settings. Each looked at once.
+    /// </summary>
     private List<string> Folders(DateTimeOffset now)
     {
         if (now - _ownFoldersAt >= FoldersEvery)
@@ -111,8 +114,7 @@ internal sealed partial class DownloadWatcher : IDisposable
             _ownFolders = OwnFolders();
         }
 
-        var set = _settingFolders();
-        IEnumerable<string> folders = set.Count > 0 ? set.Select(Environment.ExpandEnvironmentVariables) : [DefaultFolder()];
+        var folders = new[] { DefaultFolder() }.Concat(_settingFolders().Select(Environment.ExpandEnvironmentVariables));
         return folders.Append(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory)).Concat(_ownFolders)
             .Where(f => f.Length > 0).Select(f => f.TrimEnd('\\', '/')).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }

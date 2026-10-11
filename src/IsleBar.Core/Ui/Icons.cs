@@ -114,4 +114,54 @@ public static class Icons
     public const string Battery9 = "\uE032";
     /// <summary>battery 100% (battery_10_20).</summary>
     public const string Battery10 = "\uE033";
+    /// <summary>settings: General (settings_16).</summary>
+    public const string Settings = "\uE034";
+    /// <summary>settings card: language (local_language_20).</summary>
+    public const string CardLanguage = "\uE035";
+    /// <summary>settings card: place on the taskbar (panel_bottom_20).</summary>
+    public const string CardPosition = "\uE036";
+    /// <summary>settings card: connect Claude Code (plug_connected_20).</summary>
+    public const string CardConnect = "\uE037";
+    /// <summary>settings card: download folders (folder_20).</summary>
+    public const string CardDownloads = "\uE038";
+    /// <summary>settings card: power (battery_charge_20).</summary>
+    public const string CardCharging = "\uE039";
+    /// <summary>settings card: Bluetooth (bluetooth_20).</summary>
+    public const string CardBluetooth = "\uE03A";
+    /// <summary>settings card: network (wifi_1_20).</summary>
+    public const string CardWifi = "\uE03B";
+    /// <summary>settings card: focus (weather_moon_20).</summary>
+    public const string CardFocus = "\uE03C";
+    /// <summary>settings card: clipboard (clipboard_paste_20).</summary>
+    public const string CardClipboard = "\uE03D";
+    /// <summary>settings card: CPU / memory (desktop_pulse_20).</summary>
+    public const string CardLoad = "\uE03E";
+    /// <summary>settings card: microphone and camera (mic_20).</summary>
+    public const string CardMic = "\uE03F";
+    /// <summary>settings card: Windows notifications (alert_20).</summary>
+    public const string CardAlert = "\uE040";
+    /// <summary>settings card: add a calendar (calendar_add_20).</summary>
+    public const string CardCalendarAdd = "\uE041";
+    /// <summary>settings card: a calendar (calendar_20).</summary>
+    public const string CardCalendar = "\uE042";
+    /// <summary>settings card: media in the browser (globe_20).</summary>
+    public const string CardGlobe = "\uE043";
+    /// <summary>settings card: bars follow the sound (sound_wave_circle_20).</summary>
+    public const string CardSound = "\uE044";
+    /// <summary>settings card: Pomodoro (timer_20).</summary>
+    public const string CardTimer = "\uE045";
+    /// <summary>settings card: quick timers (clock_alarm_20).</summary>
+    public const string CardAlarm = "\uE046";
+    /// <summary>settings card: quiet in full screen (speaker_mute_20).</summary>
+    public const string CardMute = "\uE047";
+    /// <summary>settings card: version (info_20).</summary>
+    public const string CardInfo = "\uE048";
+    /// <summary>settings card: diagnostics (stethoscope_20).</summary>
+    public const string CardDiagnose = "\uE049";
+    /// <summary>settings card: third-party licences (certificate_20).</summary>
+    public const string CardLicense = "\uE04A";
+    /// <summary>settings card: authors (people_20).</summary>
+    public const string CardPeople = "\uE04B";
+    /// <summary>settings card: based on IsleBar (branch_fork_20).</summary>
+    public const string CardFork = "\uE04C";
 }

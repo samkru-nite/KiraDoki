@@ -36,6 +36,8 @@
     <!-- SetParent onto the taskbar requires the same DPI mode as Explorer (PerMonitorV2). See app.manifest. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationIcon>Assets\islebar.ico</ApplicationIcon>
+    <!-- shown in Settings → About; the installer says the same (installer\IsleBar.iss AppVersion) -->
+    <Version>0.1.0</Version>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(IsWindowsHost)' != 'true'">
@@ -68,6 +70,10 @@
   <ItemGroup Condition="'$(IsWindowsHost)' == 'true'">
     <!-- Font: Pretendard (SIL OFL 1.1, redistributable — Assets\Fonts\Pretendard-OFL.txt). English and Korean in one font (Toss-like feel) -->
     <Content Include="Assets\Fonts\*" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The settings window's Quit shows the user's mascot (10-12; found online — needs the artist's leave before a public release) -->
+    <Content Include="Assets\mascot.png" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Settings → About opens these -->
+    <Content Include="..\..\THIRD-PARTY-NOTICES.md" Link="THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" />
     <!-- File search: voidtools Everything SDK (Everything64.dll, redistribution allowed). The user installs and runs Everything itself -->
     <Content Include="everything_sdk\Everything64.dll" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

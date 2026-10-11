@@ -199,8 +199,11 @@ public static partial class TimerParser
     /// <summary>Pomodoro marker prefix: "pomo:{round}:{focus|break}".</summary>
     public const string PomodoroPrefix = "pomo:";
 
-    /// <summary>One Pomodoro cycle = 4 focus sessions (short breaks in between, a long break after the last).</summary>
+    /// <summary>One Pomodoro cycle = 4 focus sessions by default (short breaks in between, a long break after the last); the
+    /// user sets 1–<see cref="MaxPomodoroRounds"/> (10-12, <see cref="PomodoroLengths.Rounds"/>).</summary>
     public const int PomodoroRounds = 4;
+
+    public const int MaxPomodoroRounds = 10;
 
     public static readonly TimeSpan PomodoroFocus = TimeSpan.FromMinutes(25);
     public static readonly TimeSpan PomodoroShortBreak = TimeSpan.FromMinutes(5);
@@ -236,7 +239,7 @@ public static partial class TimerParser
             T0 = Seconds(now),
         };
 
-    /// <summary>Pomodoro stage: round (1–4) and whether it is focus. Null if not a Pomodoro.</summary>
+    /// <summary>Pomodoro stage: round (from 1) and whether it is focus. Null if not a Pomodoro.</summary>
     public static (int Round, bool Focus)? PomodoroPhase(ActivityState state)
     {
         ArgumentNullException.ThrowIfNull(state);
@@ -247,7 +250,7 @@ public static partial class TimerParser
 
         var parts = stage[PomodoroPrefix.Length..].Split(':');
         return parts.Length == 2 && int.TryParse(parts[0], out var round)
-            ? (Math.Clamp(round, 1, PomodoroRounds), parts[1] == "focus")
+            ? (Math.Clamp(round, 1, MaxPomodoroRounds), parts[1] == "focus")
             : null;
     }
 
@@ -255,15 +258,15 @@ public static partial class TimerParser
     public static ActivityState ToPomodoro(int round, bool focus, DateTimeOffset now, string focusLabel, string breakLabel, PomodoroLengths? lengths = null)
     {
         var l = lengths ?? PomodoroLengths.Default;
-        var length = focus ? l.Focus : round >= PomodoroRounds ? l.LongBreak : l.ShortBreak;
-        var state = ToActivity(length, now, $"{(focus ? focusLabel : breakLabel)} {round}/{PomodoroRounds}");
+        var length = focus ? l.Focus : round >= l.Rounds ? l.LongBreak : l.ShortBreak;
+        var state = ToActivity(length, now, $"{(focus ? focusLabel : breakLabel)} {round}/{l.Rounds}");
         state.Stage = $"{PomodoroPrefix}{round}:{(focus ? "focus" : "break")}";
         return state;
     }
 
     /// <summary>
     /// If this stage has ended and <see cref="PomodoroHandover"/> has passed, the next stage (focus → break → next round's focus …;
-    /// after round 4's long break it ends = null). Otherwise <paramref name="state"/> unchanged.
+    /// after the last round's long break it ends = null). Otherwise <paramref name="state"/> unchanged.
     /// </summary>
     public static ActivityState? AdvancePomodoro(ActivityState state, DateTimeOffset now, string focusLabel, string breakLabel, PomodoroLengths? lengths = null)
     {
@@ -278,7 +281,9 @@ public static partial class TimerParser
             return ToPomodoro(phase.Round, focus: false, now, focusLabel, breakLabel, lengths);
         }
 
-        return phase.Round >= PomodoroRounds ? null : ToPomodoro(phase.Round + 1, focus: true, now, focusLabel, breakLabel, lengths);
+        return phase.Round >= (lengths ?? PomodoroLengths.Default).Rounds
+            ? null
+            : ToPomodoro(phase.Round + 1, focus: true, now, focusLabel, breakLabel, lengths);
     }
 
     /// <summary>Turns a timer into a state JSON.</summary>
@@ -295,11 +300,12 @@ public static partial class TimerParser
         };
 }
 
-/// <summary>Pomodoro stage lengths (changed in settings).</summary>
-public sealed record PomodoroLengths(TimeSpan Focus, TimeSpan ShortBreak, TimeSpan LongBreak)
+/// <summary>Pomodoro stage lengths and the focus rounds before the long break (changed in settings).</summary>
+public sealed record PomodoroLengths(TimeSpan Focus, TimeSpan ShortBreak, TimeSpan LongBreak, int Rounds = TimerParser.PomodoroRounds)
 {
     public static PomodoroLengths Default { get; } = new(TimerParser.PomodoroFocus, TimerParser.PomodoroShortBreak, TimerParser.PomodoroLongBreak);
 
-    public static PomodoroLengths FromMinutes(int focus, int shortBreak, int longBreak)
-        => new(TimeSpan.FromMinutes(focus), TimeSpan.FromMinutes(shortBreak), TimeSpan.FromMinutes(longBreak));
+    public static PomodoroLengths FromMinutes(int focus, int shortBreak, int longBreak, int rounds = TimerParser.PomodoroRounds)
+        => new(TimeSpan.FromMinutes(focus), TimeSpan.FromMinutes(shortBreak), TimeSpan.FromMinutes(longBreak),
+            Math.Clamp(rounds, 1, TimerParser.MaxPomodoroRounds));
 }

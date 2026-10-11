@@ -88,6 +88,15 @@ internal sealed class SystemWatchers : IDisposable
         }
     }
 
+    /// <summary>The calendar at this address: how its last fetch went (settings page); null while it is still being read.</summary>
+    public CalendarStatus? CalendarStatus(string url)
+    {
+        lock (_gate)
+        {
+            return _calendar?.StatusOf(url);
+        }
+    }
+
     /// <summary>
     /// A card closed by hand that its watcher keeps track of itself (the calendar's one card: closing hides only its look, 10-10).
     /// True when handled — then the island must not hide the card's key.

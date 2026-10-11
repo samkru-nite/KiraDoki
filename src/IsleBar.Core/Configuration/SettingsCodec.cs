@@ -25,6 +25,7 @@ public static class SettingsCodec
     private const string KeyPomoFocus = "pomo_focus";
     private const string KeyPomoBreak = "pomo_break";
     private const string KeyPomoLong = "pomo_long";
+    private const string KeyPomoRounds = "pomo_rounds";
     private const string KeyQuickTimers = "quick_timers";
     private const string KeyPosition = "position";
     private const string KeyManualOffset = "manual_offset";
@@ -91,6 +92,7 @@ public static class SettingsCodec
         s.PomodoroFocus = Minutes(raw[KeyPomoFocus]) ?? s.PomodoroFocus;
         s.PomodoroBreak = Minutes(raw[KeyPomoBreak]) ?? s.PomodoroBreak;
         s.PomodoroLong = Minutes(raw[KeyPomoLong]) ?? s.PomodoroLong;
+        s.PomodoroRounds = Minutes(raw[KeyPomoRounds]) is { } rounds ? Math.Clamp(rounds, 1, Island.TimerParser.MaxPomodoroRounds) : s.PomodoroRounds;
         if (raw[KeyQuickTimers] is JsonArray quickTimerArr)
         {
             s.QuickTimers = [.. quickTimerArr.Select(Minutes).OfType<int>().Distinct().Take(6)];
@@ -125,6 +127,7 @@ public static class SettingsCodec
         raw[KeyPomoFocus] = s.PomodoroFocus;
         raw[KeyPomoBreak] = s.PomodoroBreak;
         raw[KeyPomoLong] = s.PomodoroLong;
+        raw[KeyPomoRounds] = s.PomodoroRounds;
         raw[KeyQuickTimers] = new JsonArray([.. s.QuickTimers.Select(m => (JsonNode)m)]);
         raw[KeyNotifyPower] = s.NotifyPower;
         raw[KeyNotifyBluetooth] = s.NotifyBluetooth;
