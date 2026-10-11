@@ -106,8 +106,8 @@ internal sealed class LiftWindow : Window
 
     /// <summary>The transit list's ✕ / a row dragged out (the file's path).</summary>
     public Action<string>? RemoveFile { get; set; }
-    public Action<string>? FileDragged { get; set; }
-    public Action<string>? FileDragStarting { get; set; }
+    public Action<IReadOnlyList<string>>? FileDragged { get; set; }
+    public Action<IReadOnlyList<string>>? FileDragStarting { get; set; }
 
     /// <summary>The card's inside (F2), and its height (200 / 300 / 400, <see cref="LiftMotion.Fit"/>).</summary>
     private SheetView? _view;

@@ -59,10 +59,10 @@ internal sealed class SheetView
     public Action<string>? RemoveFile { get; set; }
 
     /// <summary>A file list's row was dragged out and dropped somewhere: the file's path.</summary>
-    public Action<string>? FileDragged { get; set; }
+    public Action<IReadOnlyList<string>>? FileDragged { get; set; }
 
-    /// <summary>A row's file starts being dragged out.</summary>
-    public Action<string>? FileDragStarting { get; set; }
+    /// <summary>Rows' files start being dragged out (the row's own, or all the picked ones).</summary>
+    public Action<IReadOnlyList<string>>? FileDragStarting { get; set; }
 
     public SheetView(CardSheet sheet, UIElement icon, ImageSource? cover, SheetPalette palette, string? language, double width)
     {
@@ -413,7 +413,8 @@ internal sealed class SheetView
 
     // ---------------- a list of files (the transit station, TODO ④, 10-10) ----------------
 
-    private const double FileRow = 32, FileRowGap = 2, FileGlyph = 16, FileClose = 24, FileInset = 8;
+    // rows 4 apart (user 10-11: 2 put two picked rows' edges together)
+    private const double FileRow = 32, FileRowGap = 4, FileGlyph = 16, FileClose = 24, FileInset = 8;
 
     /// <summary>
     /// One row per file: its icon (document / folder) and name 14, "not found" 12 grey when it's gone, ✕ at the end. A row is dragged
@@ -421,13 +422,28 @@ internal sealed class SheetView
     /// </summary>
     private Grid FilesMiddle(CardSheet sheet, out ScrollViewer scroll)
     {
+        _fileRows.Clear();
+        _picked.IntersectWith(sheet.Files.Where(f => !f.Gone).Select(f => f.Path));   // the list again: what's still there stays picked
+        _dragWords = sheet.FilesDragged;
         var stack = new StackPanel { Spacing = FileRowGap };
         foreach (var file in sheet.Files)
         {
             stack.Children.Add(FileRowFor(file, sheet.FileGone ?? string.Empty));
         }
 
-        return Faded(stack, out scroll);
+        var box = Faded(stack, out scroll);
+        // a click on the list's empty part lets go of the picked rows (as in File Explorer); a row's own click stops here
+        box.Background = Brush(Microsoft.UI.Colors.Transparent);
+        box.Tapped += (_, _) =>
+        {
+            _picked.Clear();
+            _anchor = null;
+            PaintRows();
+        };
+        _offstage = new Canvas { IsHitTestVisible = false };
+        box.Children.Add(_offstage);
+        PaintRows();
+        return box;
     }
 
     private Border FileRowFor(SheetFile file, string goneWords)
@@ -497,23 +513,73 @@ internal sealed class SheetView
 
         var row = new Border
         {
-            Height = FileRow, Padding = new Thickness(FileInset, 0, FileInset, 0), CornerRadius = new CornerRadius(4),
+            Height = FileRow, Padding = new Thickness(FileInset - 1, 0, FileInset - 1, 0), CornerRadius = new CornerRadius(4),
             Background = Brush(Microsoft.UI.Colors.Transparent), Child = grid, CanDrag = !file.Gone,
+            BorderThickness = new Thickness(1), BorderBrush = Brush(Microsoft.UI.Colors.Transparent),   // the picked edge's room, kept
+            OpacityTransition = new ScalarTransition { Duration = TimeSpan.FromMilliseconds(100) },
         };
         if (!file.Gone)
         {
-            row.PointerEntered += (_, _) => row.Background = Brush(ButtonFill(1));
-            row.PointerExited += (_, _) => row.Background = Brush(Microsoft.UI.Colors.Transparent);
+            _fileRows.Add((file.Path, row));
+            row.PointerEntered += (_, _) =>
+            {
+                _hoverRow = row;
+                PaintRows();
+            };
+            row.PointerExited += (_, _) =>
+            {
+                _hoverRow = null;
+                PaintRows();
+            };
+            row.Tapped += (_, e) =>
+            {
+                e.Handled = true;
+                Pick(file.Path);
+            };
             row.DragStarting += async (_, e) =>
             {
-                FileDragStarting?.Invoke(file.Path);
+                // a picked row takes all the picked ones with it; another row is picked on its own first (as in File Explorer)
+                if (!_picked.Contains(file.Path))
+                {
+                    _picked.Clear();
+                    _picked.Add(file.Path);
+                    _anchor = file.Path;
+                    PaintRows();
+                }
+
+                var paths = _fileRows.Where(r => _picked.Contains(r.Path)).Select(r => r.Path).ToArray();
+                _dragging = paths;
+                FileDragStarting?.Invoke(paths);
+                var grab = e.GetPosition(row);
                 var deferral = e.GetDeferral();
                 try
                 {
-                    Windows.Storage.IStorageItem item = Directory.Exists(file.Path)
-                        ? await Windows.Storage.StorageFolder.GetFolderFromPathAsync(file.Path)
-                        : await Windows.Storage.StorageFile.GetFileFromPathAsync(file.Path);
-                    e.Data.SetStorageItems([item]);
+                    // several: in the hand one block, "3个文件"; the rows stay where they are, faded (user 10-11, like File Explorer)
+                    if (paths.Length > 1)
+                    {
+                        var picture = await MergedPicture(paths, row.ActualWidth);
+                        if (picture is not null)
+                        {
+                            e.DragUI.SetContentFromSoftwareBitmap(picture, grab);
+                        }
+
+                        Interop.TaskbarHost.Log($"transit: {paths.Length} rows dragged, picture {(picture is null ? "none" : $"{picture.PixelWidth}x{picture.PixelHeight}")}, grab {grab.X:0},{grab.Y:0}");
+                    }
+
+                    foreach (var (path, r) in _fileRows)
+                    {
+                        r.Opacity = paths.Contains(path, StringComparer.OrdinalIgnoreCase) ? DraggedOpacity : 1;
+                    }
+
+                    var items = new List<Windows.Storage.IStorageItem>();
+                    foreach (var path in paths)
+                    {
+                        items.Add(Directory.Exists(path)
+                            ? await Windows.Storage.StorageFolder.GetFolderFromPathAsync(path)
+                            : await Windows.Storage.StorageFile.GetFileFromPathAsync(path));
+                    }
+
+                    e.Data.SetStorageItems(items);
                     e.AllowedOperations = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy
                         | Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
                 }
@@ -527,10 +593,150 @@ internal sealed class SheetView
                     deferral.Complete();
                 }
             };
-            row.DropCompleted += (_, _) => FileDragged?.Invoke(file.Path);
+            row.DropCompleted += (_, _) =>
+            {
+                foreach (var (_, r) in _fileRows)
+                {
+                    r.Opacity = 1;   // copied or let go nowhere: back; moved: the list loses them anyway
+                }
+
+                FileDragged?.Invoke(_dragging ?? [file.Path]);
+            };
         }
 
         return row;
+    }
+
+    // picking rows (user 10-11): a click picks one, Ctrl + click adds / takes away one, Shift + click picks from the last clicked to
+    // this one (Ctrl + Shift adds that run) — as in File Explorer; dragging a picked row drags all the picked files
+    private readonly List<(string Path, Border Row)> _fileRows = [];
+    private readonly HashSet<string> _picked = new(StringComparer.OrdinalIgnoreCase);
+    private string? _anchor;
+    private Border? _hoverRow;
+    private string[]? _dragging;
+
+    private void Pick(string path)
+    {
+        var keys = Interop.NativeMethods.ModifiersDown();
+        bool ctrl = (keys & 1) != 0, shift = (keys & 2) != 0;
+        var at = _fileRows.FindIndex(r => string.Equals(r.Path, path, StringComparison.OrdinalIgnoreCase));
+        var from = _anchor is null ? -1 : _fileRows.FindIndex(r => string.Equals(r.Path, _anchor, StringComparison.OrdinalIgnoreCase));
+        if (shift && from >= 0)
+        {
+            if (!ctrl)
+            {
+                _picked.Clear();
+            }
+
+            for (var i = Math.Min(from, at); i <= Math.Max(from, at); i++)
+            {
+                _picked.Add(_fileRows[i].Path);
+            }
+        }
+        else
+        {
+            if (ctrl)
+            {
+                if (!_picked.Remove(path))
+                {
+                    _picked.Add(path);
+                }
+            }
+            else
+            {
+                _picked.Clear();
+                _picked.Add(path);
+            }
+
+            _anchor = path;
+        }
+
+        PaintRows();
+    }
+
+    /// <summary>The hover shade under the mouse; picked rows the same shade plus a thin edge, the mouse on them or not (user 10-11:
+    /// the edge tells picked from merely pointed at — Fluent's lists share the two shades too).</summary>
+    private void PaintRows()
+    {
+        foreach (var (path, row) in _fileRows)
+        {
+            var picked = _picked.Contains(path);
+            row.Background = Brush(picked || row == _hoverRow ? ButtonFill(1) : Microsoft.UI.Colors.Transparent);
+            row.BorderBrush = Brush(picked ? PickedEdge : Microsoft.UI.Colors.Transparent);
+        }
+    }
+
+    /// <summary>A picked row's edge, 1 wide: white 22 % on the dark card, black 16 % on the light one (to be checked against File Explorer).</summary>
+    private Color PickedEdge => _palette.Dark ? Color.FromArgb(0x38, 255, 255, 255) : Color.FromArgb(0x29, 0, 0, 0);
+
+    /// <summary>Rows being dragged out, where they stay.</summary>
+    private const double DraggedOpacity = 0.4;
+
+    private (string Files, string Folders, string Items) _dragWords = ("{n}", "{n}", "{n}");
+    private Canvas? _offstage;   // where the hand's block is drawn for its picture, out of sight
+
+    /// <summary>"3个文件" / "3个文件夹" / "3个项目" — all files, all folders, or both.</summary>
+    private string DraggedWords(IReadOnlyList<string> paths)
+    {
+        var folders = paths.Count(Directory.Exists);
+        var words = folders == 0 ? _dragWords.Files : folders == paths.Count ? _dragWords.Folders : _dragWords.Items;
+        return words.Replace("{n}", paths.Count.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal);
+    }
+
+    /// <summary>The block in the hand when several rows go: a row's size and hover shade, a several-files icon (a stand-in till the
+    /// icons are redone together) and the count. Drawn out of sight and photographed; null when it can't be.</summary>
+    private async Task<Windows.Graphics.Imaging.SoftwareBitmap?> MergedPicture(IReadOnlyList<string> paths, double width)
+    {
+        if (_offstage is null || width <= 0)
+        {
+            return null;
+        }
+
+        var grid = new Grid { ColumnSpacing = 8 };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.Children.Add(new FontIcon
+        {
+            FontFamily = new FontFamily("Segoe Fluent Icons"), FontSize = FileGlyph, Glyph = "", Foreground = Brush(_palette.Hint),
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+        var words = DraggedWords(paths);
+        var text = new TextBlock
+        {
+            Text = words, FontFamily = Fonts(words).Normal, FontSize = CardSheets.TextSize, VerticalAlignment = VerticalAlignment.Center,
+            Foreground = Brush(_palette.Fore),
+        };
+        Grid.SetColumn(text, 1);
+        grid.Children.Add(text);
+        var block = new Border
+        {
+            Width = width, Height = FileRow, Padding = new Thickness(FileInset, 0, FileInset, 0), CornerRadius = new CornerRadius(4),
+            Background = Brush(ButtonFill(1)), Child = grid,
+        };
+        Canvas.SetLeft(block, -4 * width);   // out of sight
+        _offstage.Children.Add(block);
+        try
+        {
+            var shot = new Microsoft.UI.Xaml.Media.Imaging.RenderTargetBitmap();
+            await shot.RenderAsync(block);
+            if (shot.PixelWidth == 0)
+            {
+                return null;
+            }
+
+            var pixels = await shot.GetPixelsAsync();
+            return Windows.Graphics.Imaging.SoftwareBitmap.CreateCopyFromBuffer(pixels, Windows.Graphics.Imaging.BitmapPixelFormat.Bgra8,
+                shot.PixelWidth, shot.PixelHeight, Windows.Graphics.Imaging.BitmapAlphaMode.Premultiplied);
+        }
+        catch (Exception ex) when (ex is ArgumentException or System.Runtime.InteropServices.COMException)
+        {
+            Interop.TaskbarHost.Log("transit: no picture of the dragged rows — " + ex.Message);
+            return null;
+        }
+        finally
+        {
+            _offstage.Children.Remove(block);
+        }
     }
 
     // ---------------- an answer in Markdown (F2b, user 10-08) ----------------

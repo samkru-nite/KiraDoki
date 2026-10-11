@@ -114,6 +114,10 @@ public sealed class LanguageStrings
     public required string NoticeTransit { get; init; }
     public required string NoticeTransitOne { get; init; }
     public required string NoticeTransitFiles { get; init; }
+
+    /// <summary>Several folders / files and folders dragged out of the transit list at once ("3个文件夹" / "3个项目", 10-11).</summary>
+    public required string NoticeTransitFolders { get; init; }
+    public required string NoticeTransitItems { get; init; }
     public required string NoticeTransitDrop { get; init; }
     public required string NoticeTransitCannot { get; init; }
     public required string CardAddToTransit { get; init; }

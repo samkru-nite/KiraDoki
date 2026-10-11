@@ -85,6 +85,9 @@ public sealed record CardSheet(
 
     /// <summary>What a gone file's row says ("not found").</summary>
     public string? FileGone { get; init; }
+
+    /// <summary>Several rows dragged at once, "{n}" the count: all files / all folders / both ("3个文件 / 3个文件夹 / 3个项目").</summary>
+    public (string Files, string Folders, string Items) FilesDragged { get; init; } = ("{n}", "{n}", "{n}");
 }
 
 public static class CardSheets
@@ -368,6 +371,7 @@ public static class CardSheets
         {
             Layout = SheetLayout.Files,
             FileGone = text.CardFileGone,
+            FilesDragged = (text.NoticeTransitFiles, text.NoticeTransitFolders, text.NoticeTransitItems),
             Files = [.. (s.Files ?? []).Select(p => new SheetFile(p, TransitShelf.NameOf(p), gone.Contains(p)))],
         };
     }
