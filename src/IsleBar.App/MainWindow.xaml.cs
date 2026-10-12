@@ -371,7 +371,9 @@ public sealed partial class MainWindow : Window
         }
 
         Interop.NativeMethods.ShowWindow(_taskbar.OuterWindow, Interop.NativeMethods.SW_SHOWNOACTIVATE);
-        Root.Background = BrushOf(TaskbarColorBeside());   // when the position changes, re-read the adjacent taskbar color too
+        var beside = TaskbarColorBeside();
+        NoteBesidePaint("follow", beside);
+        Root.Background = BrushOf(beside);   // when the position changes, re-read the adjacent taskbar color too
         _taskbar.PlaceAt(placement.X, placement.Y, _width, _height);
     }
 
@@ -849,6 +851,7 @@ public sealed partial class MainWindow : Window
         else if (_besidePending == color)
         {
             _besidePending = null;
+            NoteBesidePaint("refresh", color);
             Root.Background = BrushOf(color);
             TaskbarHost.Log($"taskbar colour beside the pill changed to {color}");
             if (PillView.UseTaskbar(color))
@@ -892,11 +895,13 @@ public sealed partial class MainWindow : Window
             return null;
         }
 
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
         var dc = GetDC(IntPtr.Zero);
         try
         {
             var y = _placement.Y + (_height / 2);
             var c = GetPixel(dc, _placement.X - DpiSetup.Px(4), y);
+            NoteSlowPixel(System.Diagnostics.Stopwatch.GetElapsedTime(started));
             if (c == 0xFFFFFFFF)
             {
                 return null;
@@ -912,6 +917,56 @@ public sealed partial class MainWindow : Window
             ReleaseDC(IntPtr.Zero, dc);
         }
     }
+
+    // ---- diagnostics for the black ring round the pill (TODO ③ 胶囊外一圈黑边, 10-12): log only, nothing here changes behaviour ----
+
+    private DateTimeOffset _slowPixelLogged;
+
+    /// <summary>
+    /// The colour outside the pill is about to change: say which path painted it, from what to what, and which window was on
+    /// top of the spot it was read from ("ours" = one of IsleBar's own windows, e.g. a lifted card). Only real changes are logged.
+    /// </summary>
+    private void NoteBesidePaint(string path, Windows.UI.Color color)
+    {
+        if (Root.Background is SolidColorBrush current && current.Color == color)
+        {
+            return;
+        }
+
+        var old = Root.Background is SolidColorBrush brush ? brush.Color.ToString() : "-";
+        var top = "-";
+        if (_placement.Visible)
+        {
+            var spot = new Interop.NativeMethods.POINT { X = _placement.X - DpiSetup.Px(4), Y = _placement.Y + (_height / 2) };
+            var hit = WindowFromPoint(spot);
+            var root = hit == IntPtr.Zero ? IntPtr.Zero : Interop.NativeMethods.GetAncestor(hit, Interop.NativeMethods.GA_ROOT);
+            var name = new System.Text.StringBuilder(256);
+            var className = root != IntPtr.Zero && GetClassName(root, name, name.Capacity) > 0 ? name.ToString() : "-";
+            GetWindowThreadProcessId(root, out var pid);
+            top = $"{className} ({(pid == (uint)Environment.ProcessId ? "ours" : "other")})";
+        }
+
+        TaskbarHost.Log($"beside paint [{path}]: {old} → {color}, top {top}");
+    }
+
+    /// <summary>Reading one screen pixel can wait for the compositor — a suspect for dropped frames (9 ms seen 10-12).</summary>
+    private void NoteSlowPixel(TimeSpan took)
+    {
+        if (took.TotalMilliseconds >= 8 && DateTimeOffset.UtcNow - _slowPixelLogged > TimeSpan.FromMinutes(1))
+        {
+            _slowPixelLogged = DateTimeOffset.UtcNow;
+            TaskbarHost.Log($"beside: reading the pixel took {took.TotalMilliseconds:0} ms");
+        }
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern IntPtr WindowFromPoint(Interop.NativeMethods.POINT point);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern int GetClassName(IntPtr window, System.Text.StringBuilder name, int size);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
 
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     private static extern IntPtr GetDC(IntPtr window);
@@ -1316,6 +1371,7 @@ public sealed partial class MainWindow : Window
         var background = RealSearchBoxFill();
         _theme = ThemeColors.ForActualBackground(background, ThemeColors.AccentColor());
         PillSurface.Fill = BrushOf(background);
+        NoteBesidePaint("theme", taskbar);
         Root.Background = BrushOf(taskbar);   // outside the pill (the stair-steps of the clip edge sit on this color and become invisible)
         LeadIcon.Foreground = BrushOf(_theme.Icon);
         BallRing.Stroke = BrushOf(_theme.Icon);
