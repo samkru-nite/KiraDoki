@@ -45,6 +45,14 @@
 **用户定（10-12）**：主开关"复制提示" + 下面三个子开关（方案一，和"系统通知 / 只在任务栏显示"一样）。
 **还待定**：普通文字默认开还是关？（我推荐默认关：吵、只有情绪价值；但朋友装了新版会发现"复制文字没反应了"）
 
+## [ ] Steam 下载进度落后很多（10-12 用户拍照报）
+
+**现象**（同一时刻两张照片）：Steam 自己显示 已下 90.8 / 95.0 GB、95%、剩余 7 分钟，任务栏 Steam 图标进度条也 95%；我们的掀起卡片显示 已下载 66.15 GB / 95.02 GB、70%、剩余 49 分钟、9.9 MB/s。
+
+**猜测（没验证）**：我们读的是 `appmanifest_{id}.acf` 的 `BytesDownloaded / BytesStaged`（`Core/SystemWatch/Steam.cs` `Progress`，`Media/SteamWatcher.cs` `Read`），Steam 只隔一段时间（或暂停时）才把这些数写回 acf，所以落后；速度和剩余时间是拿落后的数算的，也跟着错。
+
+**先查再改**：本机日志里没有 "steam:" 行（照片可能是别的电脑 / 安装版，或日志已滚掉）。下次下载时看日志 "steam: … (manifest written N s ago)"，确认 acf 多久写一次。可能的更准来源：任务栏 Steam 图标自带的进度（`ITaskbarList3` 是 Steam 设给自己窗口的，外部读不到，要查有没有别的办法）、`steamapps\downloading\{id}` 文件夹的实际大小、Steam 写盘量。按"读界面要加保底"规矩，换来源也留 acf 做保底。
+
 ## 0.1.1 发布前
 - [ ] 重新打安装包（`scripts/build-installer.ps1`，csproj 和 installer 里的版本号改成 0.1.1：`-Version 0.1.1`）
 - [ ] 介绍页 `guide/` 里的版本号跟着改
