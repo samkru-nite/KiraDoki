@@ -64,11 +64,11 @@ internal sealed class SystemWatchers : IDisposable
             Toggle(ref _load, options.Load, () => new LoadWatcher(_strings));
             Toggle(ref _privacy, options.Privacy, () => new PrivacyWatcher(_strings));
             Toggle(ref _toasts, options.Toasts, () => new ToastWatcher(_strings) { HealthChanged = OnToastHealth });
-            Toggle(ref _flashes, options.Toasts, () => new ChatFlashWatcher(_strings));
-            Toggle(ref _records, true, () => new AgentRecordWatcher(_strings));
-            Toggle(ref _codex, true, () => new CodexWatcher(_strings));
-            Toggle(ref _drives, true, () => new DriveWatcher(_strings));
-            Toggle(ref _transit, true, () => new TransitWatcher(_strings));
+            Toggle(ref _flashes, options.WeChat, () => new ChatFlashWatcher(_strings));   // its own switch since 10-12 (was the notifications')
+            Toggle(ref _records, options.Claude, () => new AgentRecordWatcher(_strings));
+            Toggle(ref _codex, options.ChatGpt, () => new CodexWatcher(_strings));
+            Toggle(ref _drives, options.Drives, () => new DriveWatcher(_strings));
+            Toggle(ref _transit, options.Transit, () => new TransitWatcher(_strings));
             if (_toasts is not null)
             {
                 _toasts.HideBanners = options.HideBanners;

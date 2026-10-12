@@ -164,4 +164,28 @@ public static class Icons
     public const string CardPeople = "\uE04B";
     /// <summary>settings card: based on IsleBar (branch_fork_20).</summary>
     public const string CardFork = "\uE04C";
+    /// <summary>settings card: WeChat (chat_20).</summary>
+    public const string CardWeChat = "\uE04D";
+    /// <summary>settings card: browser downloads (arrow_download_20).</summary>
+    public const string CardBrowserDownload = "\uE04E";
+    /// <summary>settings card: download programs (cloud_arrow_down_20).</summary>
+    public const string CardDownloader = "\uE04F";
+    /// <summary>settings card: Steam (games_20).</summary>
+    public const string CardSteam = "\uE050";
+    /// <summary>settings card: copy and move (copy_20).</summary>
+    public const string CardFileOps = "\uE051";
+    /// <summary>settings card: archivers (folder_zip_20).</summary>
+    public const string CardArchive = "\uE052";
+    /// <summary>settings card: video export (video_clip_20).</summary>
+    public const string CardExport = "\uE053";
+    /// <summary>settings card: printer (print_20).</summary>
+    public const string CardPrinter = "\uE054";
+    /// <summary>settings card: USB drives (usb_stick_20).</summary>
+    public const string CardUsb = "\uE055";
+    /// <summary>settings card: transit station (box_20).</summary>
+    public const string CardTransit = "\uE056";
+    /// <summary>settings card: Claude (sparkle_20).</summary>
+    public const string CardClaude = "\uE057";
+    /// <summary>settings card: ChatGPT (bot_sparkle_20).</summary>
+    public const string CardChatGpt = "\uE058";
 }

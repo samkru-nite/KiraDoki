@@ -84,6 +84,18 @@ ICONS = [
     ("CardLicense", "certificate_20", "settings card: third-party licences"),
     ("CardPeople", "people_20", "settings card: authors"),
     ("CardFork", "branch_fork_20", "settings card: based on IsleBar"),
+    ("CardWeChat", "chat_20", "settings card: WeChat"),
+    ("CardBrowserDownload", "arrow_download_20", "settings card: browser downloads"),
+    ("CardDownloader", "cloud_arrow_down_20", "settings card: download programs"),
+    ("CardSteam", "games_20", "settings card: Steam"),
+    ("CardFileOps", "copy_20", "settings card: copy and move"),
+    ("CardArchive", "folder_zip_20", "settings card: archivers"),
+    ("CardExport", "video_clip_20", "settings card: video export"),
+    ("CardPrinter", "print_20", "settings card: printer"),
+    ("CardUsb", "usb_stick_20", "settings card: USB drives"),
+    ("CardTransit", "box_20", "settings card: transit station"),
+    ("CardClaude", "sparkle_20", "settings card: Claude"),
+    ("CardChatGpt", "bot_sparkle_20", "settings card: ChatGPT"),
 ]
 
 FAMILY = "IsleBar Icons"

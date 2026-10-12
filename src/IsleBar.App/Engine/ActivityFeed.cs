@@ -25,7 +25,7 @@ internal sealed class ActivityFeed : IDisposable
         _settings = settings;
         _text = text;
         Media = new MediaWatcher(() => _settings().BrowserMedia);
-        Downloads = new DownloadWatcher(() => _settings().DownloadFolders, text);
+        Downloads = new DownloadWatcher(settings, text);
     }
 
     /// <summary>The state files (<c>%LOCALAPPDATA%\IsleBar\state</c>) — written by the CLI, the hooks and the bar itself.</summary>
@@ -78,6 +78,7 @@ internal sealed class ActivityFeed : IDisposable
         }
 
         var items = Store.Read(now).ToList();
+        items.RemoveAll(SwitchedOff);   // before the chimes: a switched-off agent stays quiet too
         AdvancePomodoros(items);
         ChimeFinishedTimers(items);
         InterruptDeadAgents(items);
@@ -97,6 +98,18 @@ internal sealed class ActivityFeed : IDisposable
         }
 
         return items;
+    }
+
+    /// <summary>
+    /// An agent card whose switch is off in settings (10-12): Claude's (its hooks keep writing, the cards just don't show) or the
+    /// ChatGPT app's. Agent cards from hooks set up before the "agent" field are Claude's.
+    /// </summary>
+    private bool SwitchedOff(ActivityState s)
+    {
+        var agent = s.Agent ?? (s.Kind is ActivityKind.AgentWorking or ActivityKind.AgentPermission or ActivityKind.AgentDone
+            ? IsleBar.Core.Launch.AgentKind.Claude : null);
+        return agent == IsleBar.Core.Launch.AgentKind.Claude ? !_settings().ShowClaude
+            : agent == IsleBar.Core.Launch.AgentKind.Codex && !_settings().ShowChatGpt;
     }
 
     /// <summary>How near an agent card's change an AI app's own Windows notification counts as the same news.</summary>

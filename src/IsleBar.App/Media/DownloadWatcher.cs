@@ -28,7 +28,7 @@ internal sealed partial class DownloadWatcher : IDisposable
     private const long ThunderQuiet = 512 * 1024;   // 迅雷 writes about 0.3 MB/s of its own all the time (measured 10-11)
     private const long ThunderBusy = 1024 * 1024;
 
-    private readonly Func<IReadOnlyList<string>> _settingFolders;
+    private readonly Func<Core.Configuration.IsleBarSettings> _settings;
     private readonly CancellationTokenSource _stop = new();
     private readonly DownloadTracker _tracker = new();
     private readonly FileOperationWatcher _fileOps;
@@ -63,10 +63,10 @@ internal sealed partial class DownloadWatcher : IDisposable
     private int _thunderStreak;
     private DateTimeOffset? _thunderBusySince, _thunderBusyLast;
 
-    /// <param name="folders">Folders set in settings; empty = the system Downloads folder.</param>
-    public DownloadWatcher(Func<IReadOnlyList<string>> folders, Func<Core.Localization.LanguageStrings> text)
+    /// <param name="settings">The folders added in settings, and each feature's switch (10-12: a switched-off one isn't looked at).</param>
+    public DownloadWatcher(Func<Core.Configuration.IsleBarSettings> settings, Func<Core.Localization.LanguageStrings> text)
     {
-        _settingFolders = folders;
+        _settings = settings;
         _text = text;
         _fileOps = new FileOperationWatcher(text);
         _archivers = new ArchiverWatcher(text);
@@ -114,7 +114,7 @@ internal sealed partial class DownloadWatcher : IDisposable
             _ownFolders = OwnFolders();
         }
 
-        var folders = new[] { DefaultFolder() }.Concat(_settingFolders().Select(Environment.ExpandEnvironmentVariables));
+        var folders = new[] { DefaultFolder() }.Concat(_settings().DownloadFolders.Select(Environment.ExpandEnvironmentVariables));
         return folders.Append(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory)).Concat(_ownFolders)
             .Where(f => f.Length > 0).Select(f => f.TrimEnd('\\', '/')).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
@@ -164,10 +164,11 @@ internal sealed partial class DownloadWatcher : IDisposable
         while (!_stop.IsCancellationRequested)
         {
             var now = DateTimeOffset.UtcNow;
+            var on = _settings();   // each feature's switch (10-12): one that's off isn't looked at at all
             List<ActivityState> items;
             try
             {
-                items = Scan(now);
+                items = on.ShowBrowserDownloads || on.ShowDownloaders ? Scan(now, on.ShowBrowserDownloads, on.ShowDownloaders) : [];
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
@@ -176,11 +177,30 @@ internal sealed partial class DownloadWatcher : IDisposable
 
             try
             {
-                items.AddRange(_fileOps.Scan(now));
-                items.AddRange(_archivers.Scan(now));   // WinRAR, 7-Zip, Bandizip (TODO 四, 10-11)
-                items.AddRange(_exports.Scan(now));     // 剪映's export (TODO 四, 10-11)
-                items.AddRange(_steam.Scan(now));       // Steam's game downloads (TODO 四, 10-11, experimental)
-                items.AddRange(_print.Scan(now));       // the printer's queue (TODO 四, 10-11)
+                if (on.ShowFileOps)
+                {
+                    items.AddRange(_fileOps.Scan(now));
+                }
+
+                if (on.ShowArchivers)
+                {
+                    items.AddRange(_archivers.Scan(now));   // WinRAR, 7-Zip, Bandizip (TODO 四, 10-11)
+                }
+
+                if (on.ShowExports)
+                {
+                    items.AddRange(_exports.Scan(now));     // 剪映's export (TODO 四, 10-11)
+                }
+
+                if (on.ShowSteam)
+                {
+                    items.AddRange(_steam.Scan(now));       // Steam's game downloads (TODO 四, 10-11, experimental)
+                }
+
+                if (on.ShowPrinter)
+                {
+                    items.AddRange(_print.Scan(now));       // the printer's queue (TODO 四, 10-11)
+                }
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException
                                            or System.ComponentModel.Win32Exception or DllNotFoundException or EntryPointNotFoundException)
@@ -193,15 +213,22 @@ internal sealed partial class DownloadWatcher : IDisposable
                 // while Explorer's progress window is up it's looked at 4 times a second: its last words before closing
                 // ("cancelling", how many are left) come and go within a second (user's tests 10-10)
                 var waited = TimeSpan.Zero;
-                while ((_fileOps.Busy || _archivers.Busy) && waited + Glance < PollInterval)
+                while (((on.ShowFileOps && _fileOps.Busy) || (on.ShowArchivers && _archivers.Busy)) && waited + Glance < PollInterval)
                 {
                     await Task.Delay(Glance, _stop.Token);
                     waited += Glance;
                     try
                     {
                         var glance = DateTimeOffset.UtcNow;
-                        _fileOps.Glance(glance);
-                        _archivers.Glance(glance);
+                        if (on.ShowFileOps)
+                        {
+                            _fileOps.Glance(glance);
+                        }
+
+                        if (on.ShowArchivers)
+                        {
+                            _archivers.Glance(glance);
+                        }
                     }
                     catch (Exception ex) when (ex is InvalidOperationException or System.Runtime.InteropServices.COMException)
                     {
@@ -217,14 +244,17 @@ internal sealed partial class DownloadWatcher : IDisposable
         }
     }
 
-    private List<ActivityState> Scan(DateTimeOffset now)
+    /// <param name="browsers">Browser downloads switched on.</param>
+    /// <param name="programs">Download programs (迅雷, 夸克, 百度网盘) switched on.</param>
+    private List<ActivityState> Scan(DateTimeOffset now, bool browsers, bool programs)
     {
         var result = new List<ActivityState>();
         var files = new Dictionary<string, FileInfo>(StringComparer.OrdinalIgnoreCase);
         var listings = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+        bool Wanted(string path) => IsProgram(path) ? programs : browsers;
         foreach (var file in Everything()?.Find(Anywhere, 50) ?? [])
         {
-            if (IsPartial(file) && new FileInfo(file) is { Exists: true } info)
+            if (IsPartial(file) && Wanted(file) && new FileInfo(file) is { Exists: true } info)
             {
                 files[file] = info;
             }
@@ -243,17 +273,22 @@ internal sealed partial class DownloadWatcher : IDisposable
             foreach (var file in Directory.EnumerateFiles(folder))
             {
                 names.Add(Path.GetFileName(file));
-                if (IsPartial(file) && !files.ContainsKey(file))
+                if (IsPartial(file) && Wanted(file) && !files.ContainsKey(file))
                 {
                     files[file] = new FileInfo(file);
                 }
             }
         }
 
-        _baidu.Share(now, [.. files.Keys.Where(IsBaidu)]);
+        // the programs' write meters only while they're switched on (迅雷's is read even with nothing to follow: its fallback)
+        if (programs)
+        {
+            _baidu.Share(now, [.. files.Keys.Where(IsBaidu)]);
+        }
+
         var thunder = files.Keys.Where(IsThunder).ToList();
         var open = ThunderOpen(thunder);
-        var thunderWritten = _thunder.Share(now, open);
+        var thunderWritten = programs ? _thunder.Share(now, open) : 0;
         foreach (var path in thunder)
         {
             _thunderSizes[path] = files[path].Length;
@@ -356,7 +391,7 @@ internal sealed partial class DownloadWatcher : IDisposable
             _lastListing[folder] = names;
         }
 
-        if (ThunderFallback(now, thunderWritten, open.Count > 0) is { } busy)
+        if (programs && ThunderFallback(now, thunderWritten, open.Count > 0) is { } busy)
         {
             result.Add(busy);
         }
@@ -535,6 +570,9 @@ internal sealed partial class DownloadWatcher : IDisposable
     private static bool IsThunder(string path) => path.EndsWith(Downloaders.Thunder, StringComparison.OrdinalIgnoreCase);
 
     private static bool IsQuark(string path) => path.EndsWith(Downloaders.Quark, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>A download program's file (迅雷, 夸克, 百度网盘) — the rest are the browsers' (each its own switch, 10-12).</summary>
+    private static bool IsProgram(string path) => IsThunder(path) || IsQuark(path) || IsBaidu(path);
 
     /// <summary>The program of a download item ("download:{program}|{file}").</summary>
     private static string ProgramOf(ActivityState s)

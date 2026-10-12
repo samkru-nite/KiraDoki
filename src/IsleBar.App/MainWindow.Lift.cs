@@ -391,7 +391,9 @@ public sealed partial class MainWindow
         }
 
         var browser = s.Glyph == IsleBar.Core.SystemWatch.NoticeGlyphs.Copy && s.Open is not null ? Interop.DefaultBrowser.Name() : null;
-        return CardSheets.Build(card, DateTimeOffset.UtcNow, _text, _feed.Tails.For(s), browser);
+        var sheet = CardSheets.Build(card, DateTimeOffset.UtcNow, _text, _feed.Tails.For(s), browser);
+        return _settings.ShowTransit ? sheet
+            : sheet with { Buttons = [.. sheet.Buttons.Where(b => b.Action != SheetAction.Keep)] };   // no "加入中转站" with the station off (10-12)
     }
 
     /// <summary>

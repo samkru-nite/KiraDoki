@@ -1533,7 +1533,7 @@ public sealed partial class MainWindow : Window
         {
             // a copied address opens; copied files or an image go into the transit station (TODO ④, user 10-10)
             return s.Open is not null ? NextStep.Link
-                : _feed.Watchers?.Clipboard is { } copied && (copied.CopiedFiles.Count > 0 || copied.HoldsImage) ? NextStep.Keep
+                : _settings.ShowTransit && _feed.Watchers?.Clipboard is { } copied && (copied.CopiedFiles.Count > 0 || copied.HoldsImage) ? NextStep.Keep
                 : NextStep.None;
         }
 
@@ -1953,7 +1953,7 @@ public sealed partial class MainWindow : Window
             NudgeOnKeys();
         }
         // files coming in (the press began off the taskbar), or the transit station dragged out of the pill (TODO ④ 丙)
-        var dragging = down && _placement.Visible && (_draggingOut || (_pressCounts
+        var dragging = down && _placement.Visible && (_draggingOut || (_settings.ShowTransit && _pressCounts
             && DateTime.UtcNow - _pressSince >= DragHold
             && (Math.Abs(at.X - _pressAt.X) >= DragMove || Math.Abs(at.Y - _pressAt.Y) >= DragMove)));
         if (!dragging || bar is not { } rect || !NativeMethods.GetWindowRect(_hwnd, out var window))

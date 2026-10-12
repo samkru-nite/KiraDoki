@@ -34,7 +34,7 @@ internal sealed class SettingsWindow : Window
     private const double NumberWidth = 132;   // a number box with its arrows inside: room for "600" and the clear button
     private const double RowIndent = 52;   // a group's rows start where the header's text does (16 + icon 20 + 16)
 
-    private enum Page { General, Reminders, Calendar, Music, Timer, About }
+    private enum Page { General, Reminders, Files, Calendar, Music, Timer, About }
 
     private readonly IsleBarSettings _settings;
     private readonly Action _changed;
@@ -149,6 +149,7 @@ internal sealed class SettingsWindow : Window
                  {
                      (Page.General, Icons.Settings, _text.NavGeneral),
                      (Page.Reminders, Icons.Alert, _text.NotifySection),
+                     (Page.Files, Icons.Download, _text.NavFiles),
                      (Page.Calendar, Icons.Calendar, _text.CardCalendar),
                      (Page.Music, Icons.Music, _text.CardMusic),
                      (Page.Timer, Icons.Timer, _text.Timer),
@@ -211,6 +212,9 @@ internal sealed class SettingsWindow : Window
                 break;
             case Page.Reminders:
                 RemindersPage();
+                break;
+            case Page.Files:
+                FilesPage();
                 break;
             case Page.Calendar:
                 CalendarPage();
@@ -311,14 +315,39 @@ internal sealed class SettingsWindow : Window
                 }
             }), TaskScheduler.Default);
         }, saves: false);
-        _page.Children.Add(Card(Icons.CardConnect, _text.ConnectAgents, _text.ConnectAgentsDesc, connect));
 
+        // AI (user 10-12): connecting, then a switch for each agent's cards
+        SectionTitle(_text.SectionAi);
+        _page.Children.Add(Card(Icons.CardConnect, _text.ConnectAgents, _text.ConnectAgentsDesc, connect));
+        ToggleCard(Icons.CardClaude, "Claude", () => _settings.ShowClaude, v => _settings.ShowClaude = v, _text.SwitchClaudeDesc);
+        ToggleCard(Icons.CardChatGpt, "ChatGPT", () => _settings.ShowChatGpt, v => _settings.ShowChatGpt = v, _text.SwitchChatGptDesc);
+    }
+
+    /// <summary>
+    /// Downloads and files (user 10-12): a switch for each feature, grouped; the download folders moved here from 通用.
+    /// </summary>
+    private void FilesPage()
+    {
+        PageTitle(_text.NavFiles);
+        SectionTitle(_text.SectionDownloads, first: true);
+        ToggleCard(Icons.CardBrowserDownload, _text.SwitchBrowserDownloads, () => _settings.ShowBrowserDownloads, v => _settings.ShowBrowserDownloads = v, _text.SwitchBrowserDownloadsDesc);
+        ToggleCard(Icons.CardDownloader, _text.SwitchDownloaders, () => _settings.ShowDownloaders, v => _settings.ShowDownloaders = v, _text.SwitchDownloadersDesc);
+        ToggleCard(Icons.CardSteam, "Steam", () => _settings.ShowSteam, v => _settings.ShowSteam = v, _text.SwitchSteamDesc);
         DownloadFolders();
+
+        SectionTitle(_text.SectionFiles);
+        ToggleCard(Icons.CardFileOps, _text.SwitchFileOps, () => _settings.ShowFileOps, v => _settings.ShowFileOps = v, _text.SwitchFileOpsDesc);
+        ToggleCard(Icons.CardArchive, _text.SwitchArchivers, () => _settings.ShowArchivers, v => _settings.ShowArchivers = v, _text.SwitchArchiversDesc);
+        ToggleCard(Icons.CardExport, _text.SwitchExports, () => _settings.ShowExports, v => _settings.ShowExports = v, _text.SwitchExportsDesc);
+        ToggleCard(Icons.CardPrinter, _text.SwitchPrinter, () => _settings.ShowPrinter, v => _settings.ShowPrinter = v, _text.SwitchPrinterDesc);
+        ToggleCard(Icons.CardUsb, _text.SwitchDrives, () => _settings.ShowDrives, v => _settings.ShowDrives = v, _text.SwitchDrivesDesc);
+        ToggleCard(Icons.CardTransit, _text.NoticeTransit, () => _settings.ShowTransit, v => _settings.ShowTransit = v, _text.SwitchTransitDesc);
     }
 
     private void RemindersPage()
     {
         PageTitle(_text.NotifySection);
+        SectionTitle(_text.SectionSystem, first: true);
         ToggleCard(Icons.CardCharging, _text.NotifyPower, () => _settings.NotifyPower, v => _settings.NotifyPower = v);
         ToggleCard(Icons.CardBluetooth, _text.NotifyBluetooth, () => _settings.NotifyBluetooth, v => _settings.NotifyBluetooth = v);
         ToggleCard(Icons.CardWifi, _text.NotifyNetwork, () => _settings.NotifyNetwork, v => _settings.NotifyNetwork = v);
@@ -345,7 +374,9 @@ internal sealed class SettingsWindow : Window
             rows.Add(Row(_text.HideToastBanners, _text.HideToastBannersDesc, banners));
         }
 
+        SectionTitle(_text.SectionChat);
         _page.Children.Add(Group(Icons.CardAlert, _text.NotifyToasts, _text.NotifyToastsDesc, toasts, rows));
+        ToggleCard(Icons.CardWeChat, _text.SwitchWeChat, () => _settings.NotifyWeChat, v => _settings.NotifyWeChat = v, _text.SwitchWeChatDesc);
     }
 
     /// <summary>
@@ -567,7 +598,7 @@ internal sealed class SettingsWindow : Window
             {
                 _settings.DownloadFolders = [.. _settings.DownloadFolders.Where(f => f != folder)];
                 _changed();
-                ShowPage(Page.General);
+                ShowPage(Page.Files);
             };
             rows.Add(Row(folder, null, remove));
         }
@@ -591,7 +622,7 @@ internal sealed class SettingsWindow : Window
                 _changed();
             }
 
-            ShowPage(Page.General);
+            ShowPage(Page.Files);
         };
         rows.Add(Row(string.Empty, null, add));
         _page.Children.Add(Group(Icons.CardDownloads, _text.DownloadFoldersLabel, _text.DownloadFoldersHint, null, rows));
@@ -626,12 +657,13 @@ internal sealed class SettingsWindow : Window
             Margin = new Thickness(0, 0, 0, 16),
         });
 
-    private void SectionTitle(string text)
+    /// <param name="first">Right under the page title: no room above (the title keeps its own 16).</param>
+    private void SectionTitle(string text, bool first = false)
         => _page.Children.Add(new TextBlock
         {
             Text = text,
             Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"],
-            Margin = new Thickness(1, 24, 0, 4),
+            Margin = new Thickness(1, first ? 0 : 24, 0, 4),
         });
 
     private static FontIcon Glyph(string glyph, double size)
@@ -732,8 +764,8 @@ internal sealed class SettingsWindow : Window
         };
     }
 
-    private void ToggleCard(string glyph, string title, Func<bool> get, Action<bool> set)
-        => _page.Children.Add(Card(glyph, title, null, Toggle(get, set)));
+    private void ToggleCard(string glyph, string title, Func<bool> get, Action<bool> set, string? description = null)
+        => _page.Children.Add(Card(glyph, title, description, Toggle(get, set)));
 
     /// <summary>An on/off switch without its "On / Off" words (they took room the cards don't have; Windows' own cards show them
     /// on the left, the switch reads the same without).</summary>

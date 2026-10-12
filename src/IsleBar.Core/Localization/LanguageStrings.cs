@@ -454,6 +454,34 @@ public sealed class LanguageStrings
     public required string NavGeneral { get; init; }
     /// <summary>Settings window: the About page</summary>
     public required string NavAbout { get; init; }
+
+    // ---- one switch per feature (settings, 10-12) ----
+    public required string NavFiles { get; init; }
+    public required string SectionSystem { get; init; }
+    public required string SectionChat { get; init; }
+    public required string SectionDownloads { get; init; }
+    public required string SectionFiles { get; init; }
+    public required string SectionAi { get; init; }
+    public required string SwitchWeChat { get; init; }
+    public required string SwitchWeChatDesc { get; init; }
+    public required string SwitchBrowserDownloads { get; init; }
+    public required string SwitchBrowserDownloadsDesc { get; init; }
+    public required string SwitchDownloaders { get; init; }
+    public required string SwitchDownloadersDesc { get; init; }
+    public required string SwitchSteamDesc { get; init; }
+    public required string SwitchFileOps { get; init; }
+    public required string SwitchFileOpsDesc { get; init; }
+    public required string SwitchArchivers { get; init; }
+    public required string SwitchArchiversDesc { get; init; }
+    public required string SwitchExports { get; init; }
+    public required string SwitchExportsDesc { get; init; }
+    public required string SwitchPrinter { get; init; }
+    public required string SwitchPrinterDesc { get; init; }
+    public required string SwitchDrives { get; init; }
+    public required string SwitchDrivesDesc { get; init; }
+    public required string SwitchTransitDesc { get; init; }
+    public required string SwitchClaudeDesc { get; init; }
+    public required string SwitchChatGptDesc { get; init; }
     /// <summary>Under <see cref="ConnectAgents"/></summary>
     public required string ConnectAgentsDesc { get; init; }
     /// <summary>Under <see cref="NotifyToasts"/></summary>

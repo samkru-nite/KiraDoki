@@ -16,10 +16,16 @@ public sealed record SystemWatchOptions(
     bool Privacy = true,
     string Calendars = "",
     bool Toasts = false,
-    bool HideBanners = false)
+    bool HideBanners = false,
+    bool WeChat = true,
+    bool Drives = true,
+    bool Transit = true,
+    bool Claude = true,
+    bool ChatGpt = true)
 {
     /// <summary>Everything off.</summary>
-    public static SystemWatchOptions None { get; } = new(false, false, false, false, false, false, false, "", Toasts: false, HideBanners: false);
+    public static SystemWatchOptions None { get; } = new(false, false, false, false, false, false, false, "", Toasts: false, HideBanners: false,
+        WeChat: false, Drives: false, Transit: false, Claude: false, ChatGpt: false);
 
     /// <summary>Calendar notices are on only when an address is set. <see cref="Calendars"/> = the addresses, one per line (a string keeps the record's equality).</summary>
     public bool Calendar => !string.IsNullOrWhiteSpace(Calendars);
@@ -37,6 +43,11 @@ public sealed record SystemWatchOptions(
             settings.NotifyPrivacy,
             string.Join('\n', settings.Calendars.Select(c => c.Trim()).Where(c => c.Length > 0)),
             settings.NotifyToasts,
-            settings.NotifyToasts && settings.HideToastBanners);   // hiding Windows' banners only makes sense while the bar shows them
+            settings.NotifyToasts && settings.HideToastBanners,   // hiding Windows' banners only makes sense while the bar shows them
+            settings.NotifyWeChat,
+            settings.ShowDrives,
+            settings.ShowTransit,
+            settings.ShowClaude,
+            settings.ShowChatGpt);
     }
 }

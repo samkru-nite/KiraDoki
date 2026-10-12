@@ -44,6 +44,23 @@ public static class SettingsCodec
     private const string KeyCalendars = "calendars";
     private const string KeyCalendarIcsOld = "calendar_ics";   // one address until 10-10, read once into the list
 
+    /// <summary>The per-feature switches (10-12): key, read, write — all plain bools, on by default.</summary>
+    private static readonly (string Key, Func<IsleBarSettings, bool> Get, Action<IsleBarSettings, bool> Set)[] Switches =
+    [
+        ("notify_wechat", s => s.NotifyWeChat, (s, v) => s.NotifyWeChat = v),
+        ("show_browser_downloads", s => s.ShowBrowserDownloads, (s, v) => s.ShowBrowserDownloads = v),
+        ("show_downloaders", s => s.ShowDownloaders, (s, v) => s.ShowDownloaders = v),
+        ("show_steam", s => s.ShowSteam, (s, v) => s.ShowSteam = v),
+        ("show_file_ops", s => s.ShowFileOps, (s, v) => s.ShowFileOps = v),
+        ("show_archivers", s => s.ShowArchivers, (s, v) => s.ShowArchivers = v),
+        ("show_exports", s => s.ShowExports, (s, v) => s.ShowExports = v),
+        ("show_printer", s => s.ShowPrinter, (s, v) => s.ShowPrinter = v),
+        ("show_drives", s => s.ShowDrives, (s, v) => s.ShowDrives = v),
+        ("show_transit", s => s.ShowTransit, (s, v) => s.ShowTransit = v),
+        ("show_claude", s => s.ShowClaude, (s, v) => s.ShowClaude = v),
+        ("show_chatgpt", s => s.ShowChatGpt, (s, v) => s.ShowChatGpt = v),
+    ];
+
     public static IsleBarSettings FromJson(JsonObject? raw)
     {
         var s = new IsleBarSettings();
@@ -73,6 +90,11 @@ public static class SettingsCodec
         s.HideToastBanners = AsBool(raw[KeyHideToastBanners]) ?? s.HideToastBanners;
         s.BrowserMedia = AsBool(raw[KeyBrowserMedia]) ?? s.BrowserMedia;
         s.MuteChimeFullscreen = AsBool(raw[KeyMuteChimeFullscreen]) ?? s.MuteChimeFullscreen;
+        foreach (var (key, get, set) in Switches)
+        {
+            set(s, AsBool(raw[key]) ?? get(s));
+        }
+
         if (raw[KeyCalendars] is JsonArray calendarArr)
         {
             s.Calendars = [.. calendarArr.Select(AsString).OfType<string>().Select(line => line.Trim()).Where(line => line.Length > 0)];
@@ -141,6 +163,10 @@ public static class SettingsCodec
         raw[KeyBrowserMedia] = s.BrowserMedia;
         raw[KeyMuteChimeFullscreen] = s.MuteChimeFullscreen;
         raw[KeyCalendars] = new JsonArray([.. s.Calendars.Select(line => (JsonNode)line)]);
+        foreach (var (key, get, _) in Switches)
+        {
+            raw[key] = get(s);
+        }
     }
 
     // ---- Return a value only when the type matches exactly. "true" (a string) or 1 is not a bool. ----

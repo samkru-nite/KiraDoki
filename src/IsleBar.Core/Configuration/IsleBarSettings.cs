@@ -86,6 +86,44 @@ public sealed class IsleBarSettings
     /// <summary>The calendars' ICS addresses (each its own calendar: a gap only counts within one). None = calendar notices off.</summary>
     public List<string> Calendars { get; set; } = [];
 
+    // ---- One switch per feature (user 10-12: everything gets a switch, all on by default = as before). Off = its watcher stops. ----
+
+    /// <summary>WeChat: its taskbar button flashing (it sends no Windows notification). Was tied to <see cref="NotifyToasts"/>.</summary>
+    public bool NotifyWeChat { get; set; } = true;
+
+    /// <summary>Browser downloads (Edge, Chrome …).</summary>
+    public bool ShowBrowserDownloads { get; set; } = true;
+
+    /// <summary>Download programs: 迅雷, 夸克网盘, 百度网盘.</summary>
+    public bool ShowDownloaders { get; set; } = true;
+
+    /// <summary>Steam's game downloads and updates.</summary>
+    public bool ShowSteam { get; set; } = true;
+
+    /// <summary>File Explorer's copy / move / extract progress.</summary>
+    public bool ShowFileOps { get; set; } = true;
+
+    /// <summary>WinRAR, 7-Zip, Bandizip.</summary>
+    public bool ShowArchivers { get; set; } = true;
+
+    /// <summary>Video export (剪映).</summary>
+    public bool ShowExports { get; set; } = true;
+
+    /// <summary>The printer's queue.</summary>
+    public bool ShowPrinter { get; set; } = true;
+
+    /// <summary>USB drives: plugged in, safe to remove.</summary>
+    public bool ShowDrives { get; set; } = true;
+
+    /// <summary>The transit station: files dropped on the pill.</summary>
+    public bool ShowTransit { get; set; } = true;
+
+    /// <summary>Claude's cards (Claude Code and the Claude app).</summary>
+    public bool ShowClaude { get; set; } = true;
+
+    /// <summary>The ChatGPT app's cards (Codex).</summary>
+    public bool ShowChatGpt { get; set; } = true;
+
 
     public IsleBarSettings Clone() => new()
     {
@@ -111,5 +149,17 @@ public sealed class IsleBarSettings
         BrowserMedia = BrowserMedia,
         MuteChimeFullscreen = MuteChimeFullscreen,
         Calendars = [.. Calendars],
+        NotifyWeChat = NotifyWeChat,
+        ShowBrowserDownloads = ShowBrowserDownloads,
+        ShowDownloaders = ShowDownloaders,
+        ShowSteam = ShowSteam,
+        ShowFileOps = ShowFileOps,
+        ShowArchivers = ShowArchivers,
+        ShowExports = ShowExports,
+        ShowPrinter = ShowPrinter,
+        ShowDrives = ShowDrives,
+        ShowTransit = ShowTransit,
+        ShowClaude = ShowClaude,
+        ShowChatGpt = ShowChatGpt,
     };
 }
