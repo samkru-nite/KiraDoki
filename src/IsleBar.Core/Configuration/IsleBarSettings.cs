@@ -124,6 +124,15 @@ public sealed class IsleBarSettings
     /// <summary>The ChatGPT app's cards (Codex).</summary>
     public bool ShowChatGpt { get; set; } = true;
 
+    /// <summary>
+    /// While Claude / ChatGPT works or waits: closing the lid does nothing, and the PC doesn't sleep for being idle; the user's
+    /// own back once the tasks are through (user 10-12, <see cref="SystemWatch.LidRules"/>). Off by default: it changes a Windows setting.
+    /// </summary>
+    public bool LidAwake { get; set; }
+
+    /// <summary>Under <see cref="LidAwake"/>: best power efficiency while the lid is closed (on once the main switch is).</summary>
+    public bool LidEfficiency { get; set; } = true;
+
 
     public IsleBarSettings Clone() => new()
     {
@@ -161,5 +170,7 @@ public sealed class IsleBarSettings
         ShowTransit = ShowTransit,
         ShowClaude = ShowClaude,
         ShowChatGpt = ShowChatGpt,
+        LidAwake = LidAwake,
+        LidEfficiency = LidEfficiency,
     };
 }

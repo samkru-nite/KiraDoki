@@ -482,6 +482,14 @@ public sealed class LanguageStrings
     public required string SwitchTransitDesc { get; init; }
     public required string SwitchClaudeDesc { get; init; }
     public required string SwitchChatGptDesc { get; init; }
+
+    // ---- keep the AI working with the lid closed (settings, 10-12) ----
+    public required string LidAwake { get; init; }
+    public required string LidAwakeDesc { get; init; }
+    public required string LidEfficiency { get; init; }
+    public required string LidEfficiencyDesc { get; init; }
+    public required string LidLocked { get; init; }
+    public required string LidNoModes { get; init; }
     /// <summary>Under <see cref="ConnectAgents"/></summary>
     public required string ConnectAgentsDesc { get; init; }
     /// <summary>Under <see cref="NotifyToasts"/></summary>

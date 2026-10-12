@@ -96,6 +96,7 @@ ICONS = [
     ("CardTransit", "box_20", "settings card: transit station"),
     ("CardClaude", "sparkle_20", "settings card: Claude"),
     ("CardChatGpt", "bot_sparkle_20", "settings card: ChatGPT"),
+    ("CardLid", "laptop_20", "settings card: keep the AI working with the lid closed"),
 ]
 
 FAMILY = "IsleBar Icons"

@@ -321,6 +321,33 @@ internal sealed class SettingsWindow : Window
         _page.Children.Add(Card(Icons.CardConnect, _text.ConnectAgents, _text.ConnectAgentsDesc, connect));
         ToggleCard(Icons.CardClaude, "Claude", () => _settings.ShowClaude, v => _settings.ShowClaude = v, _text.SwitchClaudeDesc);
         ToggleCard(Icons.CardChatGpt, "ChatGPT", () => _settings.ShowChatGpt, v => _settings.ShowChatGpt = v, _text.SwitchChatGptDesc);
+        LidCard();
+    }
+
+    /// <summary>
+    /// Keep the AI working with the lid closed (user 10-12), best power efficiency under it — like the notifications' "only on the
+    /// bar": the row only means something while the main switch is on. Laptops only; a change that didn't take says so.
+    /// </summary>
+    private void LidCard()
+    {
+        if (!Interop.PowerSettings.HasLid)
+        {
+            return;
+        }
+
+        ToggleSwitch? efficiency = null;
+        var awake = Toggle(() => _settings.LidAwake, v =>
+        {
+            _settings.LidAwake = v;
+            if (efficiency is not null)
+            {
+                efficiency.IsEnabled = v;
+            }
+        });
+        efficiency = Toggle(() => _settings.LidEfficiency, v => _settings.LidEfficiency = v);
+        efficiency.IsEnabled = _settings.LidAwake;
+        var row = Row(_text.LidEfficiency, SystemWatch.LidGuard.ModesMissing ? _text.LidNoModes : _text.LidEfficiencyDesc, efficiency);
+        _page.Children.Add(Group(Icons.CardLid, _text.LidAwake, SystemWatch.LidGuard.LidLocked ? _text.LidLocked : _text.LidAwakeDesc, awake, [row]));
     }
 
     /// <summary>

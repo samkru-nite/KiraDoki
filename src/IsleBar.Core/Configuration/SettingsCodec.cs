@@ -59,6 +59,8 @@ public static class SettingsCodec
         ("show_transit", s => s.ShowTransit, (s, v) => s.ShowTransit = v),
         ("show_claude", s => s.ShowClaude, (s, v) => s.ShowClaude = v),
         ("show_chatgpt", s => s.ShowChatGpt, (s, v) => s.ShowChatGpt = v),
+        ("lid_awake", s => s.LidAwake, (s, v) => s.LidAwake = v),   // off by default (each keeps its own default when missing)
+        ("lid_efficiency", s => s.LidEfficiency, (s, v) => s.LidEfficiency = v),
     ];
 
     public static IsleBarSettings FromJson(JsonObject? raw)

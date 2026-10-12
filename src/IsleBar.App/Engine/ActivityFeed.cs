@@ -53,7 +53,11 @@ internal sealed class ActivityFeed : IDisposable
         Watchers = new SystemWatchers(_text);
         Watchers.Start(WatchOptions(_settings()));
         HookConnector.TidyCodex();   // older builds' Codex hooks only kept a "review hooks" dialog coming up (10-11)
+        Lid = new LidGuard();   // puts back a lid action the last run left changed
     }
+
+    /// <summary>"Keep the AI working with the lid closed" (user 10-12). Null until <see cref="Start"/>.</summary>
+    public LidGuard? Lid { get; private set; }
 
     /// <summary>Settings changed: pass the notice switches on to the watchers.</summary>
     public void ApplySettings() => Watchers?.Apply(WatchOptions(_settings()));
@@ -97,6 +101,7 @@ internal sealed class ActivityFeed : IDisposable
             AddPrivacy(items, now);
         }
 
+        Lid?.Update(items, _settings(), now);   // on this (UI) thread: keeping the system running is per thread
         return items;
     }
 
@@ -555,6 +560,7 @@ internal sealed class ActivityFeed : IDisposable
 
     public void Dispose()
     {
+        Lid?.Dispose();   // first: the user's lid action and power mode back
         Media.Dispose();
         Downloads.Dispose();
         Watchers?.Dispose();

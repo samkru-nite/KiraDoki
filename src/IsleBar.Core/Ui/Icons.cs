@@ -188,4 +188,6 @@ public static class Icons
     public const string CardClaude = "\uE057";
     /// <summary>settings card: ChatGPT (bot_sparkle_20).</summary>
     public const string CardChatGpt = "\uE058";
+    /// <summary>settings card: keep the AI working with the lid closed (laptop_20).</summary>
+    public const string CardLid = "\uE059";
 }
