@@ -49,8 +49,8 @@
             <Grid x:Name="BallBox" Width="32" Height="32">
                 <Grid x:Name="BallCell" Width="24" Height="24" Background="Transparent">
                     <Ellipse x:Name="BallHover" Width="24" Height="24" Opacity="0" IsHitTestVisible="False" />
-                    <!-- the mark at rest: an empty ring, 8.4 across, 1.2 thick -->
-                    <Ellipse x:Name="BallRing" Width="8.4" Height="8.4" StrokeThickness="1.2" IsHitTestVisible="False" />
+                    <!-- the mark at rest: an empty ring, 10 across, 1.2 thick (user 10-12; was 8.4) -->
+                    <Ellipse x:Name="BallRing" Width="10" Height="10" StrokeThickness="1.2" IsHitTestVisible="False" />
                 </Grid>
             </Grid>
         </Grid>

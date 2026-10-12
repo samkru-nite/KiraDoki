@@ -267,7 +267,7 @@ public sealed partial class MainWindow
         Put(surface, a.SmallX, row);
         var rule = new Rectangle { Width = 1, Height = 16, Fill = SmallRule.Fill };
         Put(rule, a.RuleX ?? b.RuleX ?? 0, row + 8);
-        var ring = new Ellipse { Width = 8.4, Height = 8.4, StrokeThickness = 1.2, Stroke = BallRing.Stroke };
+        var ring = new Ellipse { Width = 10, Height = 10, StrokeThickness = 1.2, Stroke = BallRing.Stroke };
         Put(ring, a.BallX - 4.2, row + 11.8);
         frames.Add((t, p) =>
         {
