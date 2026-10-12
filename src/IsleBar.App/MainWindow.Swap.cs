@@ -274,15 +274,17 @@ public sealed partial class MainWindow
         Put(surface, a.SmallX, row);
         var rule = new Rectangle { Width = 1, Height = 16, Fill = SmallRule.Fill };
         Put(rule, a.RuleX ?? b.RuleX ?? 0, row + 8);
-        var ring = new Ellipse { Width = 10, Height = 10, StrokeThickness = 1.2, Stroke = BallRing.Stroke };
-        Put(ring, a.BallX - 4.2, row + 11.8);
+        // the real ring's size, so a new size can't make the stand-in jump (10-12: the ring grew to 10, the offsets stayed 8.4's)
+        var half = BallRing.Width / 2;
+        var ring = new Ellipse { Width = BallRing.Width, Height = BallRing.Height, StrokeThickness = BallRing.StrokeThickness, Stroke = BallRing.Stroke };
+        Put(ring, a.BallX - half, row + (PillGeometry.Height / 2) - half);
         frames.Add((t, p) =>
         {
             Canvas.SetLeft(surface, SwapMotion.Lerp(a.SmallX, b.SmallX, p));
             surface.SetSize(Math.Max(PillGeometry.BallBox, SwapMotion.Lerp(a.SmallWidth, b.SmallWidth, p)), PillGeometry.Height);
             Canvas.SetLeft(rule, SwapMotion.Lerp(a.RuleX ?? b.RuleX ?? 0, b.RuleX ?? a.RuleX ?? 0, p));
             rule.Opacity = SwapMotion.Lerp(a.RuleX is null ? 0 : 1, b.RuleX is null ? 0 : 1, Math.Clamp(p, 0, 1));
-            Canvas.SetLeft(ring, SwapMotion.Lerp(a.BallX, b.BallX, p) - 4.2);
+            Canvas.SetLeft(ring, SwapMotion.Lerp(a.BallX, b.BallX, p) - half);
         });
 
         // cells that stay slide; the ones that come or go grow / shrink in place — unless they are a card going up or down

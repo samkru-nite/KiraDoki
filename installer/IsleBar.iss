@@ -1,4 +1,6 @@
-﻿; IsleBar installer (Inno Setup 6). Build with scripts\build-installer.ps1, which publishes the app and CLI first.
+﻿; KiraDoki installer (Inno Setup 6). KiraDoki = IsleBar renamed (user 10-12): only what people see says KiraDoki — the
+; install folder, data folder, registry keys and the `islebar` command keep IsleBar.
+; Build with scripts\build-installer.ps1, which publishes the app and CLI first.
 ; Per-user install — no admin rights: the app lives in %LOCALAPPDATA%\IsleBar\app, the CLI that hooks call in ...\IsleBar\bin.
 ; Settings, logs and state in %LOCALAPPDATA%\IsleBar are kept on uninstall (reinstalling picks them up again).
 
@@ -14,19 +16,20 @@
 
 [Setup]
 LicenseFile=license-page.txt
-AppId={{6F1C2B7E-5A3D-4E8B-9C21-1B7E0D4A9F63}
-AppName=IsleBar
+AppId={{BB6CDAA6-D69E-451F-8CB5-7022618B46F4}
+AppName=KiraDoki
 AppVersion={#AppVersion}
-AppPublisher=IsleBar
-AppComments=Unofficial taskbar island for Windows 11. Not affiliated with Anthropic or OpenAI.
+AppPublisher=KiraDoki
+AppComments=Taskbar island for Windows 11, based on IsleBar by ds3owl. Not affiliated with Anthropic or OpenAI.
 DefaultDirName={localappdata}\IsleBar\app
 DisableDirPage=yes
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 OutputDir=..\dist
-OutputBaseFilename=IsleBar-Setup-{#AppVersion}
-SetupIconFile=..\src\IsleBar.App\Assets\islebar.ico
+OutputBaseFilename=KiraDoki-Setup-{#AppVersion}
+SetupIconFile=..\src\IsleBar.App\Assets\kiradoki.ico
 UninstallDisplayIcon={app}\IsleBar.App.exe
+UninstallDisplayName=KiraDoki
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
@@ -38,6 +41,8 @@ RestartApplications=no
 
 [Languages]
 Name: "en"; MessagesFile: "compiler:Default.isl"
+; Simplified Chinese: Inno Setup's unofficial translation (issrc tag is-6_7_3), kept next to this script
+Name: "zh"; MessagesFile: "ChineseSimplified.isl"
 Name: "ko"; MessagesFile: "compiler:Languages\Korean.isl"
 Name: "ja"; MessagesFile: "compiler:Languages\Japanese.isl"
 Name: "fr"; MessagesFile: "compiler:Languages\French.isl"
@@ -47,22 +52,24 @@ Name: "pt"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
 Name: "es"; MessagesFile: "compiler:Languages\Spanish.isl"
 
 [CustomMessages]
-en.TaskHooks=Connect Claude Code / Codex notifications (working · done · needs an answer)
-ko.TaskHooks=Claude Code / Codex 알림 연결 (작업 중 · 완료 · 확인 필요)
-ja.TaskHooks=Claude Code / Codex の通知を接続（作業中・完了・確認が必要）
-fr.TaskHooks=Connecter les notifications Claude Code / Codex
-de.TaskHooks=Claude Code / Codex-Benachrichtigungen verbinden
-it.TaskHooks=Collega le notifiche di Claude Code / Codex
-pt.TaskHooks=Conectar notificações do Claude Code / Codex
-es.TaskHooks=Conectar notificaciones de Claude Code / Codex
-en.TaskStartup=Start IsleBar when I sign in
-ko.TaskStartup=로그인할 때 IsleBar 시작
-ja.TaskStartup=サインイン時に IsleBar を起動
-fr.TaskStartup=Démarrer IsleBar à l'ouverture de session
-de.TaskStartup=IsleBar bei der Anmeldung starten
-it.TaskStartup=Avvia IsleBar all'accesso
-pt.TaskStartup=Iniciar o IsleBar ao entrar
-es.TaskStartup=Iniciar IsleBar al iniciar sesión
+en.TaskHooks=Connect Claude Code notifications (working · done · needs an answer)
+zh.TaskHooks=连接 Claude Code 通知（工作中 · 完成 · 等你回答）
+ko.TaskHooks=Claude Code 알림 연결 (작업 중 · 완료 · 확인 필요)
+ja.TaskHooks=Claude Code の通知を接続（作業中・完了・確認が必要）
+fr.TaskHooks=Connecter les notifications Claude Code
+de.TaskHooks=Claude Code-Benachrichtigungen verbinden
+it.TaskHooks=Collega le notifiche di Claude Code
+pt.TaskHooks=Conectar notificações do Claude Code
+es.TaskHooks=Conectar notificaciones de Claude Code
+en.TaskStartup=Start KiraDoki when I sign in
+zh.TaskStartup=登录时启动 KiraDoki
+ko.TaskStartup=로그인할 때 KiraDoki 시작
+ja.TaskStartup=サインイン時に KiraDoki を起動
+fr.TaskStartup=Démarrer KiraDoki à l'ouverture de session
+de.TaskStartup=KiraDoki bei der Anmeldung starten
+it.TaskStartup=Avvia KiraDoki all'accesso
+pt.TaskStartup=Iniciar o KiraDoki ao entrar
+es.TaskStartup=Iniciar KiraDoki al iniciar sesión
 
 [Tasks]
 Name: "startup"; Description: "{cm:TaskStartup}"
@@ -78,6 +85,10 @@ Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreve
 Source: "..\THIRD-PARTY-NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\licenses\*"; DestDir: "{app}\licenses"; Flags: ignoreversion
 
+[Icons]
+; a way back in after 退出 (quit lives only in Settings now) — the original installer made no shortcut (10-12)
+Name: "{userprograms}\KiraDoki"; Filename: "{app}\IsleBar.App.exe"
+
 [InstallDelete]
 ; files earlier builds shipped and this one no longer does (the OpenAI logo was dropped 10-01 — trademark)
 Type: files; Name: "{app}\Assets\codex-blossom-*.svg"
@@ -90,7 +101,7 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 ; a one-click update (silent, /RELAUNCH=1) must not reconnect hooks the user disconnected in settings (code review 10-02)
 Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\setup\hooks.ps1"" -Apply"; \
   Flags: runhidden waituntilterminated; Tasks: hooks; Check: not IsRelaunch
-Filename: "{app}\IsleBar.App.exe"; Flags: nowait postinstall skipifsilent; Description: "{cm:LaunchProgram,IsleBar}"
+Filename: "{app}\IsleBar.App.exe"; Flags: nowait postinstall skipifsilent; Description: "{cm:LaunchProgram,KiraDoki}"
 ; one-click update runs setup silently with /RELAUNCH=1 — start the bar again afterwards (10-01)
 Filename: "{app}\IsleBar.App.exe"; Flags: nowait; Check: IsRelaunch
 

@@ -1,10 +1,11 @@
 # Third-party notices
 
-IsleBar itself is released under the MIT License (see `LICENSE`). It ships the third-party components below, each under
-its own licence. The full licence and notice texts are in the `licenses` folder (installed next to IsleBar).
+KiraDoki itself is released under the MIT License (see `LICENSE`). It ships the third-party components below, each under
+its own licence. The full licence and notice texts are in the `licenses` folder (installed next to KiraDoki).
 
 | Component | Used for | Licence | Text |
 |---|---|---|---|
+| [IsleBar](https://github.com/ds3owl/islebar) by ds3owl | KiraDoki is built on IsleBar's source | MIT | `LICENSE` (ds3owl's copyright line) |
 | [Windows App SDK](https://github.com/microsoft/WindowsAppSDK) 1.6 / WinUI 3 | App framework (bundled) | Microsoft Software License Terms (redistributable) | `licenses/WindowsAppSDK-LICENSE.txt`, `WindowsAppSDK-NOTICE.txt` |
 | [Microsoft Edge WebView2](https://www.nuget.org/packages/Microsoft.Web.WebView2) (`Microsoft.Web.WebView2.Core.dll`, `WebView2Loader.dll`) | Pulled in by the Windows App SDK | BSD-style Microsoft licence | `licenses/WebView2-LICENSE.txt`, `WebView2-NOTICE.txt` |
 | [.NET 8 runtime](https://github.com/dotnet/runtime) | Runtime (bundled, self-contained) | MIT, with the runtime's own third-party notices | `licenses/dotnet-LICENSE.txt`, `dotnet-THIRD-PARTY-NOTICES.txt` |

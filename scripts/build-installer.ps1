@@ -1,4 +1,4 @@
-﻿# Builds dist\IsleBar-Setup-<version>.exe: publishes the app (self-contained — no .NET or Windows App Runtime needed on the
+﻿# Builds dist\KiraDoki-Setup-<version>.exe: publishes the app (self-contained — no .NET or Windows App Runtime needed on the
 # target PC) and the single-file CLI into build\, then compiles installer\IsleBar.iss with Inno Setup 6.
 #
 #   .\scripts\build-installer.ps1                 # version 0.1.0
@@ -28,8 +28,8 @@ if ($LASTEXITCODE -ne 0) { throw 'cli publish failed' }
 
 & $iscc "/DAppVersion=$Version" (Join-Path $repo 'installer\IsleBar.iss')
 if ($LASTEXITCODE -ne 0) { throw 'installer compile failed' }
-$setup = Join-Path $repo "dist\IsleBar-Setup-$Version.exe"
+$setup = Join-Path $repo "dist\KiraDoki-Setup-$Version.exe"
 # the checksum one-click update insists on — attach both files to the GitHub release
 $hash = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLowerInvariant()
-[IO.File]::WriteAllText("$setup.sha256", "$hash  IsleBar-Setup-$Version.exe`n", (New-Object Text.UTF8Encoding($false)))
+[IO.File]::WriteAllText("$setup.sha256", "$hash  KiraDoki-Setup-$Version.exe`n", (New-Object Text.UTF8Encoding($false)))
 Get-Item $setup, "$setup.sha256"

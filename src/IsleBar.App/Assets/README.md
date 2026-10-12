@@ -1,9 +1,8 @@
-`islebar.ico` — app icon. An accent-colored pill shape.
+`kiradoki.ico` — app icon (exe, installer, Start menu). Made from `mascot.png` (user 10-12): cropped to the drawing,
+squared, 10 sizes 16–256.
 
-- 7 sizes: 16 · 24 · 32 · 48 (BMP) · 64 · 128 · 256 (PNG-compressed)
-- Drawn on the server and **uses no one else's logo** — shapes only, so no copyright issue
-  (user confirmed 09-29: if there is no copyright problem, proceed as if it had been made on the laptop)
-- To change the shape, just redraw it. Sizes are generated automatically, so one shape is enough.
+`mascot.png` — the mascot: the app icon's source and the avatar at the bottom of the settings page's left column.
+It's an image found online — fine for friends trying the app; **replace it with a licensed picture (or get the artist's
+OK) before any public release**, and regenerate the icon.
 
-Must keep: **other companies' icon sets, fonts and logos (including the Claude logo) never go into the public build.**
-Glyphs in the UI use only *Segoe Fluent Icons*, which ships with Windows.
+`Fonts/IsleIcons.ttf` — the island's icons, cut from Microsoft's Fluent UI System Icons (MIT) by `scripts/make-icons.py`.

@@ -35,7 +35,10 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- SetParent onto the taskbar requires the same DPI mode as Explorer (PerMonitorV2). See app.manifest. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <ApplicationIcon>Assets\islebar.ico</ApplicationIcon>
+    <ApplicationIcon>Assets\kiradoki.ico</ApplicationIcon>
+    <!-- the name people see (Task Manager, file properties); code, data folder and the `islebar` command keep IsleBar (user 10-12) -->
+    <AssemblyTitle>KiraDoki</AssemblyTitle>
+    <Product>KiraDoki</Product>
     <!-- shown in Settings → About; the installer says the same (installer\IsleBar.iss AppVersion) -->
     <Version>0.1.0</Version>
   </PropertyGroup>
