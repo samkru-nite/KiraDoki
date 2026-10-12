@@ -29,12 +29,12 @@
 ## 三、环境和常用命令
 
 - Windows 11 x64，Windows PowerShell 5.1（没有 `&&`；路径里有空格、括号、中文，一定加引号）。.NET SDK 8、git、Windows SDK 10.0.26100；没装 Visual Studio（项目只有 C#）。
-- 项目根目录：`C:\Users\Kasumi\Desktop\islebar-0.1.0 (2)\islebar-0.1.0`。
+- 项目根目录：`E:\02-生活爱好\04-Vibcoding\KiraDoki`（10-12 从桌面搬来）。
 - 找不到 dotnet / git 时刷新 PATH：`$env:Path=[Environment]::GetEnvironmentVariable("Path","Machine")+";"+[Environment]::GetEnvironmentVariable("Path","User")`
 
 ```
 # 构建前先关掉正在运行的开发版（只关本项目路径下的，别动用户装的正式版）
-Get-Process IsleBar.App -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*islebar-0.1.0 (2)*' } | Stop-Process -Force
+Get-Process IsleBar.App -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*04-Vibcoding\KiraDoki*' } | Stop-Process -Force
 dotnet build src/IsleBar.App -v q -nologo
 dotnet test tests/IsleBar.Core.Tests -v q -nologo
 Start-Process "src\IsleBar.App\bin\Debug\net8.0-windows10.0.26100.0\IsleBar.App.exe"
@@ -43,7 +43,7 @@ Start-Process "src\IsleBar.App\bin\Debug\net8.0-windows10.0.26100.0\IsleBar.App.
 - **构建失败就别启动程序**（会启动旧版，还会开出两个实例）。`run_dev.ps1` 在这台电脑上用不了。
 - 日志：`%LOCALAPPDATA%\IsleBar\logs\islebar.log`（和 `.log.1`）。排查问题先看这里，每个功能有自己的日志前缀（地图表格里写了）。
 - 打安装包：`scripts/build-installer.ps1 -Version x.y.z`（Inno Setup，`installer/IsleBar.iss`）；使用介绍页 `guide/`（改 `template.html` 后跑 `python guide/build.py`）。
-- git：没有 remote。提交要带用户名：`git -c user.name="Kasumi" -c user.email="188979868+samkru-nite@users.noreply.github.com" commit -F 说明文件`（说明写进文件，PowerShell 5.1 会把带双引号的参数拆坏）。提交前先 `git status`，**可能有别的会话在改同一个工作区，只提交自己改的**。
+- git：remote `origin` = github.com/samkru-nite/KiraDoki（GitHub 上是 ds3owl/islebar 的 Fork；历史开头接着原作者的 `IsleBar 0.1.0` 提交）。仓库里已设好提交用户名和 GitHub 隐私邮箱（`git config user.name / user.email`），**别用用户的 Gmail 提交**。提交说明写进文件再 `git commit -F 说明文件`（PowerShell 5.1 会把带双引号的参数拆坏）。推送 `git push`（只推 main）。提交前先 `git status`，**可能有别的会话在改同一个工作区，只提交自己改的**。
 - 改文件：中文 + 反斜杠的长脚本别写在 bash heredoc 或 `python -c` 里（会乱码、转义出错），写成文件再跑，或者直接用编辑工具。PowerShell 的 `Get-Content | Set-Content` 会弄乱中文，别用。写 `.ps1` 时里面别放中文（PowerShell 5.1 按 ANSI 读没有 BOM 的文件）。
 
 ## 四、代码结构
