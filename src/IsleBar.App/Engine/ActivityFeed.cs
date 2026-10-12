@@ -549,7 +549,7 @@ internal sealed class ActivityFeed : IDisposable
         var notice = SystemNotice.Make("Claude Code", NoticeGlyphs.Bell, DateTimeOffset.UtcNow,
             msg: _text().ConnectAgentsCard, open: HookConnector.Command);
         notice.Stage = "expand";
-        notice.Name = "IsleBar";
+        notice.Name = "KiraDoki";
         Store.Write("islebar_connect", notice);
     }
 
