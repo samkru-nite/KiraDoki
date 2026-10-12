@@ -12,8 +12,13 @@ namespace IsleBar.App.SystemWatch;
 /// <para>
 /// Every change is written down first (<c>lid-saved.txt</c>) and undone at the next start if the app didn't get to (crash, forced
 /// quit, power cut). A value is put back only while it is still what we wrote — the user may have changed it meanwhile. If the plan
-/// in use is switched (makers' control centres do), the old one is put back and the new one held. Called on the UI thread every
-/// tick from <c>ActivityFeed.Collect</c>; nothing is written unless something changes. Log "lid: …".
+/// in use is switched (makers' control centres do), the old one is put back and the new one held. Log "lid: …".
+/// </para>
+/// <para>
+/// Threads (10-12, the performance session's logs): writing a power setting and re-activating the plan takes 230–320 ms, and it
+/// happens just as a card turns working → done, so the swap froze. Now <see cref="Update"/> (UI thread, every tick) only decides —
+/// and keeps the system running, which Windows holds per thread — and one background thread of its own does every read and write
+/// of the power settings, in order.
 /// </para>
 /// </summary>
 internal sealed class LidGuard : IDisposable
@@ -21,11 +26,21 @@ internal sealed class LidGuard : IDisposable
     private static readonly TimeSpan RetryAfter = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan SchemeEvery = TimeSpan.FromSeconds(5);
 
+    // the worker's own (only touched on its thread)
     private LidSaved? _saved;   // non-null while the lid action is ours
-    private bool _awake;
     private bool _efficient;
     private DateTimeOffset _retryAt;
     private DateTimeOffset _schemeAt;
+
+    // the UI thread's
+    private bool _awake;
+
+    // what the UI thread wants, read by the worker
+    private volatile bool _wantHeld;
+    private volatile bool _wantEfficient;
+    private volatile bool _stopping;
+    private readonly AutoResetEvent _wake = new(false);
+    private readonly Thread? _worker;
 
     /// <summary>The last try to change the lid action failed (locked by policy, unreadable) — the settings page says so.</summary>
     public static bool LidLocked { get; private set; }
@@ -42,10 +57,38 @@ internal sealed class LidGuard : IDisposable
             return;
         }
 
-        Recover();
-        PowerSettings.WatchLid();
+        _worker = new Thread(Work) { IsBackground = true, Name = "lid" };
+        _worker.Start();
     }
 
+    /// <summary>The worker: last run's changes undone, then each wish carried out as it comes (and the plan looked at every 5 s).</summary>
+    private void Work()
+    {
+        try
+        {
+            Recover();
+            PowerSettings.WatchLid();
+            while (true)
+            {
+                _wake.WaitOne(SchemeEvery);
+                var stopping = _stopping;
+                Carry(stopping ? false : _wantHeld, !stopping && _wantEfficient, DateTimeOffset.UtcNow);
+                if (stopping)
+                {
+                    return;
+                }
+            }
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            AppLog.Write("lid: worker stopped: " + ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// UI thread, every tick: what should be (no power setting is touched here — the worker does that). Keeping the system running
+    /// is set here, since Windows holds it for the thread that asked.
+    /// </summary>
     public void Update(IReadOnlyList<ActivityState> items, IsleBarSettings settings, DateTimeOffset now)
     {
         if (!PowerSettings.HasLid)
@@ -63,6 +106,18 @@ internal sealed class LidGuard : IDisposable
                 + $" (battery {battery?.ToString() ?? "-"}%, {(charging ? "plugged in" : "on battery")})");
         }
 
+        var efficient = settings.LidEfficiency && PowerSettings.LidClosed;
+        if (keep != _wantHeld || efficient != _wantEfficient)
+        {
+            _wantHeld = keep;
+            _wantEfficient = efficient;
+            _wake.Set();
+        }
+    }
+
+    /// <summary>Worker: the power settings brought in line with what is wanted.</summary>
+    private void Carry(bool keep, bool wantEfficient, DateTimeOffset now)
+    {
         if (keep && _saved is null && now >= _retryAt)
         {
             Hold(now);
@@ -82,7 +137,7 @@ internal sealed class LidGuard : IDisposable
             }
         }
 
-        var efficient = LidRules.Efficient(_saved is not null, settings.LidEfficiency, PowerSettings.LidClosed);
+        var efficient = LidRules.Efficient(_saved is not null, wantEfficient, true);
         if (efficient != _efficient)
         {
             SetEfficient(efficient);
@@ -266,9 +321,12 @@ internal sealed class LidGuard : IDisposable
         }
     }
 
+    /// <summary>Quitting: the worker puts everything back (waited for — the process ends right after; a forced end leaves it to the next start).</summary>
     public void Dispose()
     {
-        Release();
+        _stopping = true;
+        _wake.Set();
+        _worker?.Join(TimeSpan.FromSeconds(2));
         if (_awake)
         {
             _awake = false;
