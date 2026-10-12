@@ -570,6 +570,7 @@ internal sealed class SettingsWindow : Window
 
         // diagnostics (TODO 7.8): is each part that leans on Windows working — read when the page opens
         var rows = _diagnostics().Select(d => (FrameworkElement)Row(d.Label, null, Selectable(d.Value))).ToList();
+        rows.Add(Row(_text.DiagLog, _text.DiagLogDesc, LogButtons()));
         _page.Children.Add(Group(Icons.CardDiagnose, _text.DiagSection, null, null, rows));
 
         // who made it (user 10-12: both of us, side by side), and what it grew from — the original isn't an author of this one
@@ -605,6 +606,53 @@ internal sealed class SettingsWindow : Window
         }
 
         _page.Children.Add(Card(Icons.CardLicense, _text.Licenses, _text.LicensesDesc, open));
+    }
+
+    /// <summary>
+    /// The log row's buttons (10-12): friends testing the app aren't going to find %LOCALAPPDATA% — "Copy log" puts the log files
+    /// on the clipboard as files, ready to paste into a WeChat / QQ chat; "Open folder" selects the log in Explorer.
+    /// </summary>
+    private StackPanel LogButtons()
+    {
+        var copy = new Button { Content = _text.DiagCopyLog };
+        copy.Click += async (_, _) =>
+        {
+            try
+            {
+                AppLog.Flush();   // the lines still waiting for the writer thread go in too
+                var files = new List<Windows.Storage.IStorageItem>();
+                foreach (var path in new[] { AppLog.LogFile, AppLog.BackupFile }.Where(File.Exists))
+                {
+                    files.Add(await Windows.Storage.StorageFile.GetFileFromPathAsync(path));
+                }
+
+                if (files.Count == 0)
+                {
+                    return;
+                }
+
+                var data = new Windows.ApplicationModel.DataTransfer.DataPackage
+                {
+                    RequestedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy,
+                };
+                data.SetStorageItems(files);
+                Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(data);
+                copy.Content = _text.DiagLogCopied;
+                await Task.Delay(TimeSpan.FromSeconds(2));
+                copy.Content = _text.DiagCopyLog;
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)   // async void: nothing may escape
+            {
+                AppLog.Write($"settings: copy log failed: {ex.Message}");
+            }
+        };
+
+        var folder = new Button { Content = _text.CardOpenFolder };
+        folder.Click += (_, _) => Engine.FileActions.Open(AppLog.LogFile, revealInFolder: true);
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
+        buttons.Children.Add(copy);
+        buttons.Children.Add(folder);
+        return buttons;
     }
 
     /// <summary>

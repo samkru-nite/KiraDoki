@@ -41,6 +41,20 @@ public sealed class ConfigStore
 
     private string LockPath { get; }
 
+    /// <summary>
+    /// What went wrong the last time the file was read or written (broken JSON, unreadable, a failed save), or null. Core has no log —
+    /// the app writes this into it (10-12: "where did my settings go" had nothing to go on).
+    /// </summary>
+    public string? Problem { get; private set; }
+
+    /// <summary><see cref="Problem"/>, cleared — so each one is logged once.</summary>
+    public string? TakeProblem()
+    {
+        var problem = Problem;
+        Problem = null;
+        return problem;
+    }
+
     /// <summary>How long to wait for the lock. We do not get stuck here even if another process dies.</summary>
     public TimeSpan LockTimeout { get; init; } = TimeSpan.FromSeconds(3);
 
@@ -87,14 +101,14 @@ public sealed class ConfigStore
             }
             catch (FileNotFoundException) { return []; }
             catch (DirectoryNotFoundException) { return []; }
-            catch (JsonException) { broken = true; return []; }          // broken JSON → defaults
-            catch (ArgumentException) { broken = true; return []; }      // a key written twice (hand edit) — crashed at start before
+            catch (JsonException ex) { broken = true; Problem = $"broken JSON, using defaults: {ex.Message}"; return []; }          // broken JSON → defaults
+            catch (ArgumentException ex) { broken = true; Problem = $"broken (a key twice?), using defaults: {ex.Message}"; return []; }      // a key written twice (hand edit) — crashed at start before
             catch (IOException) when (attempt < 10)        // collided with the swap at that instant, or briefly locked (up to ~0.5 s)
             {
                 Thread.Sleep(attempt < 4 ? 20 : 80);
             }
-            catch (IOException) { unreadable = true; return []; }
-            catch (UnauthorizedAccessException) { unreadable = true; return []; }
+            catch (IOException ex) { unreadable = true; Problem = $"unreadable: {ex.Message}"; return []; }
+            catch (UnauthorizedAccessException ex) { unreadable = true; Problem = $"no access: {ex.Message}"; return []; }
         }
     }
 
@@ -190,6 +204,7 @@ public sealed class ConfigStore
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
         {
+            Problem = $"save failed: {ex.Message}";
             try { File.Delete(tmp); } catch (IOException) { /* fine if it cannot be deleted */ }
             catch (UnauthorizedAccessException) { /* ignore */ }
             return false;

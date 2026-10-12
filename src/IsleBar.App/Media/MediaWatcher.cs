@@ -94,6 +94,7 @@ internal sealed class MediaWatcher : IDisposable
             {
                 // any failure (a session closing mid-read throws all sorts): start over — an uncaught one ended this loop and left
                 // the last track on the pill for good (review 10-03)
+                Interop.Perf.Failed("media", ex);   // 10-12: said (once a minute at most) — a reader failing every time looked like "no music card"
                 _cards.Update([], DateTimeOffset.UtcNow);
                 Cards = [];
                 try

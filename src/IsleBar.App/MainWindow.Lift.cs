@@ -74,6 +74,9 @@ public sealed partial class MainWindow
     /// </summary>
     private void OpenLift(Card card, Microsoft.UI.Xaml.Media.ImageSource? shot, ScreenRect? from = null, Windows.UI.Color? glow = null)
     {
+        // DIAGNOSTIC (performance, 10-12): the click → the card's first frame. "open" = the card's contents worked out here (sheet,
+        // icons) + the card window's own steps, which "slow lift open" lists
+        var steps = new Perf.Steps("lift request");
         if (BigPillOnScreen() is not { } pill || !NativeMethods.GetWindowRect(_taskbar.OuterWindow, out var bar))
         {
             return;
@@ -135,7 +138,9 @@ public sealed partial class MainWindow
         var look = TaskIcons.For(card, cover is not null, DateTimeOffset.UtcNow);
         _liftIconKey = LiftIconKey(card);
         _liftKept = card.Type == CardType.Temporary ? card.State : null;
+        steps.Mark("window");
         _ = Dim(ListMotion.Dim, LiftMotion.OpenLength(Animations.On), cells: false);   // the big pill dims under its card, as under the list (user 10-10)
+        steps.Mark("dim");
         _lift.Open(new LiftRequest(
             card.Key,
             pill,
@@ -155,6 +160,8 @@ public sealed partial class MainWindow
             _language,
             from,
             glow));
+        steps.Mark("open");
+        steps.End(4, $"({card.Key}{(shot is null ? ", no picture taken ahead" : string.Empty)})");
     }
 
     /// <summary>The lifted card's colours: Windows 11's popup, the theme's text, the pills' green / orange / red, the system accent for bars.</summary>

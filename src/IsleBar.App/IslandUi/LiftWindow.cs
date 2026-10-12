@@ -168,6 +168,7 @@ internal sealed class LiftWindow : Window
     /// <summary>Lifts a card out of the big pill.</summary>
     public void Open(LiftRequest request)
     {
+        var steps = new Perf.Steps("lift open");   // DIAGNOSTIC (performance, 10-12): "slow lift open: …" at 4 ms or more
         _request = request;
         _closing = false;
         _follow = null;
@@ -185,8 +186,11 @@ internal sealed class LiftWindow : Window
         _root.RequestedTheme = request.Palette.Dark ? ElementTheme.Dark : ElementTheme.Light;
 
         // the card's inside first: an adaptive card takes the lowest height its middle fits in (200 / 300 / 400, user 10-10)
+        steps.Mark("theme");
         BuildView(request.Sheet);
+        steps.Mark("build");
         _height = LiftMotion.Fit(request.Sheet, _view!.ContentHeight());
+        steps.Mark("measure");
         _layout = LiftMotion.Place(request.Pill, request.ScreenLeft, request.ScreenRight, request.TaskbarTop, DpiSetup.Scale, _height, request.Bar,
             reserveTall: request.Sheet.Adaptive, from: request.From);
         _view!.SetSize(LiftMotion.Width, _height);
@@ -204,9 +208,11 @@ internal sealed class LiftWindow : Window
 
         _root.Width = win.Width / DpiSetup.Scale;   // the perspective's centre is the root's centre
         _root.Height = win.Height / DpiSetup.Scale;
+        steps.Mark("place");
 
         SetWindowRgn(_hwnd, IntPtr.Zero, redraw: true);   // the whole window while it moves
         AppWindow.MoveAndResize(new Windows.Graphics.RectInt32(win.Left, win.Top, win.Width, win.Height));
+        steps.Mark("move window");
         // Windows' own acrylic (user 10-10: the glass doesn't follow the taskbar; reference = the notification centre). Dark: between
         // WinUI's "base" (#202020 × 0.5 — a bit dark) and "default" (#2C2C2C × 0.15 — a bit light), luminosity 0.96; light: WinUI's
         // default, #FCFCFC × 0, 0.85
@@ -214,18 +220,25 @@ internal sealed class LiftWindow : Window
         TaskbarHost.Log($"lift: glass? {Frost.Why()}");
         _live = Frost.Allowed() && SystemBackdrop is TransparentBackdrop backdrop && backdrop.StartGlass(win.Width, win.Height,
             dark ? Color.FromArgb(255, 0x26, 0x26, 0x26) : Color.FromArgb(255, 0xFC, 0xFC, 0xFC), dark ? 0.3f : 0f, dark ? 0.96f : 0.85f);
+        steps.Mark("glass");
         if (GetWindowRect(_hwnd, out var outer))
         {
             TaskbarHost.Log($"lift: window rect {outer.Left},{outer.Top} {outer.Right - outer.Left}x{outer.Bottom - outer.Top}, client {AppWindow.ClientSize.Width}x{AppWindow.ClientSize.Height}");
         }
+        steps.Mark("log");
         Draw(0);   // the first frame already in the start position — no flash of the end state
+        steps.Mark("first draw");
         _foregroundBefore = GetForegroundWindow();
         AppWindow.Show(activateWindow: false);
         SetWindowPos(_hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        steps.Mark("show");
         _slow = File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "IsleBar", "slow"));
         Start();
         _outside.Arm();
+        steps.Mark("start");
         TaskbarHost.Log($"lift: open {request.Key} {_height}{(request.Sheet.Adaptive ? " (adaptive)" : string.Empty)} card={_layout.Card.Left},{_layout.Card.Top} {_layout.Card.Width}x{_layout.Card.Height} window={win.Left},{win.Top} {win.Width}x{win.Height} pill={request.Pill.Left},{request.Pill.Top} {request.Pill.Width}x{request.Pill.Height}");
+        steps.Mark("log");
+        steps.End(4, $"({request.Key})");
     }
 
     /// <summary>
@@ -240,8 +253,10 @@ internal sealed class LiftWindow : Window
         }
 
         _closing = true;
+        var steps = new Perf.Steps("lift close");   // DIAGNOSTIC (performance, 10-12): the work before the closing animation's first frame
 
         Closing?.Invoke();
+        steps.Mark("dim");
         _follow = follow;
         _followBounce = bounce;
         if (_follow is not null && _view?.Art is { ActualWidth: > 0 } art && _request.Rider.Cell is FrameworkElement cellLook)
@@ -288,7 +303,9 @@ internal sealed class LiftWindow : Window
         SetWindowRgn(_hwnd, IntPtr.Zero, redraw: true);
         SetWindowPos(_hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         TaskbarHost.Log($"lift: close {_request.Key}{(_follow is null ? string.Empty : " into its task cell")}, top at pill = {Describe(TopAt(Centre(_request.Pill)))}");
+        steps.Mark("rider + log");
         Start();
+        steps.End(4, $"({_request.Key})");
     }
 
     /// <summary>
@@ -361,14 +378,19 @@ internal sealed class LiftWindow : Window
     private void OnFrame(object? sender, object e)
     {
         _meter?.Frame();
+        var work = Perf.Now;   // DIAGNOSTIC (performance, 10-12): our own work in this frame
         var t = Math.Min(1, _clock.Elapsed.TotalMilliseconds / Length().TotalMilliseconds);
         _glassShare = LiftMotion.GlassAt(t, _closing);
         Draw(!_closing ? LiftMotion.Opening(t, _request?.Bounce == true)
             : _follow is not null ? 1 - SwapMotion.Move(t, _followBounce)   // the swap's own curve, springing into the cell with it
             : LiftMotion.Closing(t));
+        Perf.Note("lift draw", work);
         // The click on the big pill activates the taskbar, which then lifts itself over every topmost window — sometimes after our
         // first frame (log 10-08: "top at pill = Shell_TrayWnd" half the time). So while moving, keep putting ourselves back on top.
+        var top = Perf.Now;
         SetWindowPos(_hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        Perf.Note("lift topmost", top);
+        _meter?.Work(work);
         if (!_firstFrameChecked && _request is { } r)
         {
             _firstFrameChecked = true;

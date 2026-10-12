@@ -62,9 +62,11 @@ internal abstract class NoticeWatcher : IDisposable
             return;
         }
 
+        var started = Interop.Perf.Now;   // DIAGNOSTIC (performance, 10-12): each round's time, per watcher, in the perf summary
         try
         {
             action();
+            Interop.Perf.Work(GetType().Name.Replace("Watcher", string.Empty, StringComparison.Ordinal).ToLowerInvariant(), started);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {

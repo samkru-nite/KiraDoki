@@ -75,33 +75,47 @@ internal sealed class ActivityFeed : IDisposable
     /// <summary>One tick: every item the pill could show right now, after the rules that act on them have run.</summary>
     public List<ActivityState> Collect(DateTimeOffset now)
     {
+        // DIAGNOSTIC (performance, 10-12): this runs on the UI thread every 250 ms — "slow collect: …" when it takes 3 ms or more
+        var steps = new IsleBar.App.Interop.Perf.Steps("collect");
         if (now - _lastPrune > TimeSpan.FromMinutes(1))
         {
             _lastPrune = now;
             Store.PruneDead(_lastPrune);   // so finished timer files don't pile up
+            steps.Mark("prune");
         }
 
         var items = Store.Read(now).ToList();
+        steps.Mark("read files");
         items.RemoveAll(SwitchedOff);   // before the chimes: a switched-off agent stays quiet too
         AdvancePomodoros(items);
         ChimeFinishedTimers(items);
+        steps.Mark("timers");
         InterruptDeadAgents(items);
+        steps.Mark("dead agents");
         DropFinishedSameChat(items, now);
+        steps.Mark("same chat");
         ChimeFinishedAgents(items);
+        steps.Mark("chime");
         Tails.Note(items);
+        steps.Mark("tails");
         LogAgentChanges(items);
         items.AddRange(Media.Cards);   // one card per media player (user 10-07)
 
         items.AddRange(Downloads.Current);   // browser downloads (in progress / just finished)
+        steps.Mark("media+downloads");
         if (Watchers is not null)
         {
             items.AddRange(Watchers.Current);   // brief notices
+            steps.Mark("watchers");
             DropAgentAppToasts(items);
             DropDriveToasts(items);
             AddPrivacy(items, now);
+            steps.Mark("toasts+privacy");
         }
 
         Lid?.Update(items, _settings(), now);   // on this (UI) thread: keeping the system running is per thread
+        steps.Mark("keep awake");
+        steps.End(3, $"({items.Count} cards)");
         return items;
     }
 

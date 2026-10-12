@@ -13,27 +13,59 @@ internal sealed class FrameMeter
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private int _frames;
     private double _last;
+    private long _lastStamp;
     private double _longest;
+
+    // DIAGNOSTIC (performance, 10-12): our own work per frame, and what the UI thread was busy with during each long gap (Perf)
+    private double _work;
+    private double _worstWork;
+    private readonly List<string> _stutters = [];
+
+    /// <summary>A gap this long (ms) between two frames is a stutter worth naming (165 Hz: 6 ms a frame).</summary>
+    private const double LongGap = 25;
 
     public FrameMeter(string name) => _name = name;
 
     public void Frame()
     {
         var now = _clock.Elapsed.TotalMilliseconds;
+        var stamp = Perf.Now;
         if (_frames > 0)
         {
-            _longest = Math.Max(_longest, now - _last);
+            var gap = now - _last;
+            _longest = Math.Max(_longest, gap);
+            if (gap >= LongGap && _stutters.Count < 5)
+            {
+                _stutters.Add($"+{_last:0} ms gap {gap:0} ({Perf.Around(_lastStamp, stamp)})");
+            }
         }
 
         _last = now;
+        _lastStamp = stamp;
         _frames++;
+        Perf.FrameDrawn();
+    }
+
+    /// <summary>Our own drawing work for one frame, started at <paramref name="started"/> (<see cref="Perf.Now"/>).</summary>
+    public void Work(long started)
+    {
+        var ms = Perf.Note($"{_name} frame", started);
+        _work += ms;
+        _worstWork = Math.Max(_worstWork, ms);
     }
 
     public void Report()
     {
         var ms = _clock.Elapsed.TotalMilliseconds;
         var rate = ms > 0 ? _frames * 1000 / ms : 0;
-        TaskbarHost.Log($"fps {_name}: {_frames} frames in {ms:0} ms = {rate:0}/s (screen {RefreshHz()} Hz), longest gap {_longest:0} ms");
+        var work = _frames > 0 && _work > 0 ? $", our work per frame avg {_work / _frames:0.0} max {_worstWork:0.0} ms" : string.Empty;
+        var stutters = _stutters.Count > 0 ? $"; stutters: {string.Join("; ", _stutters)}" : string.Empty;
+        foreach (var _ in _stutters)
+        {
+            Perf.Stutter();
+        }
+
+        TaskbarHost.Log($"fps {_name}: {_frames} frames in {ms:0} ms = {rate:0}/s (screen {RefreshHz()} Hz), longest gap {_longest:0} ms{work}{stutters}");
     }
 
     private static int RefreshHz()

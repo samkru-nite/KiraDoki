@@ -76,14 +76,19 @@ public sealed partial class MainWindow : Window
 
     public MainWindow()
     {
+        // DIAGNOSTIC (10-12): which version started, and how long each step of starting takes ("startup: …", always one line)
+        var steps = new Interop.Perf.Steps("startup");
         InitializeComponent();
         Big.Host = this;
+        steps.Mark("xaml");
 
         _ui = DispatcherQueue.GetForCurrentThread();
         _hwnd = WindowNative.GetWindowHandle(this);
         _taskbar = new TaskbarHost(_hwnd);
 
         _settings = _store.Load();
+        LogSettingsProblem();
+        steps.Mark("settings");
         _language = LanguageResolver.Resolve(_settings.Lang, CurrentUiLanguageId());
         _text = LanguageCatalog.For(_language);
         _theme = ThemeColors.FromSystem();
@@ -94,9 +99,12 @@ public sealed partial class MainWindow : Window
         _watchdog = new Watchdog(_taskbar, () => ThemeColors.FromSystem().Light, RequestExit,
             _ => _ui.TryEnqueue(Retheme));
 
+        steps.Mark("watchers made");
         ApplyFonts();
         ApplyTheme();
+        steps.Mark("fonts+theme");
         LoadAgentMarks();
+        steps.Mark("agent logos");
         WireEvents();
 
         // remove the title bar and border — otherwise only a "WinUI Desktop" title bar shows inside the 64px (PC 09-29)
@@ -111,17 +119,65 @@ public sealed partial class MainWindow : Window
         PillRegion.DisableSystemFrame(_taskbar.OuterWindow);
         _taskbar.Attach();
         ApplyRegion();
+        steps.Mark("attach");
 
         // Move the pill the instant the tracker sees the search box move (taskbar reflow), rather than waiting for the next
         // 250ms island tick — this is what makes it follow the icons naturally instead of lagging behind (user 10-01).
         _tracker.OnChanged = () => _ui.TryEnqueue(FollowTaskbar);
         _tracker.Start();
         _feed.Start();
+        steps.Mark("watchers started");
         _feed.OfferToConnectAgents();
 
         _watchdog.Start();
+        Interop.Perf.Watch(_ui);   // DIAGNOSTIC (performance, 10-12): "ui stall" lines and the 10-minute summary
         StartIslandPolling();
+        steps.Mark("rest");
+        var version = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(
+            System.Reflection.Assembly.GetExecutingAssembly())?.InformationalVersion ?? "?";
+        TaskbarHost.Log($"startup: version {version}, Windows {Environment.OSVersion.Version}, language {_language}, scale {DpiSetup.Scale:0.##}; "
+            + $"window set up in {steps.Total:0} ms = {steps.Parts}; {SinceProcessStart():0} ms since the process started");
     }
+
+    /// <summary>ms since this process started (the launcher's own start comes before it).</summary>
+    private static double SinceProcessStart()
+    {
+        try
+        {
+            using var me = System.Diagnostics.Process.GetCurrentProcess();
+            return (DateTime.Now - me.StartTime).TotalMilliseconds;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
+        {
+            return -1;
+        }
+    }
+
+    /// <summary>The settings file was broken / unreadable / not saved (10-12): said in the log, once each time.</summary>
+    private void LogSettingsProblem()
+    {
+        if (_store.TakeProblem() is { } problem)
+        {
+            TaskbarHost.Log($"settings: {problem} ({AppPaths.SettingsFile})");
+        }
+    }
+
+    /// <summary>The pill has been on screen once (startup's last line).</summary>
+    private bool _seenOnScreen;
+
+    /// <summary>A UI event handler, timed (10-12): named in "ui stall" lines when slow, "slow {name}" at 8 ms or more.</summary>
+    private static PointerEventHandler Timed(string name, PointerEventHandler handler) => (sender, e) =>
+    {
+        var steps = new Interop.Perf.Steps(name);
+        try
+        {
+            handler(sender, e);
+        }
+        finally
+        {
+            steps.End(8);
+        }
+    };
 
     // ---------------- Event wiring (one place only) ----------------
 
@@ -134,7 +190,7 @@ public sealed partial class MainWindow : Window
         PressFeedback.Attach(PillBody, PressFeedback.PillPressed, PressFeedback.PillDamping);   // the big pill too: half on press, the rest + the card on release (user 10-08)
         Root.Loaded += (_, _) => MeasureInkAsync();   // where the card font's glyphs sit (TODO 7.9 D: centre the ink, not the line box)   // pressing makes it sink in and spring back (09-30 design M5)
         // handledEventsToo: a press a child element handled still counts
-        Root.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, e) =>
+        Root.AddHandler(UIElement.PointerPressedEvent, Timed("press", (_, e) =>
         {
             if (!e.GetCurrentPoint(Root).Properties.IsLeftButtonPressed)
             {
@@ -191,7 +247,7 @@ public sealed partial class MainWindow : Window
                 PressFeedback.Hold(PillBody);   // this click puts the card back: the pill stays down until it lands (user 10-08)
             }
         }), handledEventsToo: true);
-        Root.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler((_, e) =>
+        Root.AddHandler(UIElement.PointerReleasedEvent, Timed("release", (_, e) =>
         {
             if (e.GetCurrentPoint(Root).Properties.PointerUpdateKind != Microsoft.UI.Input.PointerUpdateKind.LeftButtonReleased)
             {
@@ -235,8 +291,8 @@ public sealed partial class MainWindow : Window
             e.Handled = true;
             ShowZoneMenu(e.OriginalSource as DependencyObject);
         }), handledEventsToo: true);
-        Root.PointerEntered += (_, _) => SetHover(true);
-        Root.PointerExited += (_, _) => SetHover(false);
+        Root.PointerEntered += Timed("hover", (_, _) => SetHover(true));
+        Root.PointerExited += Timed("hover end", (_, _) => SetHover(false));
         CloseZone.PointerEntered += (_, _) =>
         {
             _closeHover = !BigDimmed;
@@ -247,12 +303,12 @@ public sealed partial class MainWindow : Window
             _closeHover = false;
             PaintFill();
         };
-        PillBody.PointerEntered += (_, _) =>
+        PillBody.PointerEntered += Timed("big pill hover", (_, _) =>
         {
             SetBigHover(true);
             TakePillShotAhead();   // for the lift (TODO 7.9 F): ready before the click comes
-        };
-        PillBody.PointerExited += (_, _) => SetBigHover(false);
+        });
+        PillBody.PointerExited += Timed("big pill hover end", (_, _) => SetBigHover(false));
         BallCell.PointerEntered += (_, _) => BallHover.Opacity = 1;
         BallCell.PointerExited += (_, _) => BallHover.Opacity = 0;
 
@@ -280,22 +336,32 @@ public sealed partial class MainWindow : Window
         _islandTimer.Interval = IslandPollInterval;
         _islandTimer.Tick += (_, _) =>
         {
+          // DIAGNOSTIC (performance, 10-12): each step timed; "slow tick: …" when the whole took 4 ms or more
+          var steps = new Interop.Perf.Steps("tick");
           try
           {
             RetryAttachIfNeeded();
+            steps.Mark("attach");
             FollowTaskbar();
+            steps.Mark("follow");
             RefreshBesideColor();
+            steps.Mark("beside");
             var items = KeepLiftedCard(_feed.Collect(DateTimeOffset.UtcNow));
+            steps.Mark("collect");
             EndStaleHover();
 
             _cards.Update(items, DateTimeOffset.UtcNow);
             LogDebutNotes();
+            steps.Mark("cards");
             _shownCard = Pretend(_cards.Shown);   // the transit station dragged in / out (MainWindow.Transit)
             KeepLift();
+            steps.Mark("lift");
             KeepList();
+            steps.Mark("list");
             var next =_shownCard is { } shown ? new IslandSnapshot(shown.State, _cards.Cards.Count - 1) : IslandSnapshot.Empty;
             _snapshot = next;
             LoadAlbumArt();
+            steps.Mark("art");
             if (_flying)
             {
                 return;   // a transition is flying — it draws the latest state when it lands
@@ -303,15 +369,19 @@ public sealed partial class MainWindow : Window
 
             var change = _animator.Classify(next);   // the animator decides whether it's a new item (kind/source/track)
             ComputeCells();
+            steps.Mark("cells");
             if (SceneChanged())
             {
                 // a card went up or down, an icon came or went: everything moves from where it was to where it goes (user 10-07)
                 _ = Transition(hoverKey: null);
+                steps.Mark("swap start");
                 return;
             }
 
             RenderTaskCells();
+            steps.Mark("draw cells");
             LayoutPills();
+            steps.Mark("layout");
 
             // Music is the long-running island and its only per-tick change is the progress bar, which now advances ~once a second
             // (the media watcher is event-driven). So skip its re-render when nothing visible changed — the title marquee keeps
@@ -329,15 +399,21 @@ public sealed partial class MainWindow : Window
                 RenderIsland();
             }
 
+            steps.Mark("draw pill");
             if (change is IslandAnimator.Change.Swapped)
             {
                 _animator.Enter();   // the same card, a new item in it (next song): a small dip
             }
           }
-          catch
+          catch (Exception ex)
           {
             // Never let one bad tick kill the island timer — a thrown tick stops the DispatcherQueueTimer for good and the
             // whole pill/card freezes on the previous frame (the Translation.Y bug did exactly this, 09-30). Swallow and retry next tick.
+            Interop.Perf.Failed("tick", ex);   // but say so (10-12: the same error at most once a minute)
+          }
+          finally
+          {
+            steps.End(4, _flying ? "(a swap is flying)" : null);
           }
         };
         _islandTimer.Start();
@@ -370,11 +446,22 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        var steps = new Interop.Perf.Steps("follow");   // DIAGNOSTIC (performance, 10-12)
         Interop.NativeMethods.ShowWindow(_taskbar.OuterWindow, Interop.NativeMethods.SW_SHOWNOACTIVATE);
+        steps.Mark("show");
+        if (!_seenOnScreen)
+        {
+            _seenOnScreen = true;
+            TaskbarHost.Log($"startup: the pill is on screen, {SinceProcessStart():0} ms after the process started");
+        }
         var beside = TaskbarColorBeside();
+        steps.Mark("read pixel");
         NoteBesidePaint("follow", beside);
+        steps.Mark("note");
         Root.Background = BrushOf(beside);   // when the position changes, re-read the adjacent taskbar color too
         _taskbar.PlaceAt(placement.X, placement.Y, _width, _height);
+        steps.Mark("place");
+        steps.End(4);
     }
 
     /// <summary>The big pill shows a card or a dragged file; otherwise only the small pill (TODO 7.1).</summary>
@@ -902,6 +989,7 @@ public sealed partial class MainWindow : Window
             var y = _placement.Y + (_height / 2);
             var c = GetPixel(dc, _placement.X - DpiSetup.Px(4), y);
             NoteSlowPixel(System.Diagnostics.Stopwatch.GetElapsedTime(started));
+            Interop.Perf.PixelRead(Interop.Perf.Note("read pixel", started));   // DIAGNOSTIC (performance, 10-12)
             if (c == 0xFFFFFFFF)
             {
                 return null;
@@ -1767,7 +1855,10 @@ public sealed partial class MainWindow : Window
     private void OnSettingsChanged()
     {
         _feed.ApplySettings();
+        var saving = Interop.Perf.Now;
         _store.Save(_settings);
+        Interop.Perf.Note("settings save", saving);   // 10-12: written to disk on the UI thread (flushed) — named in "ui stall" when slow
+        LogSettingsProblem();
         LayoutPills();   // the small pill's side and the corners are settings
         RenderIsland();  // ...and so is centring the card text
     }
@@ -2356,10 +2447,12 @@ public sealed partial class MainWindow : Window
         int chosen;
         try
         {
+            Interop.Perf.Quiet = true;   // the menu holds the UI thread on purpose: not a "ui stall"
             chosen = ContextMenu.Show(_taskbar.OuterWindow, items);
         }
         finally
         {
+            Interop.Perf.Quiet = false;
             // focus notifications can arrive late after the menu closes, so release one beat later
             _ui.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => _menuOpen = false);
         }

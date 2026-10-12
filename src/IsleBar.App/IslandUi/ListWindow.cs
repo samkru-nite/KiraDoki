@@ -324,12 +324,14 @@ internal sealed class ListWindow : Window
     private void OnFrame(object? sender, object e)
     {
         _meter?.Frame();
+        var work = Perf.Now;   // DIAGNOSTIC (performance, 10-12): our own work in this frame
         var elapsed = _clock.Elapsed;
         Draw(elapsed);
         if (_phase != Phase.Taking)
         {
             SeeThrough.OnTop(_hwnd);   // a click on the taskbar lifts it over every topmost window — but never over the lifted card
         }
+        _meter?.Work(work);
         if (elapsed >= Length())
         {
             Finish();

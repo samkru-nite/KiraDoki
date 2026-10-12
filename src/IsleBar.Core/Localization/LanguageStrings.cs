@@ -309,6 +309,18 @@ public sealed class LanguageStrings
     /// <summary>Settings: diagnostics section heading.</summary>
     public required string DiagSection { get; init; }
 
+    /// <summary>Diagnostics: the log file row (10-12: a friend testing the app sends it when something goes wrong).</summary>
+    public required string DiagLog { get; init; }
+
+    /// <summary>Diagnostics: the log row's grey line.</summary>
+    public required string DiagLogDesc { get; init; }
+
+    /// <summary>Diagnostics: puts the log files on the clipboard (paste them into a chat).</summary>
+    public required string DiagCopyLog { get; init; }
+
+    /// <summary>Diagnostics: the copy button just after a click.</summary>
+    public required string DiagLogCopied { get; init; }
+
     /// <summary>Diagnostics: is the bar inside the taskbar.</summary>
     public required string DiagEmbed { get; init; }
 

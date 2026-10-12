@@ -123,6 +123,7 @@ internal sealed class TaskbarTracker : IDisposable
         while (!_stop.IsCancellationRequested)
         {
             var delay = DateTime.UtcNow - _lastChangeUtc < FastWindow ? FastPoll : PollInterval;
+            var started = Perf.Now;   // DIAGNOSTIC (performance, 10-12): each pass's time in the perf summary
             try
             {
                 var tray = TaskbarHost.FindTaskbar();
@@ -164,10 +165,12 @@ internal sealed class TaskbarTracker : IDisposable
             }
             catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
             {
+                Perf.Failed("taskbar tracker", ex);
                 elements = new Elements();
                 lookedUp = DateTime.MinValue;
             }
 
+            Perf.Work("taskbar tracker", started);
             if (_stop.Token.WaitHandle.WaitOne(delay))
             {
                 return;

@@ -166,12 +166,16 @@ internal sealed partial class DownloadWatcher : IDisposable
             var now = DateTimeOffset.UtcNow;
             var on = _settings();   // each feature's switch (10-12): one that's off isn't looked at at all
             List<ActivityState> items;
+            // DIAGNOSTIC (performance, 10-12): each part's time in the perf summary; a swallowed error is logged (once a minute at most)
+            var started = Perf.Now;
             try
             {
                 items = on.ShowBrowserDownloads || on.ShowDownloaders ? Scan(now, on.ShowBrowserDownloads, on.ShowDownloaders) : [];
+                Perf.Work("downloads", started);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
+                Perf.Failed("downloads scan", ex);
                 items = [];
             }
 
@@ -179,32 +183,43 @@ internal sealed partial class DownloadWatcher : IDisposable
             {
                 if (on.ShowFileOps)
                 {
+                    started = Perf.Now;
                     items.AddRange(_fileOps.Scan(now));
+                    Perf.Work("explorer copies", started);
                 }
 
                 if (on.ShowArchivers)
                 {
+                    started = Perf.Now;
                     items.AddRange(_archivers.Scan(now));   // WinRAR, 7-Zip, Bandizip (TODO 四, 10-11)
+                    Perf.Work("archivers", started);
                 }
 
                 if (on.ShowExports)
                 {
+                    started = Perf.Now;
                     items.AddRange(_exports.Scan(now));     // 剪映's export (TODO 四, 10-11)
+                    Perf.Work("video export", started);
                 }
 
                 if (on.ShowSteam)
                 {
+                    started = Perf.Now;
                     items.AddRange(_steam.Scan(now));       // Steam's game downloads (TODO 四, 10-11, experimental)
+                    Perf.Work("steam", started);
                 }
 
                 if (on.ShowPrinter)
                 {
+                    started = Perf.Now;
                     items.AddRange(_print.Scan(now));       // the printer's queue (TODO 四, 10-11)
+                    Perf.Work("printer", started);
                 }
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException
                                            or System.ComponentModel.Win32Exception or DllNotFoundException or EntryPointNotFoundException)
             {
+                Perf.Failed("file jobs scan", ex);   // the parts after the one that threw are skipped this round
             }
 
             Current = items;
@@ -220,6 +235,7 @@ internal sealed partial class DownloadWatcher : IDisposable
                     try
                     {
                         var glance = DateTimeOffset.UtcNow;
+                        started = Perf.Now;
                         if (on.ShowFileOps)
                         {
                             _fileOps.Glance(glance);
@@ -229,9 +245,12 @@ internal sealed partial class DownloadWatcher : IDisposable
                         {
                             _archivers.Glance(glance);
                         }
+
+                        Perf.Work("progress window glance", started);
                     }
                     catch (Exception ex) when (ex is InvalidOperationException or System.Runtime.InteropServices.COMException)
                     {
+                        Perf.Failed("progress window glance", ex);
                     }
                 }
 

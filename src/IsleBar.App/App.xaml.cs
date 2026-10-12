@@ -30,10 +30,17 @@ public partial class App : Application
         UnhandledException += (_, e) =>
         {
             AppLog.Write($"FATAL (ui) {e.Message}{Environment.NewLine}{e.Exception}");
+            AppLog.Flush();   // lines are written on a background thread (10-12): out before the process goes
         };
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
         {
             AppLog.Write($"FATAL (background thread) isTerminating={e.IsTerminating}{Environment.NewLine}{e.ExceptionObject}");
+            AppLog.Flush();
+        };
+        AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+        {
+            Perf.FinalSummary();   // the minutes since the last summary (10-12)
+            AppLog.Flush();        // a normal quit and Environment.Exit both come through here
         };
         System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (_, e) =>
         {

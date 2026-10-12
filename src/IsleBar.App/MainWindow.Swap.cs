@@ -111,6 +111,7 @@ public sealed partial class MainWindow
             PillRow.Margin = new Thickness(oldShift, PillGeometry.ArcRoom, 0, 0);
             _taskbar.PlaceAt(spanLeftPx, winY, spanRightPx - spanLeftPx, _layout.Height);
             var spanWidth = (spanRightPx - spanLeftPx) / DpiSetup.Scale;
+            Phase("grow");   // DIAGNOSTIC (performance, 10-12): the window's region + size before anything flies
 
             Big.RestMarquee();   // a scrolling title would be snapshotted whole and unclipped
             var oldShot = oldBig is null ? null : await Capture(CardRow);
@@ -139,6 +140,7 @@ public sealed partial class MainWindow
             // (a song's is narrower: cover, equalizer) — it ran over the equalizer while flying, then snapped back (user 10-07)
             RenderIsland();
             Root.UpdateLayout();
+            Phase("draw-new");   // DIAGNOSTIC (performance, 10-12)
 
             var newBig = _bigCard;
             var newShot = newBig is null ? null : newBig.Key == oldBig?.Key ? oldShot : await Capture(CardRow);
@@ -154,6 +156,7 @@ public sealed partial class MainWindow
             _oldCardBox = before.BigBox;
             _oldIconCentre = null;
             var frames = BuildFlight(before, after, hoverKey);
+            Phase("build");   // DIAGNOSTIC (performance, 10-12)
             if (_lift?.OpenKey is { } lifted && lifted == oldBig?.Key && newBig?.Key != lifted)
             {
                 // the lifted card goes back with its card, not to where the big pill was (user 10-08)
@@ -169,7 +172,9 @@ public sealed partial class MainWindow
                     frame(t, p);
                 }
 
+                var clip = Perf.Now;
                 ClipToFlying();
+                Perf.Note("swap window shape", clip);   // DIAGNOSTIC (performance, 10-12): SetWindowRgn every frame — named in "stutters" when slow
             });
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
@@ -179,7 +184,7 @@ public sealed partial class MainWindow
         finally
         {
             Phase("end");
-            TaskbarHost.Log($"transition{phases}");   // ms since it started — a slow step shows here
+            var landing = Perf.Now;   // DIAGNOSTIC (performance, 10-12): the landing's own work, on the frame right after the flight
             FlyLayer.Children.Clear();
             PillRow.Opacity = 1;
             PillRow.Margin = new Thickness(0, PillGeometry.ArcRoom, 0, 0);
@@ -192,6 +197,8 @@ public sealed partial class MainWindow
                 Big.LapAfterFlight = false;
                 Big.ReplayMarquee();   // the new title's lap, held back while it flew
             }
+
+            TaskbarHost.Log($"transition{phases} landing {Perf.Note("swap landing", landing):0.0}");   // ms since it started — a slow step shows here
 
             FollowTaskbar();
             ApplyRegion();
@@ -505,14 +512,18 @@ public sealed partial class MainWindow
         {
             var t = Math.Min(1, clock.Elapsed / length);
             meter.Frame();
+            var work = Perf.Now;   // DIAGNOSTIC (performance, 10-12): our own work in this frame
             try
             {
                 frame(t);
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
+                Perf.Failed("swap frame", ex);
                 t = 1;
             }
+
+            meter.Work(work);
 
             if (t >= 1)
             {
