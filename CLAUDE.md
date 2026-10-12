@@ -1,7 +1,8 @@
 # IsleBar 二次开发 — 项目上下文（交接文件）
 
 > 新会话先读本文件和 **TODO.md（10-09 整理的新版，只放现在要做的事和现行规则）**。旧 TODO 改名为 **`TODO-history.md`**（全部讨论和决定来历；**下文和代码注释里的 "TODO 7.9 …""TODO 4.5" 等都指它的章节号**）。源码已通读，地图见下方。
-> **最新交接（10-12 深夜，先看这条）：设置页重写做完并提交**。构建 0 警告 0 错误，测试 771，界面文案 208。全部决定在 TODO ⑤"设置页重写"条（按时间顺序）。
+> **最新（10-12 晚）**：复盘后定方向 = 精简、性能、稳定性，不再加新功能（多语言 10 种都留）。做了**每个功能一个开关**（`52d68c2`，默认全开 = 原样；关掉 = 监视器真停：`SystemWatchOptions` 新字段 WeChat / Drives / Transit / Claude / ChatGpt，`DownloadWatcher` 每轮按 `IsleBarSettings.Show*` 跳过子监视器，Claude / ChatGPT 卡片在 `ActivityFeed.SwitchedOff` 去掉；设置页新"下载和文件"页、提醒页分小节、通用页 AI 小节；12 个设置图标），测试 774，界面文案 234。**黑边**：加了诊断日志 `beside paint [...]`（`7798773`），等用户看到黑边报时间再查；读屏幕像素实测 9 ms = 掉帧嫌疑。期间另一个会话在做打包 / 改名 KiraDoki，提交时只提交自己的文件（共用文件用 `git apply --cached` 提交自己那几块）。
+> **上一条交接（10-12 深夜）：设置页重写做完并提交**。构建 0 警告 0 错误，测试 771，界面文案 208。全部决定在 TODO ⑤"设置页重写"条（按时间顺序）。
 > - **做了什么**：`Options/SettingsWindow.cs` 整个重写 = Windows 11 原生风格，屏幕中间打开 680×560，内容延伸进标题栏（左上自己写"设置"，原来深色下是一条黑边），左栏 NavigationView 6 页（通用 / 提醒 / 日历 / 音乐 / 计时器 / 关于）+ 底部用户的头像 `Assets/mascot.png` +"退出"；右边卡片（`Card / Group / Row / Tall` 几个小部件，图标 20 号）；字体 = Segoe UI Variable + 语言自己的中文字体（Pretendard 会把全角标点画成韩文风格）。日历 = 粘贴地址"添加"，之后只显示日历名 + 状态（`CalendarWatcher.StatusOf` → `CalendarStatus`：几点同步、几个日程、连不上 / 不是日历），地址不再显示；下载文件夹 = 系统"下载"固定 + "添加文件夹"（系统选文件夹窗口），`DownloadWatcher.Folders` 改成系统下载永远看；番茄钟加**长休息前几轮**（设置 `pomo_rounds`，`PomodoroLengths.Rounds`，1–10）；快速计时器逐个删 / 加（最多 6）；关于 = 版本（csproj `<Version>0.1.0`）、**作者 无敌企鹅大王、Claude**（用户定：Claude 也是作者）、基于 IsleBar（ds3owl，链接）、诊断、第三方许可（记事本打开，csproj 把 THIRD-PARTY-NOTICES.md 复制进输出）。**圆球右键菜单拆平、去掉"退出"**（退出只在设置页）。`PopupPlacement.cs`、`AppFonts.Apply` 删了。图标包加到 77 个。
 > - **定下的**：软件以后改名 **KiraDoki**，只改用户看得见的（代码 / 数据文件夹 / `islebar` 命令都不动），设置页写完、发布前做；改名时第三方许可里加"IsleBar（ds3owl）"一行。**暂时不发 GitHub，先给朋友试用**；头像是网上找的表情包，公开发布前要换。
 > - **待真机**：提醒 / 音乐 / 日历添加后状态那一行、下载"添加文件夹"、深色下的顶栏（用户看了通用 / 计时器 / 关于页）。
