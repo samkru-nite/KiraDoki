@@ -1,0 +1,660 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KiraDoki 使用介绍</title>
+<style>
+@font-face { font-family: "KD Icons"; src: url(data:font/ttf;base64,{{FONT}}) format("truetype"); }
+:root {
+  --bg: #f6f5f3; --fg: #1d1d1f; --muted: #5d5f63; --soft: #8a8c90; --card: #ffffff; --line: rgba(0,0,0,.08);
+  --accent: #c96a00; --tint: #fff4e6;
+  --o: #ff9f0a; --g: #30d158; --r: #ff453a;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #161616; --fg: #ececec; --muted: #b0b2b6; --soft: #85878b; --card: #1f1f1f; --line: rgba(255,255,255,.09);
+    --accent: #ffa94d; --tint: #2a2117; }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--bg); color: var(--fg);
+  font: 16px/1.75 "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", sans-serif; }
+a { color: var(--accent); }
+.wrap { max-width: 980px; margin: 0 auto; padding: 0 20px; }
+header.top { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); }
+header.top .wrap { display: flex; align-items: center; gap: 18px; height: 52px; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+header.top .wrap::-webkit-scrollbar { display: none; }
+header.top img { width: 26px; height: 26px; }
+header.top b { font-size: 16px; margin-right: 8px; }
+header.top a { color: var(--muted); text-decoration: none; font-size: 14px; }
+header.top a:hover { color: var(--fg); }
+section { padding: 64px 0 24px; }
+h1 { font-size: 44px; line-height: 1.2; margin: 0 0 12px; letter-spacing: .5px; }
+h2 { font-size: 28px; line-height: 1.3; margin: 0 0 8px; }
+h3 { font-size: 19px; margin: 28px 0 6px; }
+p { margin: 8px 0; }
+.lead { font-size: 18px; color: var(--muted); max-width: 720px; }
+.muted { color: var(--muted); }
+.tag { display: inline-block; font-size: 12px; padding: 2px 10px; border-radius: 99px; background: var(--tint); color: var(--accent); margin-bottom: 10px; font-weight: 600; }
+.hero { display: grid; grid-template-columns: 1fr auto; gap: 32px; align-items: center; padding-top: 56px; }
+.hero img { width: 168px; height: 168px; filter: drop-shadow(0 8px 20px rgba(0,0,0,.18)); }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; margin-top: 18px; }
+.box { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; }
+.box h4 { margin: 0 0 4px; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+.box p { font-size: 14px; color: var(--muted); margin: 4px 0 0; line-height: 1.65; }
+.box .ex { margin-top: 12px; }
+ul.pts { padding-left: 1.2em; margin: 8px 0; }
+ul.pts li { margin: 4px 0; }
+.ico { font-family: "KD Icons"; font-style: normal; font-weight: normal; line-height: 1; display: inline-block; }
+.kbd { font-size: 13px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 6px; padding: 0 6px; background: var(--card); }
+.note { border-left: 3px solid var(--accent); background: var(--tint); padding: 10px 14px; border-radius: 0 10px 10px 0; font-size: 15px; margin: 14px 0; }
+.legend { display: flex; flex-wrap: wrap; gap: 18px; font-size: 14px; color: var(--muted); margin: 10px 0; }
+.legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; background: var(--c); vertical-align: 0; }
+table.t { border-collapse: collapse; width: 100%; font-size: 14px; margin-top: 12px; }
+table.t td, table.t th { border-bottom: 1px solid var(--line); padding: 8px 6px; text-align: left; vertical-align: top; }
+table.t th { color: var(--muted); font-weight: 600; }
+details { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; margin: 10px 0; }
+details summary { cursor: pointer; font-weight: 600; }
+details p, details li { font-size: 15px; color: var(--muted); }
+footer { padding: 48px 0 64px; color: var(--soft); font-size: 13px; }
+
+/* ---------- the island (drawn at 1x: CSS px = dip) ---------- */
+.stage { position: relative; background: linear-gradient(160deg, #3b2a2a, #1d2433); border-radius: 14px; padding: 26px 18px 0; margin-top: 16px;
+  overflow: hidden; color: #fff; user-select: none; }
+.stage .cap { position: absolute; left: 16px; top: 10px; font-size: 12px; color: rgba(255,255,255,.55); }
+.stage .space { height: var(--h, 170px); position: relative; }
+.bar { height: 48px; background: rgba(32,30,30,.94); margin: 0 -18px; display: flex; align-items: center; padding: 0 12px; gap: 6px; position: relative; }
+.win { width: 40px; height: 40px; display: grid; place-items: center; }
+.win i { display: grid; grid-template-columns: 8px 8px; gap: 1.5px; }
+.win i b { width: 8px; height: 8px; background: #4cc2ff; }
+.tray { margin-left: auto; font-size: 12px; color: rgba(255,255,255,.8); text-align: right; line-height: 1.3; padding-right: 6px; }
+.pills { display: flex; gap: 8px; align-items: center; height: 32px; }
+.sp, .bp { height: 32px; border-radius: 16px; background: #2f2f2f; box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); display: flex; align-items: center; position: relative;
+  font: 14px/1 "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", sans-serif; }
+.sp { padding-right: 8px; }
+.ball { width: 32px; height: 32px; display: grid; place-items: center; cursor: pointer; border-radius: 16px; }
+.ball::after { content: ""; width: 10px; height: 10px; border-radius: 50%; box-shadow: inset 0 0 0 1.2px #fff; }
+.ball:hover { background: rgba(255,255,255,.08); }
+.rule { width: 1px; height: 16px; background: #464646; margin-right: 4px; }
+.cell { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 12px; cursor: pointer; font-size: 16px; color: #fff; transition: transform .25s; }
+.cell:hover { background: rgba(255,255,255,.08); }
+.cell.o { color: var(--o); } .cell.g { color: var(--g); } .cell.r { color: var(--r); }
+.bp { width: 220px; cursor: pointer; overflow: hidden; transition: box-shadow .3s; }
+.bp.o { box-shadow: inset 0 0 0 2px var(--o); } .bp.g { box-shadow: inset 0 0 0 2px var(--g); } .bp.r { box-shadow: inset 0 0 0 2px var(--r); }
+.bp .lead { width: 16px; height: 16px; margin: 0 8px; display: grid; place-items: center; font-size: 16px; flex: none; }
+.bp .tx { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-align: center; padding-right: 8px;
+  -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent); mask-image: linear-gradient(90deg, #000 85%, transparent); }
+.bp .tx .s { color: #c5c5c5; margin-left: 4px; }
+.bp .more { color: #c5c5c5; font-size: 13px; margin-right: 8px; flex: none; }
+.bp .btn { flex: none; margin-right: 5px; height: 22px; border-radius: 11px; background: rgba(255,255,255,.1); display: grid; place-items: center; padding: 0 10px; font-size: 12px; }
+.bp .btn.round { width: 22px; padding: 0; font-size: 12px; }
+.bp .prog { position: absolute; left: 14px; right: 14px; bottom: 3px; height: 2px; border-radius: 1px; background: rgba(255,255,255,.12); overflow: hidden; }
+.bp .prog b { display: block; height: 100%; background: #fff; border-radius: 1px; }
+.bp .prog.flow b { width: 30%; animation: flow 1.4s linear infinite; }
+@keyframes flow { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+.bars { display: flex; gap: 2px; align-items: flex-end; height: 12px; margin-right: 12px; flex: none; }
+.bars i { width: 2px; background: #fff; border-radius: 1px; animation: eq 1s ease-in-out infinite; }
+.bars i:nth-child(2) { animation-delay: -.35s; } .bars i:nth-child(3) { animation-delay: -.7s; }
+@keyframes eq { 0%,100% { height: 4px; } 50% { height: 12px; } }
+.cover { width: 16px; height: 16px; border-radius: 4px; background: linear-gradient(135deg, #f093fb, #f5576c); }
+.app { width: 16px; height: 16px; border-radius: 4px; display: grid; place-items: center; font-size: 10px; font-weight: 700; color: #fff; }
+.claude { width: 16px; height: 16px; }
+.swapin { animation: swapin .35s cubic-bezier(.2,.9,.3,1.15); }
+@keyframes swapin { from { opacity: 0; transform: translateY(10px) scale(.96); } to { opacity: 1; transform: none; } }
+.fade { animation: fade .4s ease; }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+
+/* lifted card */
+.sheet { position: absolute; width: 300px; min-height: 200px; border-radius: 8px; background: rgba(44,44,46,.92); backdrop-filter: blur(24px);
+  box-shadow: 0 12px 40px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.08); padding: 12px 14px; color: #fff; font-size: 14px; line-height: 1.45;
+  display: flex; flex-direction: column; gap: 10px; transform-origin: 50% 100%; animation: lift .3s cubic-bezier(.2,.8,.2,1); }
+@keyframes lift { from { opacity: 0; transform: translateY(24px) scale(.6); } to { opacity: 1; transform: none; } }
+.sheet .src { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #c5c5c5; }
+.sheet .src .st { margin-left: auto; }
+.sheet .src .st.o { color: var(--o); } .sheet .src .st.g { color: var(--g); } .sheet .src .st.r { color: var(--r); }
+.sheet .ttl { font-weight: 600; }
+.sheet .body { color: #c5c5c5; flex: 1; }
+.sheet .body p { margin: 0 0 4px; }
+.sheet .pr { display: flex; justify-content: space-between; font-size: 12px; color: #c5c5c5; }
+.sheet .track { height: 4px; border-radius: 2px; background: rgba(255,255,255,.14); overflow: hidden; margin-top: 4px; }
+.sheet .track b { display: block; height: 100%; background: #fff; }
+.sheet .btns { display: flex; gap: 8px; }
+.sheet .btns span { flex: 1; text-align: center; background: rgba(255,255,255,.08); border-radius: 6px; padding: 6px 0; font-size: 14px; }
+.sheet .btns span.ic { font-family: "KD Icons"; font-size: 16px; }
+.sheet .row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 6px; }
+.sheet .row .n { flex: 1; } .sheet .row .x { font-family: "KD Icons"; font-size: 12px; color: #c5c5c5; }
+.sheet .big { font-size: 40px; font-weight: 600; line-height: 1; }
+.list { position: absolute; display: flex; flex-direction: column; gap: 8px; animation: lift .3s cubic-bezier(.2,.8,.2,1); transform-origin: 0 100%; }
+.menu { position: absolute; background: #2c2c2c; border-radius: 8px; box-shadow: 0 8px 28px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.08); padding: 4px; min-width: 150px;
+  font-size: 13px; animation: fade .15s; z-index: 5; }
+.menu div { padding: 6px 12px; border-radius: 4px; }
+.menu div.h { color: #9a9a9a; font-size: 12px; }
+.menu div.sep { height: 1px; background: rgba(255,255,255,.1); padding: 0; margin: 4px 0; }
+.menu div:not(.h):not(.sep):hover { background: rgba(255,255,255,.08); }
+.hint { font-size: 13px; color: rgba(255,255,255,.6); position: absolute; right: 16px; top: 10px; }
+.demo-ctl { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.demo-ctl button { font: inherit; font-size: 14px; border: 1px solid var(--line); background: var(--card); color: var(--fg); border-radius: 8px; padding: 4px 12px; cursor: pointer; }
+.demo-ctl button:hover { border-color: var(--accent); }
+.ex .bar { margin: 0; border-radius: 10px; height: 44px; background: #242222; justify-content: center; }
+.scroll { overflow-x: auto; }
+
+/* transit demo */
+.folder { position: absolute; width: 190px; height: 120px; background: rgba(255,255,255,.08); border-radius: 8px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.1); padding: 8px 10px; font-size: 12px; color: #ddd; }
+.folder .fh { display: flex; gap: 6px; align-items: center; color: #fff; margin-bottom: 8px; }
+.file { position: absolute; width: 56px; text-align: center; font-size: 11px; color: #eee; transition: transform .9s cubic-bezier(.4,0,.2,1), opacity .4s; }
+.file .fi { width: 32px; height: 36px; margin: 0 auto 2px; border-radius: 4px; background: #e8e8e8; position: relative; }
+.file .fi::after { content: ""; position: absolute; right: 0; top: 0; border: 6px solid transparent; border-top-color: #9fb7d9; border-right-color: #9fb7d9; }
+.file.pic .fi { background: linear-gradient(135deg, #7ec8e3, #6b8bd6); }
+.cursor { position: absolute; width: 14px; height: 20px; transition: transform .9s cubic-bezier(.4,0,.2,1); z-index: 4; pointer-events: none; }
+
+@media (max-width: 720px) {
+  h1 { font-size: 34px; }
+  .hero { grid-template-columns: 1fr; }
+  .hero img { width: 120px; height: 120px; order: -1; }
+  .stage .bar { overflow-x: auto; scrollbar-width: none; }
+  .stage .tray { display: none; }
+}
+</style>
+</head>
+<body>
+
+<header class="top"><div class="wrap">
+  <img src="data:image/png;base64,{{MASCOT}}" alt=""><b>KiraDoki</b>
+  <a href="#start">认识小岛</a><a href="#ai">AI</a><a href="#transit">中转站</a><a href="#files">文件和下载</a><a href="#music">音乐</a>
+  <a href="#timer">计时器</a><a href="#calendar">日历</a><a href="#more">更多提醒</a><a href="#cards">卡片怎么来去</a><a href="#settings">设置</a><a href="#install">安装</a><a href="#faq">常见问题</a>
+</div></header>
+
+<div class="wrap">
+
+<!-- ================= hero ================= -->
+<section class="hero">
+  <div>
+    <span class="tag">Windows 11 任务栏小工具 · 0.1.0</span>
+    <h1>KiraDoki</h1>
+    <p class="lead">把任务栏变成一座会说话的小岛：AI 写完代码、下载好了、歌换了、日程快开始了、有人给你发消息……你不用切窗口去看，<b>瞄一眼任务栏</b>就知道。</p>
+    <p class="muted" style="font-size:14px">所有内容都在你自己的电脑上处理，不上传、不联网（日历除外：它要去下载你填的日历）。</p>
+  </div>
+  <img src="data:image/png;base64,{{MASCOT}}" alt="KiraDoki">
+</section>
+
+<div class="stage" id="hero" style="--h:110px">
+  <span class="cap">它就住在任务栏最左边（也可以放正中间）</span>
+  <div class="space"></div>
+  <div class="bar"><div class="win"><i><b></b><b></b><b></b><b></b></i></div><div class="pills" id="heroPills"></div><div class="tray">14:32<br>2026/10/12</div></div>
+</div>
+
+<!-- ================= anatomy ================= -->
+<section id="start">
+  <span class="tag">先花 30 秒</span>
+  <h2>认识小岛</h2>
+  <p class="lead">小岛由两颗胶囊组成：右边的<b>大胶囊</b>显示一件最值得你看的事；左边的<b>小胶囊</b>里，每个小图标是另一件正在发生的事。</p>
+
+  <div class="stage" id="ana" style="--h:250px">
+    <span class="cap">试一试：这是能点的演示</span>
+    <span class="hint">点小图标 · 点大胶囊 · 点圆球 · 右键大胶囊</span>
+    <div class="space"></div>
+    <div class="bar"><div class="win"><i><b></b><b></b><b></b><b></b></i></div><div class="pills" id="anaPills"></div><div class="tray">14:32<br>2026/10/12</div></div>
+  </div>
+
+  <div class="grid">
+    <div class="box"><h4><span class="ico">&#xE01E;</span>点大胶囊 = 掀起卡片</h4><p>大胶囊会像一张纸一样掀起来，变成一张完整的卡片：更多文字、进度、按钮（打开对话、在文件夹中显示、上一首 / 下一首……）。点卡片外面任何地方就收回去。</p></div>
+    <div class="box"><h4><span class="ico">&#xE024;</span>点小图标 = 换上来</h4><p>小图标和大胶囊互换位置，那件事就到大胶囊上了。</p></div>
+    <div class="box"><h4><span style="display:inline-block;width:10px;height:10px;border-radius:50%;box-shadow:inset 0 0 0 1.2px currentColor"></span>&nbsp;圆球</h4><p><b>左键</b>：列出所有卡片（小胶囊放不下的也在这里）。<b>右键</b>：快速计时器、番茄钟、秒表、设置。</p></div>
+    <div class="box"><h4><span class="ico">&#xE034;</span>右键大胶囊 / 小图标</h4><p><b>置顶</b>：一直占着大胶囊。<b>收起</b>：只留小图标，不再跳出来打扰。<b>关闭</b>：这件事不看了。</p></div>
+  </div>
+
+  <h3>颜色只有三种意思</h3>
+  <div class="legend">
+    <span style="--c:var(--o)">橙色 = 需要你处理（AI 在等你、缺纸、电量快没了……）</span>
+    <span style="--c:var(--g)">绿色 = 做完了（AI 完成、下载完成、复制完成……）</span>
+    <span style="--c:var(--r)">红色 = 出错了（AI 出错停止、U 盘弹出失败……）</span>
+  </div>
+  <p class="muted" style="font-size:15px">大胶囊用一圈细边框表示颜色，小图标直接变色。没有颜色 = 正常进行中，不用管它。</p>
+</section>
+
+<!-- ================= AI ================= -->
+<section id="ai">
+  <span class="tag">重点功能 ①</span>
+  <h2>AI 在干什么，一眼就知道</h2>
+  <p class="lead">让 Claude 或 ChatGPT 写代码、跑任务的时候，你可以去干别的。它<b>需要你</b>或者<b>做完了</b>，小岛会马上告诉你；点一下 ↗ 就跳回那个对话。</p>
+
+  <div class="stage" id="aiDemo" style="--h:250px">
+    <span class="cap">演示：一个任务从开始到完成</span>
+    <div class="space"></div>
+    <div class="bar"><div class="win"><i><b></b><b></b><b></b><b></b></i></div><div class="pills" id="aiPills"></div></div>
+  </div>
+  <div class="demo-ctl" id="aiCtl"></div>
+
+  <table class="t">
+    <tr><th style="width:110px">状态</th><th>小岛上是什么样</th></tr>
+    <tr><td>工作中</td><td>Claude 的标志 + 它<b>正在说的话</b>（一句一句换）。</td></tr>
+    <tr><td style="color:var(--o)">等你</td><td>橙色边框 + 对话名。它在等你批准权限或回答问题，会一直留着直到你处理。</td></tr>
+    <tr><td style="color:var(--g)">完成</td><td>绿色边框 + <b>最终回复的第一句</b> + ↗ 按钮，点了跳回那个对话。</td></tr>
+    <tr><td style="color:var(--r)">停止 / 中断</td><td>写明原因：需要重新登录、请检查套餐、服务器繁忙、因错误中止、用量已达上限（几点重置）。</td></tr>
+  </table>
+
+  <div class="grid">
+    <div class="box"><h4><span class="ico">&#xE057;</span>Claude Code / Claude 应用</h4><p>命令行、VS Code 里的 Claude Code 和 Claude 桌面应用都支持。第一次需要"连接"：安装时勾上"连接 Claude Code 通知"，或者之后在 <b>设置 → 通用</b> 里点连接（小岛上也会出现一张"点击连接"的卡片）。</p></div>
+    <div class="box"><h4><span class="ico">&#xE058;</span>ChatGPT 应用（Codex）</h4><p>不用连接，装上就能看到它的工作中 / 等你 / 完成。</p></div>
+    <div class="box"><h4><span class="ico">&#xE01E;</span>掀起来看回答</h4><p>点大胶囊掀起卡片，能看到它最后的回答（标题、列表、代码都排好版）或者正在做的那一步，不用切过去就知道结果。</p></div>
+    <div class="box"><h4><span class="ico">&#xE059;</span>合上盖子它也继续</h4><p><b>设置 → 通用</b>里打开"合盖时让 AI 继续工作"：AI 在工作或等你时合上笔记本不会睡眠，做完自动恢复你原来的设置。还可以"合盖时切到最佳能效"——AI 在云端思考，省电几乎不拖慢它。（合盖后电脑还在运行，别马上塞进包里，会发热。）</p></div>
+    <div class="box"><h4><span class="ico">&#xE00C;</span>好几个对话一起跑</h4><p>每个对话一张卡片，同时进行也不会混。哪个刚有变化，哪个就上大胶囊。</p></div>
+  </div>
+</section>
+
+<!-- ================= transit ================= -->
+<section id="transit">
+  <span class="tag">重点功能 ②</span>
+  <h2>中转站：文件先放这儿</h2>
+  <p class="lead">要把文件拖到一个被挡住的窗口？要从好几个文件夹里凑一堆文件？先把它们<b>拖到小岛上</b>放着，想用的时候再从小岛上<b>拖出去</b>。</p>
+
+  <div class="stage" id="tr" style="--h:250px">
+    <span class="cap">演示：拖进中转站，再拖到别的文件夹</span>
+    <div class="space" id="trSpace"></div>
+    <div class="bar"><div class="win"><i><b></b><b></b><b></b><b></b></i></div><div class="pills" id="trPills"></div></div>
+  </div>
+  <div class="demo-ctl"><button id="trPlay">▶ 重新播放</button></div>
+
+  <ul class="pts">
+    <li><b>放进去</b>：把文件 / 文件夹拖到小岛附近松手就行（拖动时小岛会准备接住）。中转站只记住"文件在哪"，<b>不会复制一份</b>，不占空间。</li>
+    <li><b>拿出来</b>：按住大胶囊拖出去 = 全部拿走；掀起卡片能看到文件列表，每一行都可以单独拖出去，也能像资源管理器一样单击、Ctrl、Shift 多选。</li>
+    <li><b>复制还是移动</b>跟 Windows 一样：同一个盘移动、不同盘复制；松手时按住 <span class="kbd">Ctrl</span> 是复制，按住 <span class="kbd">Shift</span> 是移动。拖完会告诉你"已复制 / 已移动"。</li>
+    <li>文件被移走了会自动从中转站去掉；在列表里点 <span class="ico">&#xE022;</span> 或"清空"只是从中转站移除，<b>不会删除文件</b>。</li>
+    <li>复制文件或图片时，复制提示卡片上有 <span class="ico">&#xE021;</span> 按钮，点一下直接加入中转站（复制的图片会先存成文件）。</li>
+    <li>关机重启后，中转站里的东西还在。</li>
+  </ul>
+</section>
+
+<!-- ================= files ================= -->
+<section id="files">
+  <span class="tag">重点功能 ③</span>
+  <h2>下载、复制、压缩、导出……进度都在这</h2>
+  <p class="lead">费时间的文件活儿开始后，你就可以去忙别的。有百分比的会显示进度条和剩余时间；做完了绿色提醒，还能一键"在文件夹中显示"。</p>
+
+  <div class="stage" id="dl" style="--h:240px">
+    <span class="cap">点大胶囊看掀起后的样子</span>
+    <div class="space"></div>
+    <div class="bar"><div class="win"><i><b></b><b></b><b></b><b></b></i></div><div class="pills" id="dlPills"></div></div>
+  </div>
+
+  <div class="grid" id="fileGrid"></div>
+  <div class="note">浏览器、迅雷、夸克会自动找到它们的下载位置。用别的下载软件的话，在 <b>设置 → 下载和文件</b> 里把它的下载文件夹"添加"进去。每一项都能在设置里单独关掉。</div>
+</section>
+
+<!-- ================= music ================= -->
+<section id="music">
+  <span class="tag">重点功能 ④</span>
+  <h2>正在播放</h2>
+  <p class="lead">网易云、QQ 音乐、Spotify、Windows 自带的媒体播放器……放歌时小岛显示歌名和封面，旁边的音乐条跟着声音跳。掀起来能看进度、上一首 / 暂停 / 下一首。</p>
+
+  <div class="stage" id="mu" style="--h:240px">
+    <span class="cap">点大胶囊掀起</span>
+    <div class="space"></div>
+    <div class="bar"><div class="win"><i><b></b><b></b><b></b><b></b></i></div><div class="pills" id="muPills"></div></div>
+  </div>
+
+  <ul class="pts">
+    <li>一个播放器一张卡片；暂停超过 5 分钟或者关掉播放器，卡片自己消失。</li>
+    <li>浏览器里放的视频和音乐默认不显示（不然刷网页时太吵），要的话在 <b>设置 → 音乐</b> 里打开。</li>
+    <li>进度条要播放器自己报告，有的不报（比如网易云），那就只显示歌名。</li>
+  </ul>
+  <div class="note"><b>我的播放器不显示？</b>播放的时候按 <span class="kbd">Win</span> + <span class="kbd">A</span>，看快速设置最下面有没有一张媒体卡片。有 → 小岛就能显示；没有 → 这个播放器没把"正在播什么"告诉 Windows，小岛也读不到。例如 PotPlayer 要 2024 年 6 月（240618）以后的版本才支持，微软商店里那个是 2021 年的旧版，需要去官网下载新版。</div>
+</section>
+
+<!-- ================= timer ================= -->
+<section id="timer">
+  <span class="tag">重点功能 ⑤</span>
+  <h2>计时器、番茄钟、秒表</h2>
+  <p class="lead"><b>右键圆球</b>就能开始：几个常用时长的快速计时器、番茄钟、秒表。图标上的指针会真的转，时间到了响一声。</p>
+
+  <div class="stage" id="ti" style="--h:240px">
+    <span class="cap">右键圆球打开菜单 · 点大胶囊掀起</span>
+    <div class="space"></div>
+    <div class="bar"><div class="win"><i><b></b><b></b><b></b><b></b></i></div><div class="pills" id="tiPills"></div></div>
+  </div>
+
+  <ul class="pts">
+    <li><b>快速计时器</b>：默认 5 分钟、25 分钟，可以在 <b>设置 → 计时器</b> 里增删，最多 6 个。</li>
+    <li><b>番茄钟</b>：默认专注 25 分钟、休息 5 分钟，专注 4 轮后长休息 15 分钟；这几个数字都能改。</li>
+    <li>可以同时开好几个计时器，每个一张卡片。掀起卡片能暂停、继续、再来一次。</li>
+    <li>玩全屏游戏、看全屏视频时可以让提示音静音（设置里的开关）。</li>
+  </ul>
+</section>
+
+<!-- ================= calendar ================= -->
+<section id="calendar">
+  <span class="tag">重点功能 ⑥</span>
+  <h2>日历：下一节课还有几分钟</h2>
+  <p class="lead">把 Google 日历（或任何能给出 iCal 地址的日历）加进来，日程快开始时小岛开始倒数，开始、进行中、结束都会告诉你。</p>
+  <div class="grid" id="calGrid"></div>
+  <ul class="pts">
+    <li>1 小时以内每分钟往下数（"10分钟后 高数"），更远的写时间（"14:00""明天8:00""周三8:00"）。</li>
+    <li>日程自己设了提醒才会提前提醒（橙色）；如果提醒是"开始时"，开始那一刻橙色卡片会一直留着，等你亲手关掉。</li>
+    <li>两个日程撞在一起时多出一张卡片，各管各的。</li>
+    <li>每 10 分钟自动同步一次，可以加好几个日历。</li>
+  </ul>
+  <div class="note"><b>怎么添加 Google 日历</b>：网页版 Google 日历 → 设置 → 左边点你的日历 → "集成日历" → 复制 <b>"iCal 格式的私密地址"</b> → 粘贴到 <b>设置 → 日历 → 添加日历</b>。这个地址相当于钥匙，别发给别人；加进来后设置里只显示日历名，不再显示地址。</div>
+</section>
+
+<!-- ================= more ================= -->
+<section id="more">
+  <span class="tag">还有这些</span>
+  <h2>消息和系统提醒</h2>
+  <p class="lead">不那么重要、但知道一下更安心的事。它们只出来几秒，或者安静地待在小图标里。每一类都能在 <b>设置 → 提醒</b> 里单独关掉。</p>
+  <div class="grid" id="moreGrid"></div>
+</section>
+
+<!-- ================= cards ================= -->
+<section id="cards">
+  <span class="tag">小规则</span>
+  <h2>卡片怎么来、怎么走</h2>
+  <ul class="pts">
+    <li><b>亮相</b>：新的事先在大胶囊上停一会儿（一般 2 秒），然后收进左边的小图标。同时来好几件就排队，一件一件亮相。</li>
+    <li><b>最近有动静的上大胶囊</b>：哪件事刚变了（比如 AI 从工作中变成完成），它就到大胶囊上；你点过的也算。</li>
+    <li><b>鼠标放在胶囊上时不换</b>：你正在看的那张不会被别的抢走。</li>
+    <li><b>只亮一下的提醒</b>（复制、蓝牙、网络……）2–10 秒后自己消失；<b>需要你处理的</b>（橙色）一直留着，直到你处理或关掉。</li>
+    <li>小胶囊放不下的小图标不会丢，点<b>圆球</b>就能在列表里看到全部。</li>
+    <li>掀起卡片或打开列表时，大胶囊会稍微变暗，告诉你"焦点在上面"。</li>
+  </ul>
+</section>
+
+<!-- ================= settings ================= -->
+<section id="settings">
+  <span class="tag">设置</span>
+  <h2>设置里有什么</h2>
+  <p class="lead">右键圆球 → 设置。左边 7 页：</p>
+  <table class="t">
+    <tr><th style="width:110px">页面</th><th>里面的东西</th></tr>
+    <tr><td>通用</td><td>语言（简体中文、繁体中文、英语、日语、韩语、法语、德语、意大利语、葡萄牙语、西班牙语）；小岛在任务栏的位置（最左边 / 正中间 / 手动挪）；AI：连接 Claude Code、Claude / ChatGPT 开关、合盖时让 AI 继续工作、合盖时切到最佳能效。</td></tr>
+    <tr><td>提醒</td><td>系统状态（充电与电池、蓝牙、网络、专注时段、剪贴板复制、CPU 与内存、麦克风与摄像头）；通知和聊天（Windows 通知、"只在任务栏显示"、微信）。</td></tr>
+    <tr><td>下载和文件</td><td>下载文件夹；浏览器下载、下载软件、Steam、复制和移动、压缩软件、视频导出、打印机、U 盘、中转站——每项一个开关。</td></tr>
+    <tr><td>日历</td><td>添加日历、看同步状态（几点同步、几个日程）、移除。</td></tr>
+    <tr><td>音乐</td><td>显示浏览器里播放的视频和音乐；音乐条跟随实际声音。</td></tr>
+    <tr><td>计时器</td><td>番茄钟时长和轮数、快速计时器、全屏时静音提示音。</td></tr>
+    <tr><td>关于</td><td>版本、作者、诊断（嵌入任务栏是否正常、复制日志）、第三方许可。</td></tr>
+  </table>
+  <p class="muted" style="font-size:15px">左栏最下面是"退出"。退出后想再打开：开始菜单里搜 <b>KiraDoki</b>。</p>
+</section>
+
+<!-- ================= install ================= -->
+<section id="install">
+  <span class="tag">开始用</span>
+  <h2>安装和第一次打开</h2>
+  <ol class="pts">
+    <li>双击 <b>KiraDoki-Setup-0.1.0.exe</b>。不需要管理员权限，也不用另外装 .NET 之类的东西。</li>
+    <li>如果出现蓝色的"Windows 已保护你的电脑"：点 <b>更多信息 → 仍要运行</b>。这是因为程序没买数字签名证书，不是病毒。</li>
+    <li>安装时有两个选项：<b>登录时启动 KiraDoki</b>（推荐勾上）；<b>连接 Claude Code 通知</b>（用 Claude Code 就勾）。</li>
+    <li>装完小岛就出现在任务栏最左边。位置不喜欢就去 设置 → 通用 改。</li>
+  </ol>
+  <p class="muted" style="font-size:15px">卸载：Windows 设置 → 应用 → 已安装的应用 → KiraDoki → 卸载。卸载会把 Windows 通知横幅恢复原样、断开 Claude Code 连接；你的设置会保留，重新安装还能接着用。</p>
+</section>
+
+<!-- ================= faq ================= -->
+<section id="faq">
+  <span class="tag">常见问题</span>
+  <h2>常见问题</h2>
+  <details><summary>支持哪些电脑？</summary><p>Windows 11，64 位（x64）。Windows 10 和 ARM 电脑（比如骁龙笔记本）暂时不支持。</p></details>
+  <details><summary>小岛不见了？</summary><p>任务栏上图标太多、放不下时小岛会自动藏起来。关几个任务栏图标，或者把位置换成"正中间"。设置 → 关于 → 诊断 里能看到"嵌入任务栏"是正常、浮在任务栏上，还是放不下已隐藏。</p></details>
+  <details><summary>会不会偷看我的东西、上传数据？</summary><p>不会上传。所有判断都在你的电脑上完成。为了显示通知，它会读取 Windows 通知的内容（设置里写明了，可以关掉）；读不到通知时会自动把 Windows 自己的通知横幅还给你，不会让你漏消息。日历只会去下载你自己填的那个日历地址。</p></details>
+  <details><summary>我不用 Claude / ChatGPT，有用吗？</summary><p>有。下载进度、中转站、音乐、计时器、日历、消息和系统提醒都和 AI 无关。设置里把 AI 的开关关了就行。</p></details>
+  <details><summary>QQ / 微信消息能显示吗？</summary><p>QQ 发的是 Windows 通知，会变成小岛上的卡片，点"打开"会把 QQ 窗口调出来。微信不发通知，只会让任务栏图标闪烁——小岛会认出这个闪烁，显示"新消息"，单独打开的聊天窗口还会显示聊天名。</p></details>
+  <details><summary>它会不会很耗电、拖慢电脑？</summary><p>平时几乎不占资源。动画跟随 Windows 的"动画效果"设置：在 Windows 设置 → 辅助功能 → 视觉效果 里关掉动画，小岛也会安静下来。</p></details>
+  <details><summary>出问题了怎么反馈？</summary><p>设置 → 关于 → 诊断 → "复制日志"，把复制的内容连同你看到的情况（最好有截图）发给作者。</p></details>
+</section>
+
+<footer>
+  KiraDoki 0.1.0 · 作者：无敌企鹅大王、Claude<br>
+  基于 <a href="https://github.com/ds3owl/islebar">IsleBar</a>（原作者 ds3owl，MIT 许可）。图标来自微软 Fluent UI System Icons（MIT）。<br>
+  与 Anthropic、OpenAI、腾讯等公司无关；文中提到的软件名称属于各自的所有者。
+</footer>
+</div>
+
+<script>
+/* ---------- icons (IsleIcons.ttf code points, see src/IsleBar.Core/Ui/Icons.cs) ---------- */
+const I = { alert:"\ue000", done:"\ue001", error:"\ue002", download:"\ue003", upload:"\ue004", copy:"\ue005", move:"\ue006", unzip:"\ue007", zip:"\ue008",
+  pause:"\ue009", timer:"\ue00a", music:"\ue00b", chat:"\ue00c", info:"\ue00d", charging:"\ue00e", bt:"\ue00f", headphones:"\ue010", wifi:"\ue011",
+  offline:"\ue012", focus:"\ue013", image:"\ue014", doc:"\ue015", load:"\ue016", cal:"\ue017", drive:"\ue018", print:"\ue019", mic:"\ue01a", camera:"\ue01b",
+  clock:"\ue01c", warning:"\ue01d", box:"\ue01e", stack:"\ue01f", open:"\ue020", add:"\ue021", dismiss:"\ue022", prev:"\ue023", play:"\ue024", next:"\ue025",
+  folder:"\ue026", video:"\ue028", bat2:"\ue02b", bat9:"\ue032", settings:"\ue034", steam:"\ue050", gpt:"\ue058", wechat:"\ue04d", lid:"\ue059" };
+const ico = (g, extra = "") => `<span class="ico" style="${extra}">${g}</span>`;
+const claudeMark = (color = "#D97757") => `<svg class="claude" viewBox="0 0 16 16"><g stroke="${color}" stroke-width="2" stroke-linecap="round">` +
+  [0, 23, 46, 69, 90, 113, 136, 159].map(a => { const r = a * Math.PI / 180, x = Math.cos(r) * 6.4, y = Math.sin(r) * 6.4; return `<line x1="${8 - x}" y1="${8 - y}" x2="${8 + x}" y2="${8 + y}"/>`; }).join("") + `</g></svg>`;
+const appMark = (letter, color) => `<span class="app" style="background:${color}">${letter}</span>`;
+
+/* lead: {claude} {gpt} {glyph} {cover} {app:[letter,color]} */
+function lead(c) {
+  if (c.claude) return claudeMark();
+  if (c.gpt) return ico(I.gpt);
+  if (c.cover) return `<span class="cover" style="${c.coverStyle || ""}"></span>`;
+  if (c.app) return appMark(c.app[0], c.app[1]);
+  return ico(c.glyph || I.info);
+}
+function bigPill(c) {
+  if (!c) return "";
+  const prog = c.progress == null ? "" : c.progress === "flow" ? `<span class="prog flow"><b></b></span>` : `<span class="prog"><b style="width:${c.progress * 100}%"></b></span>`;
+  const btn = c.btn === "open" ? `<span class="btn round">${ico(I.open)}</span>` : c.btn ? `<span class="btn">${c.btn}</span>` : "";
+  return `<div class="bp ${c.tone || ""}" data-k="${c.key || ""}"><span class="lead">${lead(c)}</span>` +
+    `<span class="tx">${c.text || ""}${c.sub ? `<span class="s">${c.sub}</span>` : ""}</span>` +
+    (c.bars ? `<span class="bars"><i></i><i></i><i></i></span>` : "") + (c.more ? `<span class="more">${c.more}</span>` : "") + btn + prog + `</div>`;
+}
+function cellOf(c) {
+  const g = c.claude ? claudeMark(c.tone === "o" ? "var(--o)" : c.tone === "g" ? "var(--g)" : c.tone === "r" ? "var(--r)" : "#fff")
+    : c.cover ? `<span class="cover" style="width:14px;height:14px;${c.coverStyle || ""}"></span>`
+    : c.app ? appMark(c.app[0], c.app[1]) : ico(c.cell || c.glyph || I.info);
+  return `<span class="cell ${c.tone || ""}" data-k="${c.key}">${g}</span>`;
+}
+function smallPill(cells) {
+  return `<div class="sp"><span class="ball"></span>${cells.length ? `<span class="rule"></span>` + cells.map(cellOf).join("") : ""}</div>`;
+}
+const exPill = c => `<div class="ex"><div class="bar"><div class="pills">${bigPill(c)}</div></div></div>`;
+
+/* ---------- lifted cards ---------- */
+function sheetHtml(c) {
+  const s = c.sheet || {};
+  const src = `<div class="src">${s.srcIcon || (c.claude ? claudeMark() : ico(c.glyph || I.info))}<span>${s.src || ""}</span>${s.st ? `<span class="st ${s.stTone || ""}">${s.st}</span>` : ""}</div>`;
+  const ttl = s.ttl ? `<div class="ttl">${s.ttl}</div>` : "";
+  const body = s.body ? `<div class="body">${s.body}</div>` : `<div class="body"></div>`;
+  const pr = s.pr ? `<div><div class="pr"><span>${s.pr[0]}</span><span>${s.pr[1]}</span></div><div class="track"><b style="width:${s.pr[2] * 100}%"></b></div></div>` : "";
+  const btns = s.btns ? `<div class="btns">${s.btns.map(b => b.startsWith("ic:") ? `<span class="ic">${b.slice(3)}</span>` : `<span>${b}</span>`).join("")}</div>` : "";
+  return `<div class="sheet">${src}${ttl}${body}${pr}${btns}</div>`;
+}
+
+/* ---------- an interactive stage: small pill + big pill, swap, lift, list, menus ---------- */
+function Island(stageId, pillsId, cards, opts = {}) {
+  const stage = document.getElementById(stageId), host = document.getElementById(pillsId);
+  let big = opts.big ?? 0, order = cards.map((_, i) => i), overlay = null;
+  const closeOverlay = () => { if (overlay) { overlay.remove(); overlay = null; } };
+  function render(animate) {
+    const rest = order.filter(i => i !== big).map(i => cards[i]);
+    host.innerHTML = smallPill(rest) + bigPill(cards[big]);
+    if (animate) host.querySelector(".bp").classList.add("swapin");
+    host.querySelectorAll(".cell").forEach(el => el.onclick = e => { e.stopPropagation(); closeOverlay(); big = cards.findIndex(c => c.key === el.dataset.k); render(true); });
+    const bp = host.querySelector(".bp");
+    bp.onclick = e => { e.stopPropagation(); if (overlay && overlay.classList.contains("sheet")) { closeOverlay(); return; } closeOverlay(); lift(bp); };
+    bp.oncontextmenu = e => { e.preventDefault(); e.stopPropagation(); closeOverlay(); menu(e, [`<div class="h">${cards[big].name || ""}</div>`, "<div>置顶</div>", "<div>收起</div>", "<div>关闭</div>"]); };
+    const ball = host.querySelector(".ball");
+    ball.onclick = e => { e.stopPropagation(); if (overlay && overlay.classList.contains("list")) { closeOverlay(); return; } closeOverlay(); list(ball); };
+    ball.oncontextmenu = e => { e.preventDefault(); e.stopPropagation(); closeOverlay(); menu(e, ["<div>5分钟</div>", "<div>25分钟</div>", "<div>番茄钟</div>", "<div>秒表</div>", '<div class="sep"></div>', "<div>设置</div>"]); };
+  }
+  function place(el, anchor, width) {
+    const sr = stage.getBoundingClientRect(), ar = anchor.getBoundingClientRect();
+    let left = ar.left - sr.left + ar.width / 2 - width / 2;
+    left = Math.max(8, Math.min(left, sr.width - width - 8));
+    el.style.left = left + "px"; el.style.bottom = (sr.bottom - ar.top + 10) + "px";
+  }
+  function lift(bp) {
+    const c = cards[big]; if (!c.sheet) return;
+    const wrap = document.createElement("div"); wrap.innerHTML = sheetHtml(c); overlay = wrap.firstChild;
+    stage.appendChild(overlay); place(overlay, bp, 300);
+    bp.style.filter = "brightness(.6)"; const off = overlay; const undim = () => { if (overlay !== off) bp.style.filter = ""; else requestAnimationFrame(undim); }; undim();
+  }
+  function list(ball) {
+    const el = document.createElement("div"); el.className = "list";
+    el.innerHTML = order.map(i => bigPill(cards[i])).join(""); overlay = el; stage.appendChild(el);
+    const sr = stage.getBoundingClientRect(), br = ball.getBoundingClientRect();
+    el.style.left = (br.left - sr.left) + "px"; el.style.bottom = (sr.bottom - br.top + 10) + "px";
+    el.querySelectorAll(".bp").forEach((p, n) => p.onclick = e => { e.stopPropagation(); closeOverlay(); big = order[n]; render(true); });
+  }
+  function menu(e, items) {
+    const el = document.createElement("div"); el.className = "menu"; el.innerHTML = items.join(""); overlay = el; stage.appendChild(el);
+    const sr = stage.getBoundingClientRect();
+    el.style.left = Math.min(e.clientX - sr.left, sr.width - 160) + "px"; el.style.bottom = (sr.bottom - e.clientY + 6) + "px";
+    el.onclick = ev => { ev.stopPropagation(); closeOverlay(); };
+  }
+  document.addEventListener("click", closeOverlay);
+  render(false);
+  return { set(i) { closeOverlay(); big = i; render(true); }, update(i, c) { cards[i] = c; if (i === big) render(false); else render(false); }, cards };
+}
+
+/* ---------- shared card data ---------- */
+const C = {
+  claudeDone: { key: "cd", name: "Claude Code · 修复登录页", claude: true, tone: "g", text: "登录页的问题修好了", btn: "open",
+    sheet: { src: "Claude Code", st: "完成", stTone: "g", ttl: "修复登录页",
+      body: "<p>登录页的问题修好了。原因是表单提交前没有检查密码长度：</p><p>• 加了长度检查和提示文字<br>• 补了 3 个测试，全部通过</p>", btns: ["打开对话", "关闭"] } },
+  claudeWait: { key: "cw", name: "Claude Code · 整理照片", claude: true, tone: "o", text: "整理照片", btn: "open",
+    sheet: { src: "Claude Code", st: "等你", stTone: "o", ttl: "整理照片", body: "<p>想要运行一条命令：把 238 张照片按拍摄月份移进文件夹。</p><p>需要你在对话里允许。</p>", btns: ["打开对话", "关闭"] } },
+  claudeWork: { key: "cw2", name: "Claude Code · 写周报", claude: true, text: "正在读取上周的提交记录…",
+    sheet: { src: "Claude Code", st: "工作中", ttl: "写周报", body: "<p>正在读取上周的提交记录，整理成三部分：完成了什么、遇到的问题、下周计划。</p>", btns: ["打开对话", "关闭"] } },
+  download: { key: "dl", name: "Microsoft Edge · 下载", glyph: I.download, text: "下载中", sub: "毕业设计素材.zip", progress: .42,
+    sheet: { src: "Microsoft Edge", st: "下载中", ttl: "毕业设计素材.zip", body: "<p>已下载 512 MB，共 1.2 GB</p>", pr: ["剩余1分钟 · 9.6 MB/s", "42%", .42], btns: ["打开文件夹"] } },
+  music: { key: "mu", name: "网易云音乐", cover: true, text: "晴天", sub: "周杰伦", bars: true,
+    sheet: { src: "网易云音乐", srcIcon: '<span class="cover" style="width:14px;height:14px"></span>', st: "播放中", ttl: "晴天", body: "<p>周杰伦 · 叶惠美</p>", pr: ["1:52", "4:29", .42],
+      btns: ["ic:" + I.prev, "ic:" + I.pause, "ic:" + I.next] } },
+  timer: { key: "ti", name: "番茄钟", glyph: I.timer, text: "专注", sub: "18:42",
+    sheet: { src: "番茄钟", srcIcon: ico(I.timer), st: "第 2 轮", ttl: "专注", body: '<div class="big">18:42</div><p style="margin-top:6px">还有 18 分钟休息 5 分钟</p>', btns: ["暂停", "关闭"] } },
+  transit: { key: "tr", name: "中转站", glyph: I.box, text: "中转站", sub: "3个文件",
+    sheet: { src: "中转站", srcIcon: ico(I.box), st: "", ttl: "",
+      body: ["报告终稿.docx", "封面.png", "数据.xlsx"].map(n => `<div class="row"><span class="ico">${n.endsWith("png") ? I.image : I.doc}</span><span class="n">${n}</span><span class="x">${I.dismiss}</span></div>`).join(""), btns: ["清空"] } },
+};
+
+/* ---------- hero: cycles through scenes ---------- */
+(function () {
+  const scenes = [
+    C.claudeWork, C.claudeDone, C.download, C.music,
+    { key: "q", app: ["Q", "#12B7F5"], text: "小林", sub: "晚上一起吃饭吗", more: "+2", btn: "打开" },
+    { key: "ca", glyph: I.cal, text: "10分钟后", sub: "高等数学" },
+    { key: "co", glyph: I.copy, text: "已复制", sub: "https://example.com/…", btn: "open" },
+  ];
+  const host = document.getElementById("heroPills"); let n = 0;
+  const cells = [C.timer, C.transit];
+  function show() { host.innerHTML = smallPill(cells.map(c => ({ ...c, key: c.key }))) + bigPill(scenes[n]); host.querySelector(".bp").classList.add("swapin"); n = (n + 1) % scenes.length; }
+  show(); setInterval(show, 2600);
+})();
+
+/* ---------- anatomy ---------- */
+Island("ana", "anaPills", [C.music, C.claudeDone, C.download, C.timer, C.transit]);
+
+/* ---------- AI timeline ---------- */
+(function () {
+  const steps = [
+    ["开始", { ...C.claudeWork, key: "a" }],
+    ["工作中", { ...C.claudeWork, key: "a", text: "测试都过了，我再检查一遍边界情况" }],
+    ["等你", { ...C.claudeWait, key: "a" }],
+    ["完成", { ...C.claudeDone, key: "a" }],
+    ["出错", { key: "a", claude: true, tone: "r", text: "Claude 已停止", sub: "服务器繁忙，请重试", btn: "关闭",
+      sheet: { src: "Claude Code", st: "已停止", stTone: "r", ttl: "写周报", body: "<p>服务器繁忙，请重试。</p>", btns: ["打开对话", "关闭"] } }],
+    ["ChatGPT", { key: "a", gpt: true, text: "ChatGPT", sub: "重构支付模块", tone: "g", btn: "open",
+      sheet: { src: "ChatGPT", srcIcon: ico(I.gpt), st: "完成", stTone: "g", ttl: "重构支付模块", body: "<p>拆成了三个文件，旧接口保留兼容。</p>", btns: ["打开对话", "关闭"] } }],
+  ];
+  const cards = [steps[0][1], C.music, C.download];
+  const isl = Island("aiDemo", "aiPills", cards);
+  const ctl = document.getElementById("aiCtl"); let n = 0, auto = true;
+  steps.forEach(([label, card], i) => { const b = document.createElement("button"); b.textContent = label; b.onclick = () => { auto = false; go(i); }; ctl.appendChild(b); });
+  function go(i) { n = i; cards[0] = steps[i][1]; isl.set(0); [...ctl.children].forEach((b, k) => b.style.borderColor = k === i ? "var(--accent)" : ""); }
+  document.getElementById("aiDemo").addEventListener("click", () => auto = false, true);
+  go(0); setInterval(() => { if (auto) go((n + 1) % 4); }, 2400);
+})();
+
+/* ---------- downloads ---------- */
+Island("dl", "dlPills", [C.download,
+  { key: "x", glyph: I.copy, name: "资源管理器 · 复制", text: "复制中", sub: "旅行照片 +236", progress: .7,
+    sheet: { src: "资源管理器", srcIcon: ico(I.copy), st: "复制中", ttl: "旅行照片", body: "<p>还有 236 个文件 · 到 D:\\备份</p>", pr: ["剩余20秒 · 85 MB/s", "70%", .7] } },
+  { key: "z", glyph: I.zip, name: "WinRAR", text: "压缩中", sub: "项目备份.rar", progress: .28,
+    sheet: { src: "WinRAR", srcIcon: ico(I.zip), st: "压缩中", ttl: "项目备份.rar", body: "<p>正在压缩 src\\images\\banner.psd</p>", pr: ["剩余3分钟", "28%", .28] } },
+  { key: "s", glyph: I.steam, name: "Steam", text: "已安装", sub: "空洞骑士", tone: "g", btn: "open",
+    sheet: { src: "Steam", srcIcon: ico(I.steam), st: "已安装", stTone: "g", ttl: "空洞骑士", body: "<p>用时4分钟</p>", btns: ["开始游戏", "关闭"] } },
+]);
+const fileItems = [
+  [I.download, "浏览器下载", "Edge、Chrome 等。下载中显示进度（拿不到总大小时显示流动条和已下载多少），下完可以在文件夹中显示。", { glyph: I.download, text: "下载中", sub: "安装包.exe", progress: "flow" }],
+  [I.download, "下载软件", "迅雷、夸克网盘、百度网盘。", { glyph: I.download, text: "下载中", sub: "电影.mkv", progress: .63 }],
+  [I.steam, "Steam", "游戏下载和更新：百分比、速度、剩余时间；装好后一键\"开始游戏\"。", { glyph: I.steam, text: "下载中", sub: "空洞骑士", progress: .35 }],
+  [I.copy, "复制、移动、解压", "资源管理器里的复制、移动、解压、压缩。确定顺利做完才说\"已复制\"。", { glyph: I.copy, text: "已复制", sub: "旅行照片 +236", tone: "g" }],
+  [I.zip, "压缩软件", "WinRAR、7-Zip、Bandizip 的压缩和解压进度。", { glyph: I.unzip, text: "解压中", sub: "资料.7z", progress: .5 }],
+  [I.video, "视频导出", "剪映导出视频：导出中、已导出（↗ 在文件夹里选中成品）。", { glyph: I.video, text: "已导出", sub: "vlog第3期.mp4", tone: "g", btn: "open" }],
+  [I.print, "打印机", "打印进度；缺纸、卡纸、缺墨、离线会橙色提醒，一直留到解决。", { glyph: I.print, text: "缺纸", sub: "HP LaserJet", tone: "o" }],
+  [I.drive, "U 盘", "插入、安全弹出；有程序占着弹不出时告诉你是谁在用，没安全弹出就拔了也会提醒。", { glyph: I.drive, text: "已弹出", sub: "U盘 (E:)", tone: "g" }],
+];
+document.getElementById("fileGrid").innerHTML = fileItems.map(([g, t, d, p]) => `<div class="box"><h4>${ico(g)}${t}</h4><p>${d}</p>${exPill(p)}</div>`).join("");
+
+/* ---------- music / timer ---------- */
+Island("mu", "muPills", [C.music, { ...C.music, key: "mu2", name: "Spotify", text: "Blinding Lights", sub: "The Weeknd", coverStyle: "background:linear-gradient(135deg,#ff512f,#dd2476)",
+  sheet: { ...C.music.sheet, src: "Spotify", srcIcon: '<span class="cover" style="width:14px;height:14px;background:linear-gradient(135deg,#ff512f,#dd2476)"></span>', ttl: "Blinding Lights", body: "<p>The Weeknd · After Hours</p>", pr: ["0:48", "3:20", .24] } }]);
+Island("ti", "tiPills", [C.timer, { key: "t5", glyph: I.timer, name: "计时器", text: "计时器", sub: "4:12",
+  sheet: { src: "计时器", srcIcon: ico(I.timer), st: "5分钟", ttl: "计时器", body: '<div class="big">4:12</div>', btns: ["暂停", "关闭"] } },
+  { key: "sw", glyph: I.clock, name: "秒表", text: "秒表", sub: "12:05",
+  sheet: { src: "秒表", srcIcon: ico(I.clock), st: "进行中", ttl: "秒表", body: '<div class="big">12:05</div>', btns: ["暂停", "关闭"] } }]);
+
+/* ---------- calendar ---------- */
+const cal = [
+  ["快开始了", "日程自己的提醒时间到了：橙色，倒数到开始。", { glyph: I.cal, text: "10分钟后", sub: "高等数学", tone: "o" }],
+  ["开始", "开始那一刻在大胶囊上亮相几秒。", { glyph: I.cal, text: "开始", sub: "高等数学", tone: "o" }],
+  ["进行中", "安静地待在小图标里，想看就点。", { glyph: I.cal, text: "进行中", sub: "高等数学" }],
+  ["结束 / 空档", "结束时亮一下；25 分钟内还有下一个，就显示到下一个还有多久。", { glyph: I.cal, text: "8分钟后", sub: "大学英语", tone: "g" }],
+];
+document.getElementById("calGrid").innerHTML = cal.map(([t, d, p]) => `<div class="box"><h4>${t}</h4><p>${d}</p>${exPill(p)}</div>`).join("");
+
+/* ---------- more ---------- */
+const more = [
+  [I.alert, "Windows 通知", "所有应用的通知都变成小岛上的卡片。同一个应用的合在一起（右边 +N），掀起后按发消息的人分组。可以选\"只在任务栏显示\"，把 Windows 右下角的横幅关掉。", { app: ["Q", "#12B7F5"], text: "小林", sub: "晚上一起吃饭吗", more: "+2", btn: "打开" }],
+  [I.wechat, "微信", "微信不发通知，只闪任务栏图标；小岛认出闪烁，显示新消息，点\"打开\"把微信窗口调出来。", { app: ["W", "#07C160"], text: "新消息", sub: "文件传输助手", btn: "打开" }],
+  [I.copy, "复制提示", "复制了什么一目了然。复制网址 → ↗ 用默认浏览器打开；复制文件 / 图片 → + 加入中转站；剪切的文件写\"已剪切\"。", { glyph: I.copy, text: "已复制", sub: "https://example.com", btn: "open" }],
+  [I.bat2, "电量", "插拔电源时告诉你电量；剩 20%、10% 各提醒一次，5% 以下橙色一直留到插上电。", { glyph: I.bat2, text: "电量10%", sub: "约48分钟" }],
+  [I.bt, "蓝牙", "耳机、键盘、鼠标连上或断开。", { glyph: I.headphones, text: "已连接", sub: "AirPods Pro" }],
+  [I.wifi, "网络", "断网了马上知道，恢复后也告诉你。", { glyph: I.offline, text: "网络已断开", tone: "o" }],
+  [I.focus, "专注时段", "开了 Windows 的专注时段时显示还剩多久。", { glyph: I.focus, text: "专注时段", sub: "还剩24分钟" }],
+  [I.load, "CPU / 内存占用高", "电脑突然卡了？看看是不是有程序把 CPU 或内存吃满了，↗ 打开任务管理器。", { glyph: I.load, text: "CPU 96%", sub: "Code.exe", btn: "open" }],
+  [I.mic, "麦克风 / 摄像头", "哪个程序正在用麦克风或摄像头，用完还占着也能发现。", { glyph: I.mic, text: "麦克风使用中", sub: "腾讯会议" }],
+];
+document.getElementById("moreGrid").innerHTML = more.map(([g, t, d, p]) => `<div class="box"><h4>${ico(g)}${t}</h4><p>${d}</p>${exPill(p)}</div>`).join("");
+
+/* ---------- transit demo ---------- */
+(function () {
+  const space = document.getElementById("trSpace"), pills = document.getElementById("trPills");
+  space.innerHTML = `
+    <div class="folder" style="left:24px;top:10px"><div class="fh">${ico(I.folder)}下载</div></div>
+    <div class="folder" style="right:24px;top:10px"><div class="fh">${ico(I.folder)}D:\\作业</div></div>
+    <div class="file" id="f1" style="left:40px;top:44px"><div class="fi"></div>报告.docx</div>
+    <div class="file pic" id="f2" style="left:110px;top:44px"><div class="fi"></div>封面.png</div>
+    <svg class="cursor" id="cur" viewBox="0 0 14 20" style="left:0;top:0"><path d="M1 1 L1 16 L5 12 L8 19 L10.5 18 L7.5 11 L13 11 Z" fill="#fff" stroke="#000" stroke-width="1"/></svg>`;
+  const f1 = document.getElementById("f1"), f2 = document.getElementById("f2"), cur = document.getElementById("cur");
+  const base = { key: "m", cover: true, text: "晴天", sub: "周杰伦", bars: true };
+  const show = (c, small = []) => { pills.innerHTML = smallPill(small) + bigPill(c); pills.querySelector(".bp").classList.add("fade"); };
+  const at = (el, x, y) => el.style.transform = `translate(${x}px,${y}px)`;
+  let timers = [], until = 0;
+  function play(again) {
+    if (!again && Date.now() < until) return;   // scrolling past mid-play must not restart it
+    until = Date.now() + 8000;
+    timers.forEach(clearTimeout); timers = [];
+    const sr = space.getBoundingClientRect(), bp = () => pills.querySelector(".bp").getBoundingClientRect();
+    [f1, f2].forEach(f => { f.style.transition = "none"; f.style.opacity = 1; at(f, 0, 0); f.offsetHeight; f.style.transition = ""; });
+    cur.style.transition = "none"; at(cur, 60, 70); cur.offsetHeight; cur.style.transition = "";
+    show(base, [C.timer]);
+    const pillX = () => bp().left - sr.left + 90, pillY = () => bp().top - sr.top + 4;
+    const T = (ms, fn) => timers.push(setTimeout(fn, ms));
+    T(600, () => { at(cur, pillX() - 10, pillY() + 6); at(f1, pillX() - 50, pillY() - 30); });
+    T(1500, () => { show({ key: "t", glyph: I.box, text: "放入中转站", tone: "o" }, [C.timer]); });
+    T(2100, () => { f1.style.opacity = 0; show({ ...C.transit, sub: "1个文件" }, [C.timer, base]); at(cur, 130, 70); });
+    T(2900, () => { at(cur, pillX() - 10, pillY() + 6); at(f2, pillX() - 120, pillY() - 30); });
+    T(3800, () => { f2.style.opacity = 0; show({ ...C.transit, sub: "2个文件" }, [C.timer, base]); });
+    T(4700, () => { at(cur, sr.width - 150, 70); [f1, f2].forEach((f, i) => { f.style.opacity = 1; at(f, sr.width - 230 - (i ? 110 : 40), 0); }); show(base, [C.timer]); });
+    T(5700, () => { show({ key: "t", glyph: I.move, text: "已移动", sub: "2个文件", tone: "g" }, [C.timer]); });
+    T(7600, () => { show(base, [C.timer]); });
+  }
+  document.getElementById("trPlay").onclick = () => play(true);
+  new IntersectionObserver(es => { if (es[0].isIntersecting) play(false); }, { threshold: .6 }).observe(space);
+  show(base, [C.timer]);
+})();
+</script>
+</body>
+</html>
