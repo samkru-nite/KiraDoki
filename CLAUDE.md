@@ -1,7 +1,13 @@
 # KiraDoki（IsleBar 二次开发）— Claude 交接文件
 
 > **项目介绍、协作方式、命令、代码地图、规范都在 `AGENTS.md`，新会话先读它，再读 `TODO-v0.1.1.md`（现在唯一的待办；用户说"加入 TODO"就是指它，旧的 `TODO.md` / `TODO-history.md` 不再参考）。** 本文件只放最新进度（下一个会话做什么）。
-> 更早的交接记录（10-04 ~ 10-12 每次会话做了什么、学到了什么）和旧版详细地图都在 git 历史里：`git show d06012e:CLAUDE.md`。
+> 更早的交接记录（10-04 ~ 10-12 每次会话做了什么、学到了什么）和旧版详细地图都在 git 历史里：`git show 904ad29:CLAUDE.md`。
+
+> **10-12 傍晚：搬家 + 上 GitHub（新会话先知道这些）**
+> - 项目从桌面 `islebar-0.1.0 (2)` 搬到 `E:\02-生活爱好\04-Vibcoding\KiraDoki`，旧文件夹由用户删。
+> - GitHub：`github.com/samkru-nite/KiraDoki`（ds3owl/islebar 的 Fork，公开）。**历史改写过**：开头接上原作者的 `IsleBar 0.1.0` 提交，所有提交邮箱换成 GitHub 隐私邮箱（仓库 `git config` 已设好，别用 Gmail）。所以交接记录 / TODO 里 10-12 之前写的提交编号（如 `52d68c2`）都对不上了，按提交说明搜。改写前的备份：桌面 `KiraDoki-改写前备份.bundle` + 标签 `before-rewrite`（用户确认 GitHub 没问题后可删）。
+> - Releases 发了 `v0.1.0`（安装包 `dist/KiraDoki-Setup-0.1.0.exe`）；README 改成 KiraDoki 的，链接到 GitHub Pages 上的使用介绍页 `guide/KiraDoki-使用介绍.html`（Pages 从 main 根目录发布，`.nojekyll`）。以后改完提交后 `git push`。
+> - 头像（mascot.png，网上的表情包）用户决定暂时不换，已经随仓库公开了。
 
 > **最新交接（10-12 晚，下一个会话 = 优化主窗口的掉帧，先看这条）**
 > - **用户要做什么**：新会话专门优化界面主文件（`MainWindow.xaml.cs` 2364 行、约 66 个状态字段，加 `MainWindow.Swap / Lift / List / Transit / Pill.cs`）的性能。用户笔记本 U5 338H、屏幕 165 Hz（一帧 6 ms）、200% 缩放，**时常掉帧**。方向（10-12 复盘定）：精简、性能、稳定性，不再加新功能。
